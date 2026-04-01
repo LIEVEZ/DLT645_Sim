@@ -1,4 +1,7 @@
 #include "CommunicationDialog.h"
+#include "Models/DataItem.h"
+#include "Services/ProtocolParser.h"
+#include "Utils/DLT645DataHelper.h"
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -8,7 +11,7 @@
 #include <QCloseEvent>
 
 CommunicationDialog::CommunicationDialog(const QString &connectionName, QWidget *parent)
-    : QDialog(parent), m_connectionName(connectionName), m_portName(""), m_baudRate(2400), m_isConnected(false), m_isPaused(false), m_autoScroll(true), m_displayFormat(DisplayFormat::Hex), m_filterRequest(true), m_filterResponse(true), m_filterError(true), m_filterText(""), m_connectionInfoBar(nullptr), m_filterBar(nullptr)
+    : QDialog(parent), m_connectionName(connectionName), m_portName(""), m_baudRate(2400), m_isConnected(false), m_meterModel(nullptr), m_isPaused(false), m_autoScroll(true), m_displayFormat(DisplayFormat::Hex), m_filterRequest(true), m_filterResponse(true), m_filterError(true), m_filterText(""), m_connectionInfoBar(nullptr), m_filterBar(nullptr)
 {
     setupUI();
     setWindowTitle(QString("通信交互 - %1").arg(connectionName));
@@ -18,6 +21,11 @@ CommunicationDialog::CommunicationDialog(const QString &connectionName, QWidget 
 
 CommunicationDialog::~CommunicationDialog()
 {
+}
+
+void CommunicationDialog::setMeterModel(MeterModel *meterModel)
+{
+    m_meterModel = meterModel;
 }
 
 void CommunicationDialog::setupUI()
@@ -221,6 +229,7 @@ void CommunicationDialog::addMessage(const CommunicationMessage &message)
     }
 
     m_messages.append(message);
+    const int messageIndex = m_messages.size() - 1;
 
     // 更新统计信息
     if (message.direction == MessageDirection::Transmit)
@@ -254,6 +263,7 @@ void CommunicationDialog::addMessage(const CommunicationMessage &message)
         QTableWidgetItem *timeItem = new QTableWidgetItem(
             message.timestamp.toString("HH:mm:ss.zzz"));
         timeItem->setTextAlignment(Qt::AlignCenter);
+        timeItem->setData(Qt::UserRole, messageIndex);
         m_tableMessages->setItem(row, 0, timeItem);
 
         // 方向
@@ -345,8 +355,9 @@ void CommunicationDialog::refreshMessageList()
 {
     m_tableMessages->setRowCount(0);
 
-    for (const auto &message : m_messages)
+    for (int index = 0; index < m_messages.size(); ++index)
     {
+        const auto &message = m_messages[index];
         if (shouldShowMessage(message))
         {
             int row = m_tableMessages->rowCount();
@@ -355,26 +366,17 @@ void CommunicationDialog::refreshMessageList()
             QTableWidgetItem *timeItem = new QTableWidgetItem(
                 message.timestamp.toString("HH:mm:ss.zzz"));
             timeItem->setTextAlignment(Qt::AlignCenter);
+            timeItem->setData(Qt::UserRole, index);
             m_tableMessages->setItem(row, 0, timeItem);
 
             QTableWidgetItem *dirItem = new QTableWidgetItem(getDirectionIcon(message.direction));
             dirItem->setTextAlignment(Qt::AlignCenter);
             m_tableMessages->setItem(row, 1, dirItem);
 
-            QTableWidgetItem *codeItem = new QTableWidgetItem(
-                QString("%1H").arg(message.controlCode, 2, 16, QChar('0')).toUpper());
-            codeItem->setTextAlignment(Qt::AlignCenter);
-            m_tableMessages->setItem(row, 2, codeItem);
-
-            QTableWidgetItem *lenItem = new QTableWidgetItem(
-                QString("%1").arg(message.dataLength));
-            lenItem->setTextAlignment(Qt::AlignCenter);
-            m_tableMessages->setItem(row, 3, lenItem);
-
             QTableWidgetItem *frameItem = new QTableWidgetItem(
                 formatMessage(message, m_displayFormat));
             frameItem->setFont(QFont("Consolas", 9));
-            m_tableMessages->setItem(row, 4, frameItem);
+            m_tableMessages->setItem(row, 2, frameItem);
 
             if (message.type == MessageType::Error)
             {
@@ -435,10 +437,24 @@ void CommunicationDialog::onDisplayFormatChanged(int index)
 
 void CommunicationDialog::onMessageSelectionChanged()
 {
-    int currentRow = m_tableMessages->currentRow();
-    if (currentRow >= 0 && currentRow < m_messages.size())
+    const int currentRow = m_tableMessages->currentRow();
+    if (currentRow < 0)
     {
-        updateMessageDetail(currentRow);
+        m_textDetail->clear();
+        return;
+    }
+
+    QTableWidgetItem *timeItem = m_tableMessages->item(currentRow, 0);
+    if (!timeItem)
+    {
+        m_textDetail->clear();
+        return;
+    }
+
+    const int messageIndex = timeItem->data(Qt::UserRole).toInt();
+    if (messageIndex >= 0 && messageIndex < m_messages.size())
+    {
+        updateMessageDetail(messageIndex);
     }
 }
 
@@ -466,6 +482,50 @@ void CommunicationDialog::parseFrame(const QByteArray &frame, QString &parsedRes
         return;
     }
 
+    int leadingCount = 0;
+    const QByteArray protocolFrame = DLT645DataHelper::stripLeadingFE(frame, &leadingCount);
+
+    parsedResult += QString::fromUtf8("帧结构解析：\n");
+    if (leadingCount > 0)
+    {
+        parsedResult += QString::fromUtf8("前导码：") + formatHex(frame.left(leadingCount)) + "\n";
+    }
+
+    if (protocolFrame.size() < 12)
+    {
+        parsedResult += QString::fromUtf8("报文长度不足，无法继续解析。\n");
+        return;
+    }
+
+    const quint8 startFlag = static_cast<quint8>(protocolFrame[0]);
+    const QByteArray address = protocolFrame.mid(1, 6);
+    const quint8 secondStartFlag = static_cast<quint8>(protocolFrame[7]);
+    const quint8 controlCode = static_cast<quint8>(protocolFrame[8]);
+    const quint8 dataLength = static_cast<quint8>(protocolFrame[9]);
+    const int availableDataLength = qMin(static_cast<int>(dataLength), protocolFrame.size() - 12);
+    const QByteArray dataField = protocolFrame.mid(10, qMax(availableDataLength, 0));
+    const quint8 checksum = static_cast<quint8>(protocolFrame[10 + availableDataLength]);
+    const quint8 endFlag = static_cast<quint8>(protocolFrame[11 + availableDataLength]);
+
+    parsedResult += QString::fromUtf8("帧起始符：0x%1\n").arg(startFlag, 2, 16, QChar('0')).toUpper();
+    parsedResult += QString::fromUtf8("地址域：") + formatHex(address) + "\n";
+    parsedResult += QString::fromUtf8("电表号：") + ProtocolParser::bytesToAddress(address) + "\n";
+    parsedResult += QString::fromUtf8("第二起始符：0x%1\n").arg(secondStartFlag, 2, 16, QChar('0')).toUpper();
+    parsedResult += QString::fromUtf8("控制码：0x%1 (%2)\n")
+                        .arg(controlCode, 2, 16, QChar('0'))
+                        .arg(getControlCodeName(controlCode));
+    parsedResult += QString::fromUtf8("数据长度：0x%1 (%2 字节)\n")
+                        .arg(dataLength, 2, 16, QChar('0'))
+                        .arg(dataLength);
+    parsedResult += QString::fromUtf8("数据域(原始)：") + formatHex(dataField) + "\n";
+    if (!dataField.isEmpty())
+    {
+        parsedResult += QString::fromUtf8("数据域(减0x33)：") + formatHex(DLT645DataHelper::subtract33(dataField)) + "\n";
+    }
+    parsedResult += QString::fromUtf8("校验和：0x%1\n").arg(checksum, 2, 16, QChar('0')).toUpper();
+    parsedResult += QString::fromUtf8("结束符：0x%1\n").arg(endFlag, 2, 16, QChar('0')).toUpper();
+    return;
+
     parsedResult += QString::fromUtf8("帧结构解析：\n");
     parsedResult += QString::fromUtf8("+----------------------------------------------------+\n");
 
@@ -483,7 +543,7 @@ void CommunicationDialog::parseFrame(const QByteArray &frame, QString &parsedRes
     {
         QByteArray addr = frame.mid(pos, 6);
         QString addrHex = formatHex(addr);
-        parsedResult += QString::fromUtf8("| 地址域：") + addrHex + QString::fromUtf8(" (电表地址：") + addrHex.remove(' ').remove('0x') + QString::fromUtf8(")         |\n");
+        parsedResult += QString::fromUtf8("| 地址域：") + addrHex + QString::fromUtf8(" (电表地址：") + addrHex.remove(' ').remove("0x") + QString::fromUtf8(")         |\n");
         pos += 6;
     }
 
@@ -614,6 +674,8 @@ QString CommunicationDialog::getControlCodeName(quint8 code) const
         return "正常应答";
     case 0x92:
         return "后续应答";
+    case 0x94:
+        return "Write Response";
     case 0xD1:
         return "异常应答";
     case 0xD2:
@@ -697,6 +759,114 @@ void CommunicationDialog::updateMessageDetail(int row)
     parseFrame(message.fullFrame, frameParse);
     detail += frameParse + "\n";
 
+    detail += QString::fromUtf8("数据解析：\n");
+
+    const QByteArray protocolFrame = DLT645DataHelper::stripLeadingFE(message.fullFrame);
+    if (protocolFrame.size() >= 12)
+    {
+        const quint8 dataLength = static_cast<quint8>(protocolFrame[9]);
+        const int actualDataLength = qMin(static_cast<int>(dataLength), protocolFrame.size() - 12);
+        const QByteArray dataField = protocolFrame.mid(10, qMax(actualDataLength, 0));
+        const quint8 baseControlCode = message.controlCode & 0x7F;
+        const bool isResponse = (message.controlCode & 0x80) != 0;
+
+        QString diCode;
+        QString description;
+        QString unit;
+        QByteArray decodedPayload;
+        QString payloadLabel;
+
+        if (dataField.size() >= 4 && (baseControlCode == 0x11 || baseControlCode == 0x14))
+        {
+            diCode = ProtocolParser::extractDIFromDataField(dataField);
+        }
+
+        if (baseControlCode == 0x11)
+        {
+            if (isResponse)
+            {
+                decodedPayload = DLT645DataHelper::decodeReversedPayload(dataField.mid(4));
+                payloadLabel = QString::fromUtf8("应答数据");
+            }
+            else
+            {
+                decodedPayload = dataField.mid(4);
+                payloadLabel = QString::fromUtf8("请求参数");
+            }
+        }
+        else if (baseControlCode == 0x14)
+        {
+            if (isResponse)
+            {
+                decodedPayload = dataField.mid(5);
+                payloadLabel = QString::fromUtf8("写入状态");
+            }
+            else if (dataField.size() > 5)
+            {
+                const int payloadLength = static_cast<quint8>(dataField[4]);
+                decodedPayload = DLT645DataHelper::decodeReversedPayload(dataField.mid(5, payloadLength > 0 ? payloadLength : -1));
+                payloadLabel = QString::fromUtf8("写入数据");
+            }
+        }
+
+        if (!diCode.isEmpty())
+        {
+            detail += QString::fromUtf8("数据项标识：") + diCode + "\n";
+            if (m_meterModel)
+            {
+                const DataItem dataItem = m_meterModel->getDataItem(diCode);
+                description = dataItem.description;
+                unit = dataItem.unit;
+
+                if (!description.isEmpty())
+                {
+                    detail += QString::fromUtf8("数据项名称：") + description + "\n";
+                }
+
+                if (!decodedPayload.isEmpty())
+                {
+                    const QString decodedValue = DLT645DataHelper::decodePayloadForItem(m_meterModel, diCode, decodedPayload, &description, &unit);
+                    detail += payloadLabel + QString::fromUtf8("(解码字节)：") + formatHex(decodedPayload) + "\n";
+                    detail += QString::fromUtf8("解析值：") + decodedValue;
+                    if (!unit.isEmpty() && unit != "-")
+                    {
+                        detail += " " + unit;
+                    }
+                    detail += "\n";
+                }
+
+                // 只在应答帧(Response)时显示MeterModel当前值，请求帧(Request)不显示
+                if (message.type == MessageType::Response)
+                {
+                    const QVariant modelValue = m_meterModel->getDataValue(diCode);
+                    if (modelValue.isValid())
+                    {
+                        DataItem currentItem = dataItem;
+                        currentItem.value = modelValue;
+                        const QString modelText = currentItem.getFormattedValue();
+                        if (!modelText.isEmpty())
+                        {
+                            detail += QString::fromUtf8("MeterModel当前值：") + modelText;
+                            if (!unit.isEmpty() && unit != "-")
+                            {
+                                detail += " " + unit;
+                            }
+                            detail += "\n";
+                        }
+                    }
+                }
+            }
+        }
+        else if (!decodedPayload.isEmpty())
+        {
+            detail += payloadLabel + QString::fromUtf8("：") + formatHex(decodedPayload) + "\n";
+        }
+    }
+
+    detail += QString::fromUtf8("\n校验和状态：") + (message.checksumValid ? QString::fromUtf8("OK 有效") : QString::fromUtf8("X 无效")) + "\n";
+    m_textDetail->setText(detail);
+    return;
+
     // 数据解析
     detail += "数据解析：\n";
 
@@ -707,7 +877,7 @@ void CommunicationDialog::updateMessageDetail(int row)
     if (message.fullFrame.size() >= dataFieldStart + 4)
     {
         QByteArray diBytes = message.fullFrame.mid(dataFieldStart, 4);
-        QString diHex = formatHex(diBytes).remove(' ').remove('0x');
+        QString diHex = formatHex(diBytes).remove(' ').remove("0x");
         detail += "数据标识：0x" + diHex + "\n";
         detail += "数据项：" + getControlCodeName(message.controlCode) + "\n";
     }

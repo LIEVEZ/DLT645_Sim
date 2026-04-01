@@ -1,7 +1,7 @@
 #include "MeterModel.h"
 #include <QRandomGenerator>
 #include <QDateTime>
-
+#include <QDebug>
 MeterModel::MeterModel(QObject *parent)
     : QObject(parent), m_meterAddress("202008060056"), m_operatorCode("00000000"), m_password("00000000"), m_includePrefixFE(true)
 {
@@ -173,7 +173,7 @@ QVariant MeterModel::getDataValue(const QString &diCode) const
                 if (m_dataItems.contains(prefix + "0000"))
                     values.append(m_dataItems[prefix + "0000"].value);
             }
-
+            qDebug() << "MeterModel::getDataValue: " << diCode << " " << values;
             return values;
         }
         else

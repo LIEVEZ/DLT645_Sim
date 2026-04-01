@@ -2,8 +2,10 @@
 #define MAINWINDOW_H
 
 #include <QAction>
+#include <QMap>
 #include <QLabel>
 #include <QMainWindow>
+#include <QStringList>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QTimer>
@@ -21,7 +23,7 @@
 QT_BEGIN_NAMESPACE
 namespace Ui
 {
-class MainWindow;
+    class MainWindow;
 }
 QT_END_NAMESPACE
 
@@ -76,6 +78,12 @@ private:
     void updateToolBarButtons();
     void updateCommunicationDialogState();
     DeviceTreeWidget *deviceTreeWidget() const;
+    QStringList collectMeterAddresses() const;
+    QStringList collectMeterAddressesForConnection(const QString &connectionAlias) const;
+    MeterInfo findMeterInfo(const QString &connectionAlias, const QString &meterAlias) const;
+    MeterModel *createMeterModel(const MeterInfo &meterInfo);
+    void applyCurrentMeter(const MeterInfo &meterInfo);
+    void clearCurrentMeter();
     void refreshMeterPresence();
 
     Ui::MainWindow *ui;
@@ -102,6 +110,8 @@ private:
     QAction *m_lightThemeAction;
 
     CommunicationDialog *m_communicationDialog;
+    QMap<QString, MeterModel *> m_meterModelsByAddress;
+    MeterModel *m_currentMeterModel;
 };
 
 #endif // MAINWINDOW_H

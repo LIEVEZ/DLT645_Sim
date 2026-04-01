@@ -90,6 +90,7 @@ class ProtocolParser : public QObject
 public:
     explicit ProtocolParser(MeterModel *meterModel, QObject *parent = nullptr);
     ~ProtocolParser();
+    void setMeterModel(MeterModel *meterModel);
 
     /**
      * @brief 解析接收到的数据帧

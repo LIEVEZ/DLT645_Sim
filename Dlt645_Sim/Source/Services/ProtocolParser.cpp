@@ -13,6 +13,11 @@ ProtocolParser::~ProtocolParser()
 {
 }
 
+void ProtocolParser::setMeterModel(MeterModel *meterModel)
+{
+    m_meterModel = meterModel;
+}
+
 ProtocolFrame ProtocolParser::parseFrame(const QByteArray &data)
 {
     ProtocolFrame frame;

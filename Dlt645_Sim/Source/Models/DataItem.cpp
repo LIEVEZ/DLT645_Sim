@@ -20,6 +20,7 @@ QString DataItem::getFormattedValue() const
         // {
         //     return BCDHelper::formatValueToString(value, format);
         // }
+        qDebug() << "===DataItem::getFormattedValue()" << value;
         QVariantList valuesList;
         if (value.type() == QVariant::List)
         {
@@ -35,10 +36,7 @@ QString DataItem::getFormattedValue() const
             const QVariant &value = valuesList[i];
             values.append(value.toString());
         }
-        result = values.join(",");
+        result = values.join(":");
     }
-    qDebug() << "value:" << value;
-    qDebug() << "format:" << format;
-    qDebug() << "DataItem::getFormattedValue()" << result;
     return result;
 }

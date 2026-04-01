@@ -17,6 +17,8 @@
 #include <QTimer>
 #include <QDateTime>
 
+class MeterModel;
+
 /**
  * @brief 报文方向枚举
  */
@@ -117,6 +119,7 @@ public:
      * @brief 应用浅色主题
      */
     void applyLightTheme();
+    void setMeterModel(MeterModel *meterModel);
 
     /**
      * @brief 添加通信报文
@@ -199,6 +202,7 @@ private:
     QString m_portName;
     int m_baudRate;
     bool m_isConnected;
+    MeterModel *m_meterModel;
 
     // UI控件
     QWidget *m_connectionInfoBar;  // 连接信息栏容器

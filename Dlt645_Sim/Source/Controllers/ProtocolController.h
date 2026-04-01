@@ -2,7 +2,9 @@
 #define PROTOCOLCONTROLLER_H
 
 #include <QObject>
+#include <QMap>
 #include <QQueue>
+#include <QStringList>
 #include <QTimer>
 #include "Models/MeterModel.h"
 #include "Services/ProtocolParser.h"
@@ -20,6 +22,11 @@ class ProtocolController : public QObject
 public:
     explicit ProtocolController(QObject *parent = nullptr);
     ~ProtocolController();
+
+    MeterModel *meterModel() const;
+    void setMeterModel(MeterModel *meterModel);
+    void registerMeterModel(const QString &address, MeterModel *meterModel);
+    void unregisterMeterModel(const QString &address);
 
     /**
      * @brief 设置串口控制器
@@ -63,6 +70,12 @@ public:
      * @param hasMeter 是否有电表节点
      */
     void setHasMeter(bool hasMeter);
+
+    /**
+     * @brief 设置当前已创建的电表地址列表
+     * @param addresses 电表地址列表
+     */
+    void setKnownMeterAddresses(const QStringList &addresses);
 
 signals:
     /**
@@ -120,10 +133,12 @@ private slots:
     void onResponseTimerTimeout();
 
 private:
-    void processReadRequest(const ProtocolFrame &frame);
-    void processWriteRequest(const ProtocolFrame &frame);
-    void sendResponse(const ProtocolFrame &response);
-    void verifyPassword(const ProtocolFrame &frame);
+    void processReadRequest(const ProtocolFrame &frame, MeterModel *meterModel);
+    void processWriteRequest(const ProtocolFrame &frame, MeterModel *meterModel);
+    void sendResponse(const ProtocolFrame &response, MeterModel *meterModel = nullptr);
+    void verifyPassword(const ProtocolFrame &frame, MeterModel *meterModel);
+    bool shouldRespondToAddress(const QByteArray &addressBytes) const;
+    MeterModel *meterModelForAddress(const QByteArray &addressBytes) const;
 
     MeterModel *m_meterModel;
     SerialController *m_serialController;
@@ -131,8 +146,11 @@ private:
     bool m_autoResponseEnabled;
     int m_responseDelay;
     bool m_hasMeter;
+    QStringList m_knownMeterAddresses;
     QTimer *m_responseTimer;
     ProtocolFrame m_lastRequestFrame;
+    MeterModel *m_lastRequestMeterModel;
+    QMap<QString, MeterModel *> m_meterModelsByAddress;
     QByteArray m_receiveBuffer;
 };
 

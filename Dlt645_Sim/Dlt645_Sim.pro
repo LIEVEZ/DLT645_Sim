@@ -22,6 +22,7 @@ SOURCES += \
     Source/main.cpp \
     Source/Views/MainWindow/mainwindow.cpp \
     Source/Utils/BCDHelper.cpp \
+    Source/Utils/DLT645DataHelper.cpp \
     Source/Utils/ChecksumHelper.cpp \
     Source/Utils/Logger.cpp \
     Source/Models/DataItem.cpp \
@@ -43,6 +44,7 @@ SOURCES += \
 HEADERS += \
     Source/Views/MainWindow/mainwindow.h \
     Source/Utils/BCDHelper.h \
+    Source/Utils/DLT645DataHelper.h \
     Source/Utils/ChecksumHelper.h \
     Source/Utils/Logger.h \
     Source/Models/ConnectionConfig.h \

@@ -59,6 +59,7 @@ public:
      */
     explicit DataTableWidget(QWidget *parent = nullptr);
     ~DataTableWidget();
+    void setMeterModel(MeterModel *meterModel);
 
     /**
      * @brief 刷新数据表格

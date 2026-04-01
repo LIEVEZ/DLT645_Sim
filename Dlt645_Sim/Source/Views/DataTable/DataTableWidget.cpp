@@ -17,6 +17,7 @@
 #include <QRandomGenerator>
 #include <QDateTime>
 #include <QDebug>
+#include <QSignalBlocker>
 // ==================== NumericDelegate ====================
 
 NumericDelegate::NumericDelegate(QObject *parent)
@@ -79,7 +80,7 @@ bool NumericDelegate::validateNumericValue(const QString &value) const
 // ==================== DataTableWidget ====================
 
 DataTableWidget::DataTableWidget(QWidget *parent)
-    : QWidget(parent), m_meterModel(new MeterModel(this)), m_currentCategory(""), m_meterAlias(""), m_meterAddress("")
+    : QWidget(parent), m_meterModel(nullptr), m_currentCategory(""), m_meterAlias(""), m_meterAddress("")
 {
     setupUI();
 
@@ -91,6 +92,12 @@ DataTableWidget::~DataTableWidget()
 {
 }
 
+void DataTableWidget::setMeterModel(MeterModel *meterModel)
+{
+    m_meterModel = meterModel;
+    refreshTable();
+}
+
 void DataTableWidget::setupUI()
 {
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
@@ -99,7 +106,7 @@ void DataTableWidget::setupUI()
 
     // 创建电表信息标签
     m_meterInfoLabel = new QLabel(this);
-    m_meterInfoLabel->setText("电表信息");
+    m_meterInfoLabel->setText("Meter Info");
     mainLayout->addWidget(m_meterInfoLabel);
 
     // 添加间距
@@ -199,7 +206,14 @@ void DataTableWidget::setupTable()
 
 void DataTableWidget::populateCategory(const QString &category)
 {
+    QSignalBlocker blocker(m_tableWidget);
     m_tableWidget->setRowCount(0);
+
+    if (!m_meterModel)
+    {
+        updateDataCount();
+        return;
+    }
 
     QList<QString> codes;
 
@@ -238,11 +252,9 @@ void DataTableWidget::populateCategory(const QString &category)
         // 从MeterModel中获取完整的DataItem信息
         DataItem dataItem = m_meterModel->getDataItem(diCode);
         QString name = dataItem.description;
-        QVariant value = dataItem.value;
+        dataItem.value = m_meterModel->getDataValue(diCode);
         QString unit = dataItem.unit;
         QString dataFormat = dataItem.format;
-
-        qDebug() << "DataItem: " << diCode << " - " << name << " - " << value << " - " << unit << " - ";
 
         int row = m_tableWidget->rowCount();
         m_tableWidget->insertRow(row);
@@ -258,7 +270,7 @@ void DataTableWidget::populateCategory(const QString &category)
 
         QTableWidgetItem *valueItem = new QTableWidgetItem(formattedValue);
         valueItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        valueItem->setData(Qt::UserRole, value);
+        valueItem->setData(Qt::UserRole, dataItem.value);
         m_tableWidget->setItem(row, 1, valueItem);
 
         // 单位
@@ -284,6 +296,7 @@ void DataTableWidget::refreshTable()
 {
     qDebug() << "DataTableWidget::refreshTable()" << m_currentCategory;
     populateCategory(m_currentCategory);
+    updateDataCount();
 }
 
 void DataTableWidget::setCategory(const QString &category)
@@ -436,7 +449,7 @@ void DataTableWidget::onItemDoubleClicked(QTableWidgetItem *item)
 
 void DataTableWidget::onItemChanged(QTableWidgetItem *item)
 {
-    if (!item || item->column() != 1)
+    if (!item || item->column() != 1 || !m_meterModel)
         return;
 
     int row = item->row();
@@ -444,7 +457,23 @@ void DataTableWidget::onItemChanged(QTableWidgetItem *item)
     if (diItem)
     {
         QString diCode = diItem->data(Qt::UserRole).toString();
+        const DataItem currentItem = m_meterModel->getDataItem(diCode);
         QVariant newValue = item->text();
+        bool ok = false;
+        const double numericValue = item->text().toDouble(&ok);
+        if (ok)
+        {
+            if (currentItem.value.type() == QVariant::Int)
+            {
+                newValue = static_cast<int>(numericValue);
+            }
+            else if (currentItem.value.type() == QVariant::Double)
+            {
+                newValue = numericValue;
+            }
+        }
+
+        m_meterModel->setDataValue(diCode, newValue);
         emit dataItemEdited(diCode, newValue);
     }
 }
@@ -467,6 +496,12 @@ void DataTableWidget::onRefreshClicked()
 
 void DataTableWidget::onResetClicked()
 {
+    if (!m_meterModel)
+    {
+        QMessageBox::information(this, "Select Meter", "Please select a meter first.");
+        return;
+    }
+
     QMessageBox::StandardButton reply = QMessageBox::question(
         this,
         "确认重置",
@@ -476,6 +511,7 @@ void DataTableWidget::onResetClicked()
     if (reply == QMessageBox::Yes)
     {
         m_meterModel->resetAllData();
+        m_meterModel->setDataValue("0x04000000", m_meterModel->getMeterAddress());
         refreshTable();
         LOG_INFO("所有数据已重置为默认值");
     }
@@ -483,7 +519,14 @@ void DataTableWidget::onResetClicked()
 
 void DataTableWidget::onRandomizeClicked()
 {
+    if (!m_meterModel)
+    {
+        QMessageBox::information(this, "Select Meter", "Please select a meter first.");
+        return;
+    }
+
     m_meterModel->randomizeData();
+    m_meterModel->setDataValue("0x04000000", m_meterModel->getMeterAddress());
     refreshTable();
     LOG_INFO("所有数据已随机化");
 }
