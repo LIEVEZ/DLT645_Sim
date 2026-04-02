@@ -147,6 +147,7 @@ private slots:
     void onExportClicked();
     void onCustomContextMenuRequested(const QPoint &pos);
     void onValidationFailed(const QString &message);
+    void onMeterDataChanged(const QString &diCode, const QVariant &newValue);
 
 private:
     void setupUI();

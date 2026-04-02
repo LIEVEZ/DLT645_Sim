@@ -14,10 +14,18 @@ MeterModel::~MeterModel()
 
 void MeterModel::setMeterAddress(const QString &address)
 {
-    QMutexLocker locker(&m_mutex);
-    if (m_meterAddress != address)
+    bool changed = false;
     {
-        m_meterAddress = address;
+        QMutexLocker locker(&m_mutex);
+        if (m_meterAddress != address)
+        {
+            m_meterAddress = address;
+            changed = true;
+        }
+    }
+
+    if (changed)
+    {
         emit addressChanged(address);
     }
 }
@@ -187,14 +195,22 @@ QVariant MeterModel::getDataValue(const QString &diCode) const
 
 bool MeterModel::setDataValue(const QString &diCode, const QVariant &value)
 {
-    QMutexLocker locker(&m_mutex);
-    if (m_dataItems.contains(diCode))
+    bool updated = false;
     {
-        m_dataItems[diCode].value = value;
-        emit dataChanged(diCode, value);
-        return true;
+        QMutexLocker locker(&m_mutex);
+        if (m_dataItems.contains(diCode))
+        {
+            m_dataItems[diCode].value = value;
+            updated = true;
+        }
     }
-    return false;
+
+    if (updated)
+    {
+        emit dataChanged(diCode, value);
+    }
+
+    return updated;
 }
 
 QList<DataItem> MeterModel::getDataItemsByCategory(DataCategory category) const

@@ -94,7 +94,21 @@ DataTableWidget::~DataTableWidget()
 
 void DataTableWidget::setMeterModel(MeterModel *meterModel)
 {
+    if (m_meterModel)
+    {
+        disconnect(m_meterModel, &MeterModel::dataChanged,
+                   this, &DataTableWidget::onMeterDataChanged);
+    }
+
     m_meterModel = meterModel;
+
+    // 连接数据变化信号，当数据改变时重新刷新表格
+    if (m_meterModel)
+    {
+        connect(m_meterModel, &MeterModel::dataChanged,
+                this, &DataTableWidget::onMeterDataChanged, Qt::UniqueConnection);
+    }
+
     refreshTable();
 }
 
@@ -592,6 +606,13 @@ void DataTableWidget::onCustomContextMenuRequested(const QPoint &pos)
 void DataTableWidget::onValidationFailed(const QString &message)
 {
     QMessageBox::warning(this, "输入错误", message);
+}
+
+void DataTableWidget::onMeterDataChanged(const QString &diCode, const QVariant &newValue)
+{
+    Q_UNUSED(diCode);
+    Q_UNUSED(newValue);
+    refreshTable();
 }
 
 void DataTableWidget::filterTable(const QString &filterText)
