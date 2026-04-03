@@ -9,7 +9,7 @@
 #include <QSplitter>
 #include <QDateTime>
 #include <QCloseEvent>
-
+#include <QDebug>
 CommunicationDialog::CommunicationDialog(const QString &connectionName, QWidget *parent)
     : QDialog(parent), m_connectionName(connectionName), m_portName(""), m_baudRate(2400), m_isConnected(false), m_meterModel(nullptr), m_isPaused(false), m_autoScroll(true), m_displayFormat(DisplayFormat::Hex), m_filterRequest(true), m_filterResponse(true), m_filterError(true), m_filterText(""), m_connectionInfoBar(nullptr), m_filterBar(nullptr)
 {
@@ -716,6 +716,11 @@ QString CommunicationDialog::getDirectionIcon(MessageDirection direction) const
 bool CommunicationDialog::shouldShowMessage(const CommunicationMessage &message) const
 {
     // 类型过滤
+    qDebug() << "Filtering message: type=" << (message.type == MessageType::Request ? "Request" : message.type == MessageType::Response ? "Response"
+                                                                                                                                        : "Error")
+             << "m_filterRequest=" << m_filterRequest
+             << "m_filterResponse=" << m_filterResponse
+             << "m_filterError=" << m_filterError;
     if (message.type == MessageType::Request && !m_filterRequest)
     {
         return false;

@@ -7,6 +7,7 @@ ProtocolController::ProtocolController(QObject *parent)
     : QObject(parent),
       m_meterModel(new MeterModel(this)),
       m_serialController(nullptr),
+      m_tcpController(nullptr),
       m_protocolParser(new ProtocolParser(m_meterModel, this)),
       m_autoResponseEnabled(true),
       m_responseDelay(100),
@@ -80,6 +81,23 @@ void ProtocolController::setSerialController(SerialController *controller)
         connect(m_serialController, &SerialController::dataReceived, this, &ProtocolController::onSerialDataReceived);
         connect(m_serialController, &SerialController::dataSent, this, &ProtocolController::onSerialDataSent);
         connect(m_serialController, &SerialController::connectionStateChanged, this, &ProtocolController::onSerialConnectionStateChanged);
+    }
+}
+
+void ProtocolController::setTcpController(TcpController *controller)
+{
+    if (m_tcpController)
+    {
+        disconnect(m_tcpController, nullptr, this, nullptr);
+    }
+
+    m_tcpController = controller;
+
+    if (m_tcpController)
+    {
+        connect(m_tcpController, &TcpController::dataReceived, this, &ProtocolController::onTcpDataReceived);
+        connect(m_tcpController, &TcpController::dataSent, this, &ProtocolController::onTcpDataSent);
+        connect(m_tcpController, &TcpController::connectionStateChanged, this, &ProtocolController::onTcpConnectionStateChanged);
     }
 }
 
@@ -190,9 +208,9 @@ void ProtocolController::processReceivedData(const QByteArray &data)
 
 void ProtocolController::sendReadRequest(const QString &diCode)
 {
-    if (!m_serialController || !m_serialController->isOpen())
+    if (!hasActiveTransport())
     {
-        LOG_WARNING("Cannot send read request: serial port not open");
+        LOG_WARNING("Cannot send read request: no transport connection is open");
         return;
     }
     if (!m_meterModel)
@@ -213,7 +231,7 @@ void ProtocolController::sendReadRequest(const QString &diCode)
         frameData.prepend(0xFE);
     }
 
-    if (m_serialController->sendData(frameData))
+    if (sendTransportData(frameData))
     {
         emit frameSent(frame);
         LOG_INFO(QString("Sent read request for DI: %1").arg(diCode));
@@ -222,9 +240,9 @@ void ProtocolController::sendReadRequest(const QString &diCode)
 
 void ProtocolController::sendWriteRequest(const QString &diCode, const QVariant &value)
 {
-    if (!m_serialController || !m_serialController->isOpen())
+    if (!hasActiveTransport())
     {
-        LOG_WARNING("Cannot send write request: serial port not open");
+        LOG_WARNING("Cannot send write request: no transport connection is open");
         return;
     }
     if (!m_meterModel)
@@ -245,7 +263,7 @@ void ProtocolController::sendWriteRequest(const QString &diCode, const QVariant 
         frameData.prepend(0xFE);
     }
 
-    if (m_serialController->sendData(frameData))
+    if (sendTransportData(frameData))
     {
         emit frameSent(frame);
         LOG_INFO(QString("Sent write request for DI: %1, value: %2").arg(diCode).arg(value.toString()));
@@ -291,10 +309,28 @@ void ProtocolController::onSerialConnectionStateChanged(bool connected)
     LOG_INFO(QString("Serial connection state changed: %1").arg(connected ? "Connected" : "Disconnected"));
     if (!connected)
     {
-        m_receiveBuffer.clear();
-        m_responseTimer->stop();
-        m_lastRequestMeterModel = nullptr;
-        m_lastRequestFrame = ProtocolFrame();
+        resetTransportState();
+    }
+}
+
+void ProtocolController::onTcpDataReceived(const QByteArray &data)
+{
+    LOG_DEBUG(QString("TCP data received: %1 bytes").arg(data.size()));
+    processReceivedData(data);
+}
+
+void ProtocolController::onTcpDataSent(const QByteArray &data)
+{
+    LOG_DEBUG(QString("TCP data sent: %1 bytes").arg(data.size()));
+    emit rawDataSent(data);
+}
+
+void ProtocolController::onTcpConnectionStateChanged(bool connected)
+{
+    LOG_INFO(QString("TCP connection state changed: %1").arg(connected ? "Connected" : "Disconnected"));
+    if (!connected)
+    {
+        resetTransportState();
     }
 }
 
@@ -411,9 +447,9 @@ void ProtocolController::processWriteRequest(const ProtocolFrame &frame, MeterMo
 
 void ProtocolController::sendResponse(const ProtocolFrame &response, MeterModel *meterModel)
 {
-    if (!m_serialController || !m_serialController->isOpen())
+    if (!hasActiveTransport())
     {
-        LOG_WARNING("Cannot send response: serial port not open");
+        LOG_WARNING("Cannot send response: no transport connection is open");
         return;
     }
 
@@ -427,7 +463,7 @@ void ProtocolController::sendResponse(const ProtocolFrame &response, MeterModel 
         responseData.prepend(0xFE);
     }
 
-    if (m_serialController->sendData(responseData))
+    if (sendTransportData(responseData))
     {
         emit frameSent(response);
     }
@@ -460,6 +496,7 @@ bool ProtocolController::shouldRespondToAddress(const QByteArray &addressBytes) 
 MeterModel *ProtocolController::meterModelForAddress(const QByteArray &addressBytes) const
 {
     const QString requestAddress = ProtocolParser::bytesToAddress(addressBytes);
+    qDebug() << "===requestAddress:" << requestAddress;
     if (m_meterModelsByAddress.contains(requestAddress))
     {
         return m_meterModelsByAddress.value(requestAddress);
@@ -471,4 +508,33 @@ MeterModel *ProtocolController::meterModelForAddress(const QByteArray &addressBy
     }
 
     return nullptr;
+}
+
+bool ProtocolController::hasActiveTransport() const
+{
+    return (m_serialController && m_serialController->isOpen()) ||
+           (m_tcpController && m_tcpController->isOpen());
+}
+
+bool ProtocolController::sendTransportData(const QByteArray &data)
+{
+    if (m_serialController && m_serialController->isOpen())
+    {
+        return m_serialController->sendData(data);
+    }
+
+    if (m_tcpController && m_tcpController->isOpen())
+    {
+        return m_tcpController->sendData(data);
+    }
+
+    return false;
+}
+
+void ProtocolController::resetTransportState()
+{
+    m_receiveBuffer.clear();
+    m_responseTimer->stop();
+    m_lastRequestMeterModel = nullptr;
+    m_lastRequestFrame = ProtocolFrame();
 }

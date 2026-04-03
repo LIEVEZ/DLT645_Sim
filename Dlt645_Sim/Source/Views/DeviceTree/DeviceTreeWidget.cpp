@@ -172,6 +172,20 @@ void DeviceTreeWidget::setConnectionStatus(const QString &connectionAlias, bool 
     }
 }
 
+void DeviceTreeWidget::updateConnection(const QString &oldConnectionAlias, const ConnectionInfo &connectionInfo)
+{
+    QTreeWidgetItem *connectionItem = findConnectionItem(oldConnectionAlias);
+    if (!connectionItem)
+    {
+        return;
+    }
+
+    connectionItem->setData(0, Qt::UserRole, connectionInfo.alias);
+    connectionItem->setData(0, Qt::UserRole + 2, connectionInfo.isConnected);
+    connectionItem->setData(0, Qt::UserRole + 3, connectionInfo.port);
+    updateConnectionStatusIcon(connectionItem, connectionInfo.isConnected);
+}
+
 void DeviceTreeWidget::deleteConnection(const QString &connectionAlias)
 {
     QTreeWidgetItem *connectionItem = findConnectionItem(connectionAlias);
@@ -435,7 +449,7 @@ void DeviceTreeWidget::createDataCategoryNodes(QTreeWidgetItem *meterItem)
     meterItem->addChild(freezeItem);
 
     QStringList freezeSubCategories;
-    freezeSubCategories << "日冻结" << "月冻结" << "瞬时冻结" << "约定冻结";
+    freezeSubCategories << "日冻结";
 
     for (const QString &subCat : freezeSubCategories)
     {
@@ -529,6 +543,14 @@ void DeviceTreeWidget::onItemClicked(QTreeWidgetItem *item, int column)
     // 检查是否点击了电表节点
     if (itemType == ItemType::Meter)
     {
+        // 先同步当前连接，再同步当前电表，避免主窗口在连接选中时把刚选中的电表清掉。
+        QTreeWidgetItem *parentItem = item->parent();
+        if (parentItem)
+        {
+            QString connectionAlias = parentItem->data(0, Qt::UserRole).toString();
+            emit connectionSelected(connectionAlias);
+        }
+
         QString meterAlias = item->data(0, Qt::UserRole).toString();
         emit meterSelected(meterAlias);
 
@@ -540,14 +562,6 @@ void DeviceTreeWidget::onItemClicked(QTreeWidgetItem *item, int column)
         meterInfo.password = item->data(0, Qt::UserRole + 4).toString();
         meterInfo.includeLeadingFE = item->data(0, Qt::UserRole + 5).toBool();
         emit meterInfoSelected(meterInfo);
-
-        // 同时发出连接选中信号，确保工具栏按钮状态正确更新
-        QTreeWidgetItem *parentItem = item->parent();
-        if (parentItem)
-        {
-            QString connectionAlias = parentItem->data(0, Qt::UserRole).toString();
-            emit connectionSelected(connectionAlias);
-        }
         return;
     }
 
@@ -741,7 +755,8 @@ void DeviceTreeWidget::onCustomContextMenuRequested(const QPoint &pos)
             m_contextMenu->addSeparator();
             m_contextMenu->addAction(QIcon(":/icons/delete.png"), "删除连接", [this, connectionAlias]()
                                      { emit deleteConnectionRequested(connectionAlias); });
-            m_contextMenu->addAction(QIcon(":/icons/settings.png"), "属性", [this, connectionAlias]() { /* TODO: 显示连接属性 */ });
+            m_contextMenu->addAction(QIcon(":/icons/settings.png"), "编辑", [this, connectionAlias]()
+                                     { emit editConnectionRequested(connectionAlias); });
             break;
         }
 

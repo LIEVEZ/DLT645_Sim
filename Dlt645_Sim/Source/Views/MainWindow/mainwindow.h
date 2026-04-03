@@ -9,8 +9,10 @@
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QTimer>
+#include <QWidget>
 #include "Controllers/ProtocolController.h"
 #include "Controllers/SerialController.h"
+#include "Controllers/TcpController.h"
 #include "Services/DataGenerator.h"
 #include "Utils/Logger.h"
 #include "ViewModels/MainWindowViewModel.h"
@@ -45,6 +47,7 @@ private slots:
     void onOpenConnection();
     void onCloseConnection();
     void onDataUpdated();
+    void onRealTimeDataRotationTimeout();
     void onConnectionStateChanged(bool connected);
     void onProtocolFrameReceived(const ProtocolFrame &frame);
     void onProtocolFrameSent(const ProtocolFrame &frame);
@@ -61,6 +64,7 @@ private slots:
     void onOpenConnectionRequested(const QString &connectionAlias);
     void onCloseConnectionRequested(const QString &connectionAlias);
     void onDeleteConnectionRequested(const QString &connectionAlias);
+    void onEditConnectionRequested(const QString &connectionAlias);
     void onNewMeterRequested(const QString &connectionAlias);
     void onDeleteMeterRequested(const QString &connectionAlias, const QString &meterAlias);
     void onToggleDarkTheme(bool enabled);
@@ -82,13 +86,19 @@ private:
     QStringList collectMeterAddressesForConnection(const QString &connectionAlias) const;
     MeterInfo findMeterInfo(const QString &connectionAlias, const QString &meterAlias) const;
     MeterModel *createMeterModel(const MeterInfo &meterInfo);
+    bool openConnectionInternal(const QString &connectionAlias, const ConnectionConfig &config, bool addConnectionNode);
+    void closeConnectionInternal(const QString &connectionAlias);
+    ConnectionInfo buildConnectionInfo(const ConnectionConfig &config, bool connected) const;
+    QString connectionEndpoint(const ConnectionConfig &config) const;
     void applyCurrentMeter(const MeterInfo &meterInfo);
     void clearCurrentMeter();
     void refreshMeterPresence();
+    void updateRealTimeDataDisplay(bool advancePhase = false);
 
     Ui::MainWindow *ui;
 
     SerialController *m_serialController;
+    TcpController *m_tcpController;
     ProtocolController *m_protocolController;
     DataGenerator *m_dataGenerator;
     MainWindowViewModel *m_viewModel;
@@ -100,6 +110,10 @@ private:
     QStackedWidget *m_connectionButtonStack;
     QLabel *m_connectionStatusLabel;
     QLabel *m_meterAddressLabel;
+    QWidget *m_realTimeBarWidget;
+    QLabel *m_realTimeDataLabel;
+    QTimer *m_realTimeDataTimer;
+    int m_realTimePhaseIndex;
 
     QAction *m_newConnectionAction;
     QAction *m_newMeterAction;

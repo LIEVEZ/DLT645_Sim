@@ -25,7 +25,7 @@ struct ConnectionConfig
     int tcpPort;
 
     ConnectionConfig()
-        : type(ConnectionType::Serial), alias("连接1"), baudRate(9600), dataBits(8), stopBits(1), parity(0), flowControl(0), tcpPort(502)
+        : type(ConnectionType::Serial), alias("连接1"), baudRate(2400), dataBits(8), stopBits(1), parity(2), flowControl(0), tcpPort(502)
     {
     }
 };

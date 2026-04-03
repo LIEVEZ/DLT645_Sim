@@ -96,7 +96,7 @@ void NewConnectionDialog::setupSerialConfig()
     m_baudRateCombo->addItem("38400");
     m_baudRateCombo->addItem("57600");
     m_baudRateCombo->addItem("115200");
-    m_baudRateCombo->setCurrentText("9600");
+    m_baudRateCombo->setCurrentText("2400");
     formLayout->addRow("波特率:", m_baudRateCombo);
 
     // 数据位
@@ -118,7 +118,7 @@ void NewConnectionDialog::setupSerialConfig()
     m_parityCombo->addItem("无");
     m_parityCombo->addItem("奇校验");
     m_parityCombo->addItem("偶校验");
-    m_parityCombo->setCurrentText("无");
+    m_parityCombo->setCurrentText("偶校验");
     formLayout->addRow("校验位:", m_parityCombo);
 
     // 流控
@@ -189,6 +189,12 @@ void NewConnectionDialog::setConnectedPorts(const QStringList &connectedPorts)
     onRefreshPorts();
 }
 
+void NewConnectionDialog::setEditMode(bool editing)
+{
+    setWindowTitle(editing ? "编辑连接" : "新建连接");
+    m_okButton->setText(editing ? "保存" : "连接");
+}
+
 ConnectionConfig NewConnectionDialog::getConnectionConfig() const
 {
     return m_config;
@@ -197,6 +203,7 @@ ConnectionConfig NewConnectionDialog::getConnectionConfig() const
 void NewConnectionDialog::setConnectionConfig(const ConnectionConfig &config)
 {
     m_config = config;
+    m_aliasEdit->setText(config.alias);
 
     // 设置连接类型
     m_connectionTypeCombo->setCurrentIndex(config.type == ConnectionType::Serial ? 0 : 1);
@@ -204,7 +211,11 @@ void NewConnectionDialog::setConnectionConfig(const ConnectionConfig &config)
     // 设置串口配置
     if (config.type == ConnectionType::Serial)
     {
-        int portIndex = m_serialPortCombo->findText(config.serialPort);
+        int portIndex = m_serialPortCombo->findData(config.serialPort);
+        if (portIndex < 0)
+        {
+            portIndex = m_serialPortCombo->findText(config.serialPort);
+        }
         if (portIndex >= 0)
         {
             m_serialPortCombo->setCurrentIndex(portIndex);

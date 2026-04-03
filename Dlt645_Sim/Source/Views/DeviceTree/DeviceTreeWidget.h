@@ -125,6 +125,13 @@ public:
     void setConnectionStatus(const QString &connectionAlias, bool connected);
 
     /**
+     * @brief 更新连接节点信息
+     * @param oldConnectionAlias 旧连接别名
+     * @param connectionInfo 新连接信息
+     */
+    void updateConnection(const QString &oldConnectionAlias, const ConnectionInfo &connectionInfo);
+
+    /**
      * @brief 展开所有节点
      */
     void expandAll();
@@ -232,6 +239,12 @@ signals:
      * @param connectionAlias 连接别名
      */
     void deleteConnectionRequested(const QString &connectionAlias);
+
+    /**
+     * @brief 编辑连接信号
+     * @param connectionAlias 连接别名
+     */
+    void editConnectionRequested(const QString &connectionAlias);
 
     /**
      * @brief 新建电表信号

@@ -1,4 +1,4 @@
-QT       += core gui serialport
+QT       += core gui serialport network
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -31,6 +31,7 @@ SOURCES += \
     Source/Services/ProtocolParser.cpp \
     Source/Services/DataGenerator.cpp \
     Source/Controllers/SerialController.cpp \
+    Source/Controllers/TcpController.cpp \
     Source/Controllers/ProtocolController.cpp \
     Source/Views/OperationLog/OperationLogWidget.cpp \
     Source/Views/DeviceTree/DeviceTreeWidget.cpp \
@@ -54,6 +55,7 @@ HEADERS += \
     Source/Services/ProtocolParser.h \
     Source/Services/DataGenerator.h \
     Source/Controllers/SerialController.h \
+    Source/Controllers/TcpController.h \
     Source/Controllers/ProtocolController.h \
     Source/Views/OperationLog/OperationLogWidget.h \
     Source/Views/DeviceTree/DeviceTreeWidget.h \

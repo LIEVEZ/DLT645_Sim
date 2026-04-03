@@ -2,6 +2,245 @@
 #include <QRandomGenerator>
 #include <QDateTime>
 #include <QDebug>
+#include <cmath>
+
+namespace
+{
+    struct NumericFormatSpec
+    {
+        bool valid = false;
+        bool allowNegative = false;
+        int integerDigits = 0;
+        int decimalDigits = 0;
+    };
+
+    bool isSupportedNumericToken(const QString &token)
+    {
+        return token == QStringLiteral("AA") || token == QStringLiteral("xx");
+    }
+
+    bool isDataBlockItem(const DataItem &item)
+    {
+        return item.format.contains(':') || item.diCode.endsWith(QStringLiteral("FF00"));
+    }
+
+    NumericFormatSpec parseNumericFormatSpec(const QString &format)
+    {
+        NumericFormatSpec spec;
+        if (format.isEmpty() || format.contains(':'))
+        {
+            return spec;
+        }
+
+        QStringList tokens = format.split(',', Qt::SkipEmptyParts);
+        for (QString &token : tokens)
+        {
+            token = token.trimmed();
+        }
+
+        if (tokens.isEmpty())
+        {
+            return spec;
+        }
+
+        spec.allowNegative = (tokens.first() == QStringLiteral("F9"));
+
+        QStringList nonF9Tokens;
+        for (const QString &token : tokens)
+        {
+            if (token == QStringLiteral("F9"))
+            {
+                continue;
+            }
+
+            if (token == QStringLiteral(".") || isSupportedNumericToken(token))
+            {
+                nonF9Tokens.append(token);
+                continue;
+            }
+
+            return NumericFormatSpec();
+        }
+
+        if (nonF9Tokens.isEmpty())
+        {
+            return spec;
+        }
+
+        const int decimalIndex = nonF9Tokens.indexOf(QStringLiteral("."));
+        const int xxCount = nonF9Tokens.count(QStringLiteral("xx"));
+
+        if (xxCount > 1)
+        {
+            return NumericFormatSpec();
+        }
+
+        if (decimalIndex != -1)
+        {
+            int digitsBeforeDecimal = 0;
+            int digitsAfterDecimal = 0;
+
+            for (int i = 0; i < nonF9Tokens.size(); ++i)
+            {
+                if (nonF9Tokens[i] == QStringLiteral("."))
+                {
+                    continue;
+                }
+
+                if (i < decimalIndex)
+                {
+                    digitsBeforeDecimal += 2;
+                }
+                else
+                {
+                    digitsAfterDecimal += 2;
+                }
+            }
+
+            spec.valid = true;
+            spec.integerDigits = digitsBeforeDecimal;
+            spec.decimalDigits = digitsAfterDecimal;
+            return spec;
+        }
+
+        if (xxCount == 1)
+        {
+            const int xxIndex = nonF9Tokens.indexOf(QStringLiteral("xx"));
+            int totalDigits = 0;
+            int digitsAfterXx = 0;
+
+            for (int i = 0; i < nonF9Tokens.size(); ++i)
+            {
+                if (nonF9Tokens[i] == QStringLiteral("."))
+                {
+                    continue;
+                }
+
+                totalDigits += 2;
+                if (i > xxIndex)
+                {
+                    digitsAfterXx += 2;
+                }
+            }
+
+            spec.valid = true;
+            spec.decimalDigits = digitsAfterXx + 1;
+            spec.integerDigits = qMax(0, totalDigits - spec.decimalDigits);
+            return spec;
+        }
+
+        int totalDigits = 0;
+        for (const QString &token : nonF9Tokens)
+        {
+            if (token != QStringLiteral("."))
+            {
+                totalDigits += 2;
+            }
+        }
+
+        spec.valid = (totalDigits > 0);
+        spec.integerDigits = totalDigits;
+        spec.decimalDigits = 0;
+        return spec;
+    }
+
+    double maxRepresentableValue(const NumericFormatSpec &spec)
+    {
+        const double scale = std::pow(10.0, spec.decimalDigits);
+        const double step = (scale > 1.0) ? (1.0 / scale) : 1.0;
+        return std::pow(10.0, spec.integerDigits) - step;
+    }
+
+    QVariant normalizeValueForFormat(const QVariant &value, const NumericFormatSpec &spec)
+    {
+        bool ok = false;
+        double numericValue = value.toDouble(&ok);
+        if (!ok || !spec.valid)
+        {
+            return value;
+        }
+
+        const double scale = std::pow(10.0, spec.decimalDigits);
+        const double maxValue = maxRepresentableValue(spec);
+        const double minValue = spec.allowNegative ? -maxValue : 0.0;
+
+        double normalizedValue = numericValue;
+        if (scale > 1.0)
+        {
+            normalizedValue = std::round(normalizedValue * scale) / scale;
+        }
+        else
+        {
+            normalizedValue = std::round(normalizedValue);
+        }
+
+        normalizedValue = qBound(minValue, normalizedValue, maxValue);
+
+        if (spec.decimalDigits == 0)
+        {
+            return static_cast<qint64>(std::llround(normalizedValue));
+        }
+
+        return normalizedValue;
+    }
+
+    double roundToDecimals(double value, int decimalPlaces)
+    {
+        if (decimalPlaces <= 0)
+        {
+            return std::round(value);
+        }
+
+        const double scale = std::pow(10.0, decimalPlaces);
+        return std::round(value * scale) / scale;
+    }
+
+    void synchronizeFreezeGroupTotal(QMap<QString, DataItem> &items,
+                                     const QString &totalCode,
+                                     const QStringList &rateCodes)
+    {
+        if (!items.contains(totalCode))
+        {
+            return;
+        }
+
+        double sum = 0.0;
+        for (const QString &rateCode : rateCodes)
+        {
+            if (!items.contains(rateCode))
+            {
+                return;
+            }
+
+            sum += items[rateCode].value.toDouble();
+        }
+
+        DataItem &totalItem = items[totalCode];
+        const double roundedSum = roundToDecimals(sum, totalItem.decimalPlaces);
+        const NumericFormatSpec spec = parseNumericFormatSpec(totalItem.format);
+        totalItem.value = spec.valid ? normalizeValueForFormat(roundedSum, spec) : QVariant(roundedSum);
+    }
+
+    void synchronizeDailyFreezeTotals(QMap<QString, DataItem> &items)
+    {
+        synchronizeFreezeGroupTotal(items, "0x05060100", {"0x05060102", "0x05060103", "0x05060104", "0x05060105"});
+        synchronizeFreezeGroupTotal(items, "0x05060200", {"0x05060202", "0x05060203", "0x05060204", "0x05060205"});
+        synchronizeFreezeGroupTotal(items, "0x05060300", {"0x05060302", "0x05060303", "0x05060304", "0x05060305"});
+        synchronizeFreezeGroupTotal(items, "0x05060400", {"0x05060402", "0x05060403", "0x05060404", "0x05060405"});
+    }
+
+    QString compactDateTimeToMinutes(const QDateTime &dateTime)
+    {
+        return dateTime.toString(QStringLiteral("yyMMddHHmm"));
+    }
+
+    QString compactDateWithWeek(const QDate &date)
+    {
+        const int weekCode = date.dayOfWeek() % 7;
+        return date.toString(QStringLiteral("yyMMdd"))
+               + QStringLiteral("%1").arg(weekCode, 2, 10, QChar('0'));
+    }
+}
 MeterModel::MeterModel(QObject *parent)
     : QObject(parent), m_meterAddress("202008060056"), m_operatorCode("00000000"), m_password("00000000"), m_includePrefixFE(true)
 {
@@ -20,6 +259,14 @@ void MeterModel::setMeterAddress(const QString &address)
         if (m_meterAddress != address)
         {
             m_meterAddress = address;
+            if (m_dataItems.contains("0x04000000"))
+            {
+                m_dataItems["0x04000000"].value = address;
+            }
+            if (m_dataItems.contains("0x04000401"))
+            {
+                m_dataItems["0x04000401"].value = address;
+            }
             changed = true;
         }
     }
@@ -181,8 +428,60 @@ QVariant MeterModel::getDataValue(const QString &diCode) const
                 if (m_dataItems.contains(prefix + "0000"))
                     values.append(m_dataItems[prefix + "0000"].value);
             }
-            qDebug() << "MeterModel::getDataValue: " << diCode << " " << values;
-            return values;
+            else if (diCode == "0x0101FF00")
+            {
+                const QStringList codes = {"0x01010401", "0x01010400",
+                                           "0x01010301", "0x01010300",
+                                           "0x01010201", "0x01010200",
+                                           "0x01010101", "0x01010100",
+                                           "0x01010001", "0x01010000"};
+                for (const QString &code : codes)
+                {
+                    if (m_dataItems.contains(code))
+                    {
+                        values.append(m_dataItems[code].value);
+                    }
+                }
+            }
+            else if (diCode == "0x0102FF00")
+            {
+                const QStringList codes = {"0x01020401", "0x01020400",
+                                           "0x01020301", "0x01020300",
+                                           "0x01020201", "0x01020200",
+                                           "0x01020101", "0x01020100",
+                                           "0x01020001", "0x01020000"};
+                for (const QString &code : codes)
+                {
+                    if (m_dataItems.contains(code))
+                    {
+                        values.append(m_dataItems[code].value);
+                    }
+                }
+            }
+            else if (diCode == "0x05060101" || diCode == "0x05060201"
+                     || diCode == "0x05060301" || diCode == "0x05060401")
+            {
+                const QString basePrefix = diCode.left(8);
+                const QStringList codes = {basePrefix + "05",
+                                           basePrefix + "04",
+                                           basePrefix + "03",
+                                           basePrefix + "02",
+                                           basePrefix + "00"};
+                for (const QString &code : codes)
+                {
+                    if (m_dataItems.contains(code))
+                    {
+                        values.append(m_dataItems[code].value);
+                    }
+                }
+            }
+
+            if (!values.isEmpty())
+            {
+                qDebug() << "MeterModel::getDataValue: " << diCode << " " << values;
+                return values;
+            }
+            return m_dataItems[diCode].value;
         }
         else
         {
@@ -201,6 +500,13 @@ bool MeterModel::setDataValue(const QString &diCode, const QVariant &value)
         if (m_dataItems.contains(diCode))
         {
             m_dataItems[diCode].value = value;
+            if (diCode.startsWith("0x050601")
+                || diCode.startsWith("0x050602")
+                || diCode.startsWith("0x050603")
+                || diCode.startsWith("0x050604"))
+            {
+                synchronizeDailyFreezeTotals(m_dataItems);
+            }
             updated = true;
         }
     }
@@ -278,6 +584,50 @@ void MeterModel::randomizeData()
     for (auto it = m_dataItems.begin(); it != m_dataItems.end(); ++it)
     {
         DataItem &item = it.value();
+        if (isDataBlockItem(item))
+        {
+            continue;
+        }
+
+        if (item.diCode == "0x04000000" || item.diCode == "0x04000401")
+        {
+            item.value = m_meterAddress;
+            continue;
+        }
+
+        if (item.diCode == "0x04000101")
+        {
+            item.value = compactDateWithWeek(QDate::currentDate().addDays(-rng->bounded(0, 7)));
+            continue;
+        }
+
+        if (item.diCode == "0x04000102")
+        {
+            item.value = QTime::currentTime().addSecs(rng->bounded(0, 24 * 60 * 60)).toString(QStringLiteral("HHmmss"));
+            continue;
+        }
+
+        if (item.format == "AA,AA,AA,AA,AA"
+            && (item.description.contains(QStringLiteral("时间"))
+                || item.description.contains(QStringLiteral("发生"))))
+        {
+            const QDateTime randomTime = QDateTime::currentDateTime().addSecs(-rng->bounded(0, 30 * 24 * 60 * 60));
+            item.value = compactDateTimeToMinutes(randomTime);
+            continue;
+        }
+
+        if (item.diCode.startsWith("0x06") && item.format == "AA,AA")
+        {
+            const int duration = rng->bounded(1, 60);
+            const int unitCode = (rng->bounded(0, 2) == 0) ? 2 : 3;
+            item.value = QStringLiteral("%1%2")
+                             .arg(duration, 2, 10, QChar('0'))
+                             .arg(unitCode, 2, 10, QChar('0'));
+            continue;
+        }
+
+        const QVariant originalValue = item.value;
+        const NumericFormatSpec formatSpec = parseNumericFormatSpec(item.format);
 
         if (item.diCode.startsWith("0x02"))
         {
@@ -300,7 +650,9 @@ void MeterModel::randomizeData()
             else if (item.diCode.contains("0600"))
             {
                 // 功率因数：-1.0 ~ 1.0
-                item.value = rng->bounded(-1000, 1000) / 1000.0;
+                item.value = formatSpec.allowNegative
+                                 ? rng->bounded(-1000, 1000) / 1000.0
+                                 : rng->bounded(0, 1000) / 1000.0;
             }
             else if (item.diCode.contains("0701"))
             {
@@ -327,7 +679,18 @@ void MeterModel::randomizeData()
             // 其他数据：随机生成
             item.value = rng->bounded(0, 10000) / 100.0;
         }
+
+        if (formatSpec.valid)
+        {
+            item.value = normalizeValueForFormat(item.value, formatSpec);
+        }
+        else
+        {
+            item.value = originalValue;
+        }
     }
+
+    synchronizeDailyFreezeTotals(m_dataItems);
 }
 
 void MeterModel::initializeDefaultDataItems()
@@ -463,9 +826,31 @@ void MeterModel::initializeEnergyData()
 void MeterModel::initializeDemandData()
 {
     // 最大需量及发生时间 (0x01xxxxxx)
-    m_dataItems["0x01010000"] = DataItem("0x01010000", "(当前)正向有功总最大需量", 0.0, "kW", "XX.XXXX", false, 4);
-    m_dataItems["0x01010100"] = DataItem("0x01010100", "(当前)正向有功费率1最大需量", 0.0, "kW", "XX.XXXX", false, 4);
-    m_dataItems["0x01020000"] = DataItem("0x01020000", "(当前)反向有功总最大需量", 0.0, "kW", "XX.XXXX", false, 4);
+    const QDateTime now = QDateTime::currentDateTime();
+
+    m_dataItems["0x01010000"] = DataItem("0x01010000", "(当前)正向有功总最大需量", 12.3456, "kW", "AA,.,AA,AA", false, 4);
+    m_dataItems["0x01010001"] = DataItem("0x01010001", "(当前)正向有功总最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-5 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
+    m_dataItems["0x01010100"] = DataItem("0x01010100", "(当前)正向有功费率1最大需量", 10.1023, "kW", "AA,.,AA,AA", false, 4);
+    m_dataItems["0x01010101"] = DataItem("0x01010101", "(当前)正向有功费率1最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-4 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
+    m_dataItems["0x01010200"] = DataItem("0x01010200", "(当前)正向有功费率2最大需量", 9.8765, "kW", "AA,.,AA,AA", false, 4);
+    m_dataItems["0x01010201"] = DataItem("0x01010201", "(当前)正向有功费率2最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-3 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
+    m_dataItems["0x01010300"] = DataItem("0x01010300", "(当前)正向有功费率3最大需量", 8.7654, "kW", "AA,.,AA,AA", false, 4);
+    m_dataItems["0x01010301"] = DataItem("0x01010301", "(当前)正向有功费率3最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-2 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
+    m_dataItems["0x01010400"] = DataItem("0x01010400", "(当前)正向有功费率4最大需量", 7.6543, "kW", "AA,.,AA,AA", false, 4);
+    m_dataItems["0x01010401"] = DataItem("0x01010401", "(当前)正向有功费率4最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-1 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
+    m_dataItems["0x0101FF00"] = DataItem("0x0101FF00", "(当前)正向有功最大需量及发生时间数据块", QVariantList(), "-", "AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA", false, 0);
+
+    m_dataItems["0x01020000"] = DataItem("0x01020000", "(当前)反向有功总最大需量", 6.5432, "kW", "AA,.,AA,AA", false, 4);
+    m_dataItems["0x01020001"] = DataItem("0x01020001", "(当前)反向有功总最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-10 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
+    m_dataItems["0x01020100"] = DataItem("0x01020100", "(当前)反向有功费率1最大需量", 5.4321, "kW", "AA,.,AA,AA", false, 4);
+    m_dataItems["0x01020101"] = DataItem("0x01020101", "(当前)反向有功费率1最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-9 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
+    m_dataItems["0x01020200"] = DataItem("0x01020200", "(当前)反向有功费率2最大需量", 4.321, "kW", "AA,.,AA,AA", false, 4);
+    m_dataItems["0x01020201"] = DataItem("0x01020201", "(当前)反向有功费率2最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-8 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
+    m_dataItems["0x01020300"] = DataItem("0x01020300", "(当前)反向有功费率3最大需量", 3.2109, "kW", "AA,.,AA,AA", false, 4);
+    m_dataItems["0x01020301"] = DataItem("0x01020301", "(当前)反向有功费率3最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-7 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
+    m_dataItems["0x01020400"] = DataItem("0x01020400", "(当前)反向有功费率4最大需量", 2.1098, "kW", "AA,.,AA,AA", false, 4);
+    m_dataItems["0x01020401"] = DataItem("0x01020401", "(当前)反向有功费率4最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-6 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
+    m_dataItems["0x0102FF00"] = DataItem("0x0102FF00", "(当前)反向有功最大需量及发生时间数据块", QVariantList(), "-", "AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA", false, 0);
 }
 
 void MeterModel::initializeVariableData()
@@ -524,36 +909,88 @@ void MeterModel::initializeVariableData()
 void MeterModel::initializeEventData()
 {
     // 事件记录 (0x03xxxxxx)
-    m_dataItems["0x03000000"] = DataItem("0x03000000", "编程记录", 0, "次", "XXXXXX", false, 0);
-    m_dataItems["0x03000001"] = DataItem("0x03000001", "需量清零记录", 0, "次", "XXXXXX", false, 0);
-    m_dataItems["0x03000002"] = DataItem("0x03000002", "电能表清零记录", 0, "次", "XXXXXX", false, 0);
-    m_dataItems["0x03000010"] = DataItem("0x03000010", "校时记录", 0, "次", "XXXXXX", false, 0);
-    m_dataItems["0x03000020"] = DataItem("0x03000020", "掉电记录", 0, "次", "XXXXXX", false, 0);
-    m_dataItems["0x03000021"] = DataItem("0x03000021", "失压记录", 0, "次", "XXXXXX", false, 0);
+    m_dataItems["0x03300100"] = DataItem("0x03300100", "数据清零总次数", 0, "次", "AA,AA,AA", false, 0);
+    m_dataItems["0x03810000"] = DataItem("0x03810000", "总跳闸次数", 0, "次", "AA,AA", false, 0);
+    m_dataItems["0x03810001"] = DataItem("0x03810001", "闭锁性跳闸次数", 0, "次", "AA,AA", false, 0);
+    m_dataItems["0x03810002"] = DataItem("0x03810002", "剩余电流保护跳闸次数", 0, "次", "AA,AA", false, 0);
+    m_dataItems["0x03810003"] = DataItem("0x03810003", "电流保护跳闸次数", 0, "次", "AA,AA", false, 0);
+    m_dataItems["0x03810004"] = DataItem("0x03810004", "电压保护跳闸次数", 0, "次", "AA,AA", false, 0);
+    m_dataItems["0x03810005"] = DataItem("0x03810005", "手动闭锁跳闸次数", 0, "次", "AA,AA", false, 0);
+    m_dataItems["0x03810006"] = DataItem("0x03810006", "缺零保护跳闸次数", 0, "次", "AA,AA", false, 0);
+    m_dataItems["0x03810007"] = DataItem("0x03810007", "试验跳闸次数（定时、远程、按键）", 0, "次", "AA,AA", false, 0);
+    m_dataItems["0x03810101"] = DataItem("0x03810101", "退出剩余电流保护次数", 0, "次", "AA,AA", false, 0);
+    m_dataItems["0x03810201"] = DataItem("0x03810201", "保护器运行时间总累计", 0, "分钟", "AA,AA,AA,AA", false, 0);
 }
 
 void MeterModel::initializeParameterData()
 {
     // 参变量 (0x04xxxxxx)
-    m_dataItems["0x04000000"] = DataItem("0x04000000", "电表地址", "000000000000", "-", "XXXXXXXXXXXX", true, 0);
-    m_dataItems["0x04000001"] = DataItem("0x04000001", "波特率", 2400, "bps", "XXXXX", true, 0);
-    m_dataItems["0x04000040"] = DataItem("0x04000040", "需量周期", 15, "分钟", "XX", true, 0);
-    m_dataItems["0x04000041"] = DataItem("0x04000041", "滑差时间", 1, "分钟", "XX", true, 0);
+    const QDateTime now = QDateTime::currentDateTime();
+
+    m_dataItems["0x04000000"] = DataItem("0x04000000", "电表地址", m_meterAddress, "-", "AA,AA,AA,AA,AA,AA", true, 0);
+    m_dataItems["0x04000001"] = DataItem("0x04000001", "波特率特征字(08=2400bps)", 8, "-", "AA", true, 0);
+    m_dataItems["0x04000040"] = DataItem("0x04000040", "需量周期", 15, "分钟", "AA", true, 0);
+    m_dataItems["0x04000041"] = DataItem("0x04000041", "滑差时间", 1, "分钟", "AA", true, 0);
+
+    m_dataItems["0x04000101"] = DataItem("0x04000101", "当前日期(含星期代码)", compactDateWithWeek(now.date()), "-", "AA,AA,AA,AA", true, 0);
+    m_dataItems["0x04000102"] = DataItem("0x04000102", "当前时间", now.time().toString(QStringLiteral("HHmmss")), "-", "AA,AA,AA", true, 0);
+    m_dataItems["0x04000106"] = DataItem("0x04000106", "两套时区表切换时间", compactDateTimeToMinutes(now.addDays(30)), "-", "AA,AA,AA,AA,AA", true, 0);
+    m_dataItems["0x04000107"] = DataItem("0x04000107", "两套日时段表切换时间", compactDateTimeToMinutes(now.addDays(60)), "-", "AA,AA,AA,AA,AA", true, 0);
+    m_dataItems["0x04000201"] = DataItem("0x04000201", "年时区数p", 2, "-", "AA", true, 0);
+    m_dataItems["0x04000202"] = DataItem("0x04000202", "日时段表数q", 2, "-", "AA", true, 0);
+    m_dataItems["0x04000203"] = DataItem("0x04000203", "日时段数m", 8, "-", "AA", true, 0);
+    m_dataItems["0x04000204"] = DataItem("0x04000204", "费率数k", 4, "-", "AA", true, 0);
+    m_dataItems["0x04000205"] = DataItem("0x04000205", "公共假日数n", 12, "天", "AA,AA", true, 0);
+    m_dataItems["0x04000206"] = DataItem("0x04000206", "谐波分析次数", 1, "次", "AA", true, 0);
+    m_dataItems["0x04000401"] = DataItem("0x04000401", "通信地址", m_meterAddress, "-", "AA,AA,AA,AA,AA,AA", true, 0);
+    m_dataItems["0x04000402"] = DataItem("0x04000402", "设备号", QStringLiteral("000000000001"), "-", "AA,AA,AA,AA,AA,AA", true, 0);
+    m_dataItems["0x04000703"] = DataItem("0x04000703", "波特率代码", 8, "-", "AA", true, 0);
 }
 
 void MeterModel::initializeFreezeData()
 {
     // 冻结数据 (0x05xxxxxx)
-    m_dataItems["0x05000000"] = DataItem("0x05000000", "日冻结数据", 0, "-", "XXXXXX", false, 0);
-    m_dataItems["0x05010000"] = DataItem("0x05010000", "月冻结数据", 0, "-", "XXXXXX", false, 0);
-    m_dataItems["0x05020000"] = DataItem("0x05020000", "瞬时冻结数据", 0, "-", "XXXXXX", false, 0);
-    m_dataItems["0x05030000"] = DataItem("0x05030000", "约定冻结数据", 0, "-", "XXXXXX", false, 0);
+    const QDateTime lastFreeze = QDateTime::currentDateTime().addDays(-1);
+
+    m_dataItems["0x05060001"] = DataItem("0x05060001", "上1次日冻结时间", compactDateTimeToMinutes(lastFreeze), "-", "AA,AA,AA,AA,AA", false, 0);
+
+    m_dataItems["0x05060100"] = DataItem("0x05060100", "上1次日冻结正向有功总电能", 123.45, "kWh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060102"] = DataItem("0x05060102", "上1次日冻结正向有功费率1电能", 25.11, "kWh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060103"] = DataItem("0x05060103", "上1次日冻结正向有功费率2电能", 24.22, "kWh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060104"] = DataItem("0x05060104", "上1次日冻结正向有功费率3电能", 36.33, "kWh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060105"] = DataItem("0x05060105", "上1次日冻结正向有功费率4电能", 37.79, "kWh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060101"] = DataItem("0x05060101", "上1次日冻结正向有功电能数据块", QVariantList(), "-", "AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA", false, 2);
+
+    m_dataItems["0x05060200"] = DataItem("0x05060200", "上1次日冻结反向有功总电能", 80.15, "kWh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060202"] = DataItem("0x05060202", "上1次日冻结反向有功费率1电能", 15.01, "kWh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060203"] = DataItem("0x05060203", "上1次日冻结反向有功费率2电能", 18.22, "kWh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060204"] = DataItem("0x05060204", "上1次日冻结反向有功费率3电能", 20.33, "kWh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060205"] = DataItem("0x05060205", "上1次日冻结反向有功费率4电能", 26.59, "kWh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060201"] = DataItem("0x05060201", "上1次日冻结反向有功电能数据块", QVariantList(), "-", "AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA", false, 2);
+
+    m_dataItems["0x05060300"] = DataItem("0x05060300", "上1次日冻结组合无功1总电能", 61.28, "kvarh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060302"] = DataItem("0x05060302", "上1次日冻结组合无功1费率1电能", 12.12, "kvarh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060303"] = DataItem("0x05060303", "上1次日冻结组合无功1费率2电能", 13.13, "kvarh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060304"] = DataItem("0x05060304", "上1次日冻结组合无功1费率3电能", 14.14, "kvarh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060305"] = DataItem("0x05060305", "上1次日冻结组合无功1费率4电能", 21.89, "kvarh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060301"] = DataItem("0x05060301", "上1次日冻结组合无功1电能数据块", QVariantList(), "-", "AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA", false, 2);
+
+    m_dataItems["0x05060400"] = DataItem("0x05060400", "上1次日冻结组合无功2总电能", 55.67, "kvarh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060402"] = DataItem("0x05060402", "上1次日冻结组合无功2费率1电能", 10.1, "kvarh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060403"] = DataItem("0x05060403", "上1次日冻结组合无功2费率2电能", 11.2, "kvarh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060404"] = DataItem("0x05060404", "上1次日冻结组合无功2费率3电能", 12.3, "kvarh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060405"] = DataItem("0x05060405", "上1次日冻结组合无功2费率4电能", 22.07, "kvarh", "AA,AA,AA,.,AA", false, 2);
+    m_dataItems["0x05060401"] = DataItem("0x05060401", "上1次日冻结组合无功2电能数据块", QVariantList(), "-", "AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA", false, 2);
+
+    synchronizeDailyFreezeTotals(m_dataItems);
 }
 
 void MeterModel::initializeLoadRecordData()
 {
     // 负荷记录 (0x06xxxxxx)
-    m_dataItems["0x06000000"] = DataItem("0x06000000", "负荷记录数据", 0, "-", "XXXXXX", false, 0);
+    m_dataItems["0x06010101"] = DataItem("0x06010101", "预约远程跳闸控制(数值+单位代码)", QStringLiteral("3002"), "-", "AA,AA", true, 0);
+    m_dataItems["0x06020101"] = DataItem("0x06020101", "预约远程合闸控制(数值+单位代码)", QStringLiteral("1502"), "-", "AA,AA", true, 0);
+    m_dataItems["0x06030101"] = DataItem("0x06030101", "预约模拟试跳控制(数值+单位代码)", QStringLiteral("0502"), "-", "AA,AA", true, 0);
 }
 
 QList<QString> MeterModel::getEnergyDataCodes() const
@@ -562,8 +999,7 @@ QList<QString> MeterModel::getEnergyDataCodes() const
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        // 返回名称中包含"当前"的数据项
-        if (it.value().description.contains("当前"))
+        if (it.key().startsWith("0x00"))
         {
             codes.append(it.key());
         }

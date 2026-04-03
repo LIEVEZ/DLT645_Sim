@@ -18,6 +18,22 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QSignalBlocker>
+
+namespace
+{
+    QString escapeCsvField(const QString &value)
+    {
+        QString escaped = value;
+        escaped.replace("\"", "\"\"");
+
+        if (escaped.contains(',') || escaped.contains('"') || escaped.contains('\n') || escaped.contains('\r'))
+        {
+            escaped = QString("\"%1\"").arg(escaped);
+        }
+
+        return escaped;
+    }
+}
 // ==================== NumericDelegate ====================
 
 NumericDelegate::NumericDelegate(QObject *parent)
@@ -109,6 +125,7 @@ void DataTableWidget::setMeterModel(MeterModel *meterModel)
                 this, &DataTableWidget::onMeterDataChanged, Qt::UniqueConnection);
     }
 
+    updateExportButtonState();
     refreshTable();
 }
 
@@ -186,6 +203,7 @@ void DataTableWidget::setupUI()
 
     // 创建数值编辑代理
     m_numericDelegate = new NumericDelegate(this);
+    updateExportButtonState();
 }
 
 void DataTableWidget::setupTable()
@@ -334,6 +352,7 @@ void DataTableWidget::setMeterInfo(const QString &alias, const QString &address)
 {
     m_meterAlias = alias;
     m_meterAddress = address;
+    updateExportButtonState();
     if (alias.isEmpty() && address.isEmpty())
     {
         m_meterInfoLabel->setText("电表信息");
@@ -547,8 +566,19 @@ void DataTableWidget::onRandomizeClicked()
 
 void DataTableWidget::onExportClicked()
 {
+    if (!m_meterModel)
+    {
+        QMessageBox::information(this, "Select Meter", "Please select a meter first.");
+        return;
+    }
+
+    const QString meterAddress = selectedMeterAddress();
+    const QString defaultFileName = meterAddress.isEmpty()
+                                        ? QStringLiteral("meter-data.csv")
+                                        : QStringLiteral("meter-data-%1.csv").arg(meterAddress);
+
     QString fileName = QFileDialog::getSaveFileName(this, "导出数据",
-                                                    QDir::homePath(),
+                                                    QDir::homePath() + "/" + defaultFileName,
                                                     "CSV文件 (*.csv);;Excel文件 (*.xlsx);;JSON文件 (*.json)");
 
     if (fileName.isEmpty())
@@ -613,6 +643,7 @@ void DataTableWidget::onMeterDataChanged(const QString &diCode, const QVariant &
     Q_UNUSED(diCode);
     Q_UNUSED(newValue);
     refreshTable();
+    updateExportButtonState();
 }
 
 void DataTableWidget::filterTable(const QString &filterText)
@@ -633,6 +664,31 @@ void DataTableWidget::filterTable(const QString &filterText)
 
         m_tableWidget->setRowHidden(i, !match);
     }
+}
+
+void DataTableWidget::updateExportButtonState()
+{
+    if (!m_exportButton)
+    {
+        return;
+    }
+
+    m_exportButton->setEnabled(m_meterModel != nullptr);
+}
+
+QString DataTableWidget::selectedMeterAddress() const
+{
+    if (!m_meterAddress.isEmpty())
+    {
+        return m_meterAddress;
+    }
+
+    if (m_meterModel)
+    {
+        return m_meterModel->getMeterAddress();
+    }
+
+    return QString();
 }
 
 void DataTableWidget::updateItemValue(const QString &diCode, const QVariant &value)
@@ -663,11 +719,51 @@ bool DataTableWidget::isVariableData(const QString &diCode) const
 
 void DataTableWidget::exportToCSV(const QString &fileName)
 {
+    {
+        QFile exportFile(fileName);
+        if (!exportFile.open(QIODevice::WriteOnly | QIODevice::Text))
+        {
+            return;
+        }
+
+        QTextStream out(&exportFile);
+        out.setCodec("UTF-8");
+        out.setGenerateByteOrderMark(true);
+
+        const QString meterAddress = selectedMeterAddress();
+        out << QString::fromUtf8("电表别名") << escapeCsvField(m_meterAlias) << "\n";
+        out << QString::fromUtf8("电表地址") << escapeCsvField(meterAddress) << "\n";
+        out << QString::fromUtf8("当前分类") << escapeCsvField(m_currentCategory) << "\n";
+        out << QString::fromUtf8("导出时间") << escapeCsvField(QDateTime::currentDateTime().toString(Qt::ISODate)) << "\n";
+        out << "\n";
+        out << QString::fromUtf8("数据标识,数据值,单位,数据格式,数据项描述\n");
+
+        for (int i = 0; i < m_tableWidget->rowCount(); ++i)
+        {
+            const QString diCode = m_tableWidget->item(i, 0)->text();
+            const QString value = (diCode == "0x04000000") ? meterAddress : m_tableWidget->item(i, 1)->text();
+            const QString unit = m_tableWidget->item(i, 2)->text();
+            const QString format = m_tableWidget->item(i, 3)->text();
+            const QString desc = m_tableWidget->item(i, 4)->text();
+
+            out << escapeCsvField(diCode) << ","
+                << escapeCsvField(value) << ","
+                << escapeCsvField(unit) << ","
+                << escapeCsvField(format) << ","
+                << escapeCsvField(desc) << "\n";
+        }
+
+        exportFile.close();
+        return;
+    }
+
     QFile file(fileName);
     if (file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         QTextStream out(&file);
         out.setCodec("UTF-8");
+        out.setGenerateByteOrderMark(true);
+        const QString meterAddress = selectedMeterAddress();
 
         // 写入表头
         out << "数据标识,数据值,单位,数据格式,数据项描述\n";
@@ -697,6 +793,39 @@ void DataTableWidget::exportToExcel(const QString &fileName)
 
 void DataTableWidget::exportToJSON(const QString &fileName)
 {
+    {
+        const QString meterAddress = selectedMeterAddress();
+        QJsonArray dataArray;
+
+        for (int i = 0; i < m_tableWidget->rowCount(); ++i)
+        {
+            QJsonObject dataObj;
+            const QString diCode = m_tableWidget->item(i, 0)->text();
+            dataObj["diCode"] = diCode;
+            dataObj["value"] = (diCode == "0x04000000") ? meterAddress : m_tableWidget->item(i, 1)->text();
+            dataObj["unit"] = m_tableWidget->item(i, 2)->text();
+            dataObj["format"] = m_tableWidget->item(i, 3)->text();
+            dataObj["description"] = m_tableWidget->item(i, 4)->text();
+            dataArray.append(dataObj);
+        }
+
+        QJsonObject exportObj;
+        exportObj["meterAlias"] = m_meterAlias;
+        exportObj["meterAddress"] = meterAddress;
+        exportObj["category"] = m_currentCategory;
+        exportObj["exportedAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
+        exportObj["data"] = dataArray;
+
+        QJsonDocument doc(exportObj);
+        QFile exportFile(fileName);
+        if (exportFile.open(QIODevice::WriteOnly))
+        {
+            exportFile.write(doc.toJson());
+            exportFile.close();
+        }
+        return;
+    }
+
     QJsonArray dataArray;
 
     for (int i = 0; i < m_tableWidget->rowCount(); ++i)

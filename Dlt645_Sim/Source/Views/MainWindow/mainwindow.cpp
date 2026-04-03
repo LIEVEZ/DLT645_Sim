@@ -27,7 +27,7 @@
 #include <QTreeWidgetItem>
 #include <QDebug>
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow), m_serialController(new SerialController(this)), m_protocolController(new ProtocolController(this)), m_dataGenerator(new DataGenerator(this)), m_viewModel(new MainWindowViewModel(this)), m_operationLogWidget(nullptr), m_dataTableWidget(nullptr), m_mainSplitter(nullptr), m_bottomSplitter(nullptr), m_connectionButtonStack(nullptr), m_connectionStatusLabel(nullptr), m_meterAddressLabel(nullptr), m_newConnectionAction(nullptr), m_newMeterAction(nullptr), m_openConnectionAction(nullptr), m_closeConnectionAction(nullptr), m_commInteractionAction(nullptr), m_darkThemeAction(nullptr), m_lightThemeAction(nullptr), m_communicationDialog(nullptr), m_currentMeterModel(nullptr)
+    : QMainWindow(parent), ui(new Ui::MainWindow), m_serialController(new SerialController(this)), m_tcpController(new TcpController(this)), m_protocolController(new ProtocolController(this)), m_dataGenerator(new DataGenerator(this)), m_viewModel(new MainWindowViewModel(this)), m_operationLogWidget(nullptr), m_dataTableWidget(nullptr), m_mainSplitter(nullptr), m_bottomSplitter(nullptr), m_connectionButtonStack(nullptr), m_connectionStatusLabel(nullptr), m_meterAddressLabel(nullptr), m_realTimeBarWidget(nullptr), m_realTimeDataLabel(nullptr), m_realTimeDataTimer(nullptr), m_realTimePhaseIndex(0), m_newConnectionAction(nullptr), m_newMeterAction(nullptr), m_openConnectionAction(nullptr), m_closeConnectionAction(nullptr), m_commInteractionAction(nullptr), m_darkThemeAction(nullptr), m_lightThemeAction(nullptr), m_communicationDialog(nullptr), m_currentMeterModel(nullptr)
 {
     ui->setupUi(this);
     setupUI();
@@ -50,9 +50,35 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+
+    if (m_operationLogWidget)
+    {
+        m_operationLogWidget->addInfo(QString("杩炴帴宸插叧闂? %1").arg(m_viewModel->currentConnectionAlias()));
+    }
+    closeConnectionInternal(m_viewModel->currentConnectionAlias());
+    if (m_operationLogWidget)
+    {
+        m_operationLogWidget->addInfo(QString("杩炴帴宸插叧闂? %1").arg(m_viewModel->currentConnectionAlias()));
+    }
+    LOG_INFO(QString("Connection closed: %1").arg(m_viewModel->currentConnectionAlias()));
     if (m_serialController && m_serialController->isOpen())
     {
         m_serialController->closePort();
+    }
+    if (m_tcpController && m_tcpController->isOpen())
+    {
+        m_tcpController->closeConnection();
+    }
+    delete ui;
+    return;
+
+    if (m_serialController && m_serialController->isOpen())
+    {
+        m_serialController->closePort();
+    }
+    if (m_tcpController && m_tcpController->isOpen())
+    {
+        m_tcpController->closeConnection();
     }
     delete ui;
 }
@@ -77,23 +103,29 @@ void MainWindow::setupUI()
     m_bottomSplitter = new QSplitter(Qt::Vertical, this);
 
     // 上部：通信细节栏组件（显示实时数据）
-    QWidget *communicationBarWidget = new QWidget(this);
-    QHBoxLayout *commLayout = new QHBoxLayout(communicationBarWidget);
-    communicationBarWidget->setObjectName("communicationBarWidget");
+    m_realTimeBarWidget = new QWidget(this);
+    QHBoxLayout *commLayout = new QHBoxLayout(m_realTimeBarWidget);
+    m_realTimeBarWidget->setObjectName("communicationBarWidget");
     commLayout->setContentsMargins(10, 5, 10, 5);
     commLayout->setSpacing(15);
 
-    QLabel *commLabel = new QLabel("实时数据:", communicationBarWidget);
+    QLabel *commLabel = new QLabel("实时数据:", m_realTimeBarWidget);
     commLayout->addWidget(commLabel);
 
     // 实时数据显示
-    QLabel *realTimeDataLabel = new QLabel("正向有功总电能: 000000.00 | 反向有功总电能: 000000.00 | A相电压: 220.0 | A相电流: 5.000 | A相相角: 0.0", communicationBarWidget);
-    commLayout->addWidget(realTimeDataLabel);
+    m_realTimeDataLabel = new QLabel("正向有功总电能: 000000.00 | 反向有功总电能: 000000.00 | A相电压: 220.0 | A相电流: 5.000 | A相相角: 0.0", m_realTimeBarWidget);
+    commLayout->addWidget(m_realTimeDataLabel);
 
     commLayout->addStretch();
 
+    m_realTimeDataTimer = new QTimer(this);
+    m_realTimeDataTimer->setInterval(2000);
+    connect(m_realTimeDataTimer, &QTimer::timeout, this, &MainWindow::onRealTimeDataRotationTimeout);
+    m_realTimeDataTimer->start();
+    updateRealTimeDataDisplay(false);
+
     // 添加到底部分割器
-    m_bottomSplitter->addWidget(communicationBarWidget);
+    m_bottomSplitter->addWidget(m_realTimeBarWidget);
 
     // 创建中央布局
     QWidget *centralWidget = new QWidget(this);
@@ -171,9 +203,12 @@ void MainWindow::setupConnections()
 
     // 连接协议控制器和串口控制器
     m_protocolController->setSerialController(m_serialController);
+    m_protocolController->setTcpController(m_tcpController);
 
     // 连接串口信号
     connect(m_serialController, &SerialController::connectionStateChanged,
+            this, &MainWindow::onConnectionStateChanged);
+    connect(m_tcpController, &TcpController::connectionStateChanged,
             this, &MainWindow::onConnectionStateChanged);
 
     // 连接协议控制器信号
@@ -213,6 +248,8 @@ void MainWindow::setupConnections()
                 this, &MainWindow::onCloseConnectionRequested);
         connect(deviceTree, &DeviceTreeWidget::deleteConnectionRequested,
                 this, &MainWindow::onDeleteConnectionRequested);
+        connect(deviceTree, &DeviceTreeWidget::editConnectionRequested,
+                this, &MainWindow::onEditConnectionRequested);
         connect(deviceTree, &DeviceTreeWidget::newMeterRequested,
                 this, &MainWindow::onNewMeterRequested);
         connect(deviceTree, &DeviceTreeWidget::deleteMeterRequested,
@@ -957,7 +994,9 @@ void MainWindow::onNewConnection()
 
     if (dialog.exec() == QDialog::Accepted)
     {
-        ConnectionConfig config = dialog.getConnectionConfig();
+        const ConnectionConfig config = dialog.getConnectionConfig();
+        openConnectionInternal(config.alias, config, true);
+        return;
 
         if (config.type == ConnectionType::Serial)
         {
@@ -1104,7 +1143,9 @@ void MainWindow::onOpenConnection()
         return;
     }
 
-    ConnectionConfig config = m_viewModel->connectionConfig(m_viewModel->currentConnectionAlias());
+    const ConnectionConfig config = m_viewModel->connectionConfig(m_viewModel->currentConnectionAlias());
+    openConnectionInternal(m_viewModel->currentConnectionAlias(), config, false);
+    return;
 
     // 打开串口连接
     if (config.type == ConnectionType::Serial)
@@ -1192,6 +1233,11 @@ void MainWindow::onCloseConnection()
     m_viewModel->setConnected(false);
 
     // 更新设备树连接状态
+    if (m_tcpController && m_tcpController->isOpen())
+    {
+        m_tcpController->closeConnection();
+    }
+
     if (!m_viewModel->currentConnectionAlias().isEmpty())
     {
         DeviceTreeWidget *deviceTree = deviceTreeWidget();
@@ -1223,7 +1269,12 @@ void MainWindow::onCloseConnection()
 void MainWindow::onDataUpdated()
 {
     // 数据更新时刷新UI
-    // TODO: 更新数据表格显示
+    updateRealTimeDataDisplay(false);
+}
+
+void MainWindow::onRealTimeDataRotationTimeout()
+{
+    updateRealTimeDataDisplay(true);
 }
 
 void MainWindow::onConnectionStateChanged(bool connected)
@@ -1281,7 +1332,7 @@ void MainWindow::onRawDataReceived(const QByteArray &data)
         CommunicationMessage message;
         message.timestamp = QDateTime::currentDateTime();
         message.direction = MessageDirection::Receive;
-        message.type = MessageType::Response;
+        message.type = MessageType::Request;
         message.fullFrame = data; // 使用原始数据，包含前导码
         message.checksumValid = true;
 
@@ -1434,6 +1485,577 @@ DeviceTreeWidget *MainWindow::deviceTreeWidget() const
     return findChild<DeviceTreeWidget *>();
 }
 
+QString MainWindow::connectionEndpoint(const ConnectionConfig &config) const
+{
+    if (config.type == ConnectionType::Serial)
+    {
+        return config.serialPort;
+    }
+
+    return QString("%1:%2").arg(config.tcpAddress).arg(config.tcpPort);
+}
+
+#if 0
+#if 0
+#if 0
+ConnectionInfo MainWindow::buildConnectionInfo(const ConnectionConfig &config, bool connected) const
+{
+    ConnectionInfo connectionInfo;
+    connectionInfo.alias = config.alias;
+    connectionInfo.type = (config.type == ConnectionType::Serial) ? "涓插彛" : "TCP";
+    connectionInfo.port = connectionEndpoint(config);
+    connectionInfo.isConnected = connected;
+    connectionInfo.baudRate = config.baudRate;
+    connectionInfo.dataBits = config.dataBits;
+    connectionInfo.stopBits = config.stopBits;
+    connectionInfo.parity = config.parity;
+    connectionInfo.flowControl = config.flowControl;
+    connectionInfo.tcpAddress = config.tcpAddress;
+    connectionInfo.tcpPort = config.tcpPort;
+    return connectionInfo;
+}
+
+bool MainWindow::openConnectionInternal(const QString &connectionAlias, const ConnectionConfig &config, bool addConnectionNode)
+{
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    const QString alias = connectionAlias.isEmpty() ? config.alias : connectionAlias;
+    const QString endpoint = connectionEndpoint(config);
+
+    if (deviceTree && deviceTree->isPortConnected(endpoint))
+    {
+        QMessageBox::warning(this, "閿欒", QString("杩炴帴 %1 宸茶鍗犵敤").arg(endpoint));
+        return false;
+    }
+
+    bool opened = false;
+    if (config.type == ConnectionType::Serial)
+    {
+        if (!m_serialController)
+        {
+            QMessageBox::warning(this, "警告", "串口控制器未初始化");
+            return false;
+        }
+
+        SerialConfig serialConfig;
+        serialConfig.portName = config.serialPort;
+        serialConfig.baudRate = config.baudRate;
+        serialConfig.dataBits = static_cast<QSerialPort::DataBits>(config.dataBits);
+        serialConfig.stopBits = static_cast<QSerialPort::StopBits>(config.stopBits);
+        serialConfig.parity = static_cast<QSerialPort::Parity>(config.parity);
+        serialConfig.flowControl = static_cast<QSerialPort::FlowControl>(config.flowControl);
+        opened = m_serialController->openPort(serialConfig);
+    }
+    else
+    {
+        if (!m_tcpController)
+        {
+            QMessageBox::warning(this, "警告", "TCP控制器未初始化");
+            return false;
+        }
+
+        TcpConfig tcpConfig;
+        tcpConfig.hostAddress = config.tcpAddress;
+        tcpConfig.port = static_cast<quint16>(config.tcpPort);
+        opened = m_tcpController->openConnection(tcpConfig);
+    }
+
+    if (!opened)
+    {
+        const QString errorText = (config.type == ConnectionType::Serial)
+                                      ? QString("鎵撳紑涓插彛澶辫触: %1").arg(endpoint)
+                                      : QString("TCP杩炴帴澶辫触: %1").arg(endpoint);
+        QMessageBox::critical(this, "閿欒", errorText);
+        if (m_operationLogWidget)
+        {
+            m_operationLogWidget->addError(errorText);
+        }
+        return false;
+    }
+
+    if (deviceTree)
+    {
+        if (addConnectionNode)
+        {
+            deviceTree->addConnection(buildConnectionInfo(config, true));
+        }
+        else
+        {
+            deviceTree->setConnectionStatus(alias, true);
+        }
+    }
+
+    m_viewModel->upsertConnectionConfig(config);
+    m_viewModel->setCurrentConnectionAlias(alias);
+    m_viewModel->setConnectionSelected(true);
+    m_viewModel->setConnected(true);
+    updateCommunicationDialogState();
+
+    if (m_communicationDialog)
+    {
+        m_communicationDialog->clearAllMessages();
+    }
+
+    if (m_operationLogWidget)
+    {
+        m_operationLogWidget->addSuccess(QString("杩炴帴宸叉墦寮€: %1 (%2)")
+                                             .arg(alias)
+                                             .arg(endpoint));
+    }
+
+    LOG_INFO(QString("Connection opened: %1, Endpoint: %2")
+                 .arg(alias)
+                 .arg(endpoint));
+    return true;
+}
+
+void MainWindow::closeConnectionInternal(const QString &connectionAlias)
+{
+    const QString alias = connectionAlias.isEmpty() ? m_viewModel->currentConnectionAlias() : connectionAlias;
+
+    if (m_serialController && m_serialController->isOpen())
+    {
+        m_serialController->closePort();
+    }
+
+    if (m_tcpController && m_tcpController->isOpen())
+    {
+        m_tcpController->closeConnection();
+    }
+
+    m_viewModel->setCurrentConnectionAlias(alias);
+    m_viewModel->setConnectionSelected(!alias.isEmpty());
+    m_viewModel->setConnected(false);
+
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    if (deviceTree && !alias.isEmpty())
+    {
+        deviceTree->setConnectionStatus(alias, false);
+    }
+
+    updateToolBarButtons();
+    updateCommunicationDialogState();
+}
+
+#endif
+
+ConnectionInfo MainWindow::buildConnectionInfo(const ConnectionConfig &config, bool connected) const
+{
+    ConnectionInfo connectionInfo;
+    connectionInfo.alias = config.alias;
+    connectionInfo.type = (config.type == ConnectionType::Serial) ? QStringLiteral("串口") : QStringLiteral("TCP");
+    connectionInfo.port = connectionEndpoint(config);
+    connectionInfo.isConnected = connected;
+    connectionInfo.baudRate = config.baudRate;
+    connectionInfo.dataBits = config.dataBits;
+    connectionInfo.stopBits = config.stopBits;
+    connectionInfo.parity = config.parity;
+    connectionInfo.flowControl = config.flowControl;
+    connectionInfo.tcpAddress = config.tcpAddress;
+    connectionInfo.tcpPort = config.tcpPort;
+    return connectionInfo;
+}
+
+bool MainWindow::openConnectionInternal(const QString &connectionAlias, const ConnectionConfig &config, bool addConnectionNode)
+{
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    const QString alias = connectionAlias.isEmpty() ? config.alias : connectionAlias;
+    const QString endpoint = connectionEndpoint(config);
+
+    if (deviceTree && deviceTree->isPortConnected(endpoint))
+    {
+        QMessageBox::warning(this, "错误", QString("连接 %1 已被占用").arg(endpoint));
+        return false;
+    }
+
+    bool opened = false;
+    if (config.type == ConnectionType::Serial)
+    {
+        if (!m_serialController)
+        {
+            QMessageBox::warning(this, "警告", "串口控制器未初始化");
+            return false;
+        }
+
+        SerialConfig serialConfig;
+        serialConfig.portName = config.serialPort;
+        serialConfig.baudRate = config.baudRate;
+        serialConfig.dataBits = static_cast<QSerialPort::DataBits>(config.dataBits);
+        serialConfig.stopBits = static_cast<QSerialPort::StopBits>(config.stopBits);
+        serialConfig.parity = static_cast<QSerialPort::Parity>(config.parity);
+        serialConfig.flowControl = static_cast<QSerialPort::FlowControl>(config.flowControl);
+        opened = m_serialController->openPort(serialConfig);
+    }
+    else
+    {
+        if (!m_tcpController)
+        {
+            QMessageBox::warning(this, "警告", "TCP控制器未初始化");
+            return false;
+        }
+
+        TcpConfig tcpConfig;
+        tcpConfig.hostAddress = config.tcpAddress;
+        tcpConfig.port = static_cast<quint16>(config.tcpPort);
+        opened = m_tcpController->openConnection(tcpConfig);
+    }
+
+    if (!opened)
+    {
+        const QString errorText = (config.type == ConnectionType::Serial)
+                                      ? QString("打开串口失败: %1").arg(endpoint)
+                                      : QString("TCP连接失败: %1").arg(endpoint);
+        QMessageBox::critical(this, "错误", errorText);
+        if (m_operationLogWidget)
+        {
+            m_operationLogWidget->addError(errorText);
+        }
+        return false;
+    }
+
+    if (deviceTree)
+    {
+        if (addConnectionNode)
+        {
+            deviceTree->addConnection(buildConnectionInfo(config, true));
+        }
+        else
+        {
+            deviceTree->setConnectionStatus(alias, true);
+        }
+    }
+
+    m_viewModel->upsertConnectionConfig(config);
+    m_viewModel->setCurrentConnectionAlias(alias);
+    m_viewModel->setConnectionSelected(true);
+    m_viewModel->setConnected(true);
+    updateCommunicationDialogState();
+
+    if (m_communicationDialog)
+    {
+        m_communicationDialog->clearAllMessages();
+    }
+
+    if (m_operationLogWidget)
+    {
+        m_operationLogWidget->addSuccess(QString("连接已打开: %1 (%2)")
+                                             .arg(alias)
+                                             .arg(endpoint));
+    }
+
+    LOG_INFO(QString("Connection opened: %1, Endpoint: %2")
+                 .arg(alias)
+                 .arg(endpoint));
+    return true;
+}
+
+void MainWindow::closeConnectionInternal(const QString &connectionAlias)
+{
+    const QString alias = connectionAlias.isEmpty() ? m_viewModel->currentConnectionAlias() : connectionAlias;
+
+    if (m_serialController && m_serialController->isOpen())
+    {
+        m_serialController->closePort();
+    }
+
+    if (m_tcpController && m_tcpController->isOpen())
+    {
+        m_tcpController->closeConnection();
+    }
+
+    m_viewModel->setCurrentConnectionAlias(alias);
+    m_viewModel->setConnectionSelected(!alias.isEmpty());
+    m_viewModel->setConnected(false);
+
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    if (deviceTree && !alias.isEmpty())
+    {
+        deviceTree->setConnectionStatus(alias, false);
+    }
+
+    updateToolBarButtons();
+    updateCommunicationDialogState();
+}
+
+#endif
+
+ConnectionInfo MainWindow::buildConnectionInfo(const ConnectionConfig &config, bool connected) const
+{
+    ConnectionInfo connectionInfo;
+    connectionInfo.alias = config.alias;
+    connectionInfo.type = (config.type == ConnectionType::Serial) ? QStringLiteral("串口") : QStringLiteral("TCP");
+    connectionInfo.port = connectionEndpoint(config);
+    connectionInfo.isConnected = connected;
+    connectionInfo.baudRate = config.baudRate;
+    connectionInfo.dataBits = config.dataBits;
+    connectionInfo.stopBits = config.stopBits;
+    connectionInfo.parity = config.parity;
+    connectionInfo.flowControl = config.flowControl;
+    connectionInfo.tcpAddress = config.tcpAddress;
+    connectionInfo.tcpPort = config.tcpPort;
+    return connectionInfo;
+}
+
+bool MainWindow::openConnectionInternal(const QString &connectionAlias, const ConnectionConfig &config, bool addConnectionNode)
+{
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    const QString alias = connectionAlias.isEmpty() ? config.alias : connectionAlias;
+    const QString endpoint = connectionEndpoint(config);
+
+    if (deviceTree && deviceTree->isPortConnected(endpoint))
+    {
+        QMessageBox::warning(this, "错误", QString("连接 %1 已被占用").arg(endpoint));
+        return false;
+    }
+
+    bool opened = false;
+    if (config.type == ConnectionType::Serial)
+    {
+        if (!m_serialController)
+        {
+            QMessageBox::warning(this, "警告", "串口控制器未初始化");
+            return false;
+        }
+
+        SerialConfig serialConfig;
+        serialConfig.portName = config.serialPort;
+        serialConfig.baudRate = config.baudRate;
+        serialConfig.dataBits = static_cast<QSerialPort::DataBits>(config.dataBits);
+        serialConfig.stopBits = static_cast<QSerialPort::StopBits>(config.stopBits);
+        serialConfig.parity = static_cast<QSerialPort::Parity>(config.parity);
+        serialConfig.flowControl = static_cast<QSerialPort::FlowControl>(config.flowControl);
+        opened = m_serialController->openPort(serialConfig);
+    }
+    else
+    {
+        if (!m_tcpController)
+        {
+            QMessageBox::warning(this, "警告", "TCP控制器未初始化");
+            return false;
+        }
+
+        TcpConfig tcpConfig;
+        tcpConfig.hostAddress = config.tcpAddress;
+        tcpConfig.port = static_cast<quint16>(config.tcpPort);
+        opened = m_tcpController->openConnection(tcpConfig);
+    }
+
+    if (!opened)
+    {
+        const QString errorText = (config.type == ConnectionType::Serial)
+                                      ? QString("打开串口失败: %1").arg(endpoint)
+                                      : QString("TCP连接失败: %1").arg(endpoint);
+        QMessageBox::critical(this, "错误", errorText);
+        if (m_operationLogWidget)
+        {
+            m_operationLogWidget->addError(errorText);
+        }
+        return false;
+    }
+
+    if (deviceTree)
+    {
+        if (addConnectionNode)
+        {
+            deviceTree->addConnection(buildConnectionInfo(config, true));
+        }
+        else
+        {
+            deviceTree->setConnectionStatus(alias, true);
+        }
+    }
+
+    m_viewModel->upsertConnectionConfig(config);
+    m_viewModel->setCurrentConnectionAlias(alias);
+    m_viewModel->setConnectionSelected(true);
+    m_viewModel->setConnected(true);
+    updateCommunicationDialogState();
+
+    if (m_communicationDialog)
+    {
+        m_communicationDialog->clearAllMessages();
+    }
+
+    if (m_operationLogWidget)
+    {
+        m_operationLogWidget->addSuccess(QString("连接已打开: %1 (%2)")
+                                             .arg(alias)
+                                             .arg(endpoint));
+    }
+
+    LOG_INFO(QString("Connection opened: %1, Endpoint: %2")
+                 .arg(alias)
+                 .arg(endpoint));
+    return true;
+}
+
+void MainWindow::closeConnectionInternal(const QString &connectionAlias)
+{
+    const QString alias = connectionAlias.isEmpty() ? m_viewModel->currentConnectionAlias() : connectionAlias;
+
+    if (m_serialController && m_serialController->isOpen())
+    {
+        m_serialController->closePort();
+    }
+
+    if (m_tcpController && m_tcpController->isOpen())
+    {
+        m_tcpController->closeConnection();
+    }
+
+    m_viewModel->setCurrentConnectionAlias(alias);
+    m_viewModel->setConnectionSelected(!alias.isEmpty());
+    m_viewModel->setConnected(false);
+
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    if (deviceTree && !alias.isEmpty())
+    {
+        deviceTree->setConnectionStatus(alias, false);
+    }
+
+    updateToolBarButtons();
+    updateCommunicationDialogState();
+}
+
+#endif
+
+ConnectionInfo MainWindow::buildConnectionInfo(const ConnectionConfig &config, bool connected) const
+{
+    ConnectionInfo connectionInfo;
+    connectionInfo.alias = config.alias;
+    connectionInfo.type = (config.type == ConnectionType::Serial) ? QStringLiteral("Serial") : QStringLiteral("TCP");
+    connectionInfo.port = connectionEndpoint(config);
+    connectionInfo.isConnected = connected;
+    connectionInfo.baudRate = config.baudRate;
+    connectionInfo.dataBits = config.dataBits;
+    connectionInfo.stopBits = config.stopBits;
+    connectionInfo.parity = config.parity;
+    connectionInfo.flowControl = config.flowControl;
+    connectionInfo.tcpAddress = config.tcpAddress;
+    connectionInfo.tcpPort = config.tcpPort;
+    return connectionInfo;
+}
+
+bool MainWindow::openConnectionInternal(const QString &connectionAlias, const ConnectionConfig &config, bool addConnectionNode)
+{
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    const QString alias = connectionAlias.isEmpty() ? config.alias : connectionAlias;
+    const QString endpoint = connectionEndpoint(config);
+
+    if (deviceTree && deviceTree->isPortConnected(endpoint))
+    {
+        QMessageBox::warning(this, "Error", QString("Connection %1 is already in use").arg(endpoint));
+        return false;
+    }
+
+    bool opened = false;
+    if (config.type == ConnectionType::Serial)
+    {
+        if (!m_serialController)
+        {
+            QMessageBox::warning(this, "Warning", "Serial controller is not initialized");
+            return false;
+        }
+
+        SerialConfig serialConfig;
+        serialConfig.portName = config.serialPort;
+        serialConfig.baudRate = config.baudRate;
+        serialConfig.dataBits = static_cast<QSerialPort::DataBits>(config.dataBits);
+        serialConfig.stopBits = static_cast<QSerialPort::StopBits>(config.stopBits);
+        serialConfig.parity = static_cast<QSerialPort::Parity>(config.parity);
+        serialConfig.flowControl = static_cast<QSerialPort::FlowControl>(config.flowControl);
+        opened = m_serialController->openPort(serialConfig);
+    }
+    else
+    {
+        if (!m_tcpController)
+        {
+            QMessageBox::warning(this, "Warning", "TCP controller is not initialized");
+            return false;
+        }
+
+        TcpConfig tcpConfig;
+        tcpConfig.hostAddress = config.tcpAddress;
+        tcpConfig.port = static_cast<quint16>(config.tcpPort);
+        opened = m_tcpController->openConnection(tcpConfig);
+    }
+
+    if (!opened)
+    {
+        const QString errorText = (config.type == ConnectionType::Serial)
+                                      ? QString("Failed to open serial port: %1").arg(endpoint)
+                                      : QString("Failed to open TCP connection: %1").arg(endpoint);
+        QMessageBox::critical(this, "Error", errorText);
+        if (m_operationLogWidget)
+        {
+            m_operationLogWidget->addError(errorText);
+        }
+        return false;
+    }
+
+    if (deviceTree)
+    {
+        if (addConnectionNode)
+        {
+            deviceTree->addConnection(buildConnectionInfo(config, true));
+        }
+        else
+        {
+            deviceTree->setConnectionStatus(alias, true);
+        }
+    }
+
+    m_viewModel->upsertConnectionConfig(config);
+    m_viewModel->setCurrentConnectionAlias(alias);
+    m_viewModel->setConnectionSelected(true);
+    m_viewModel->setConnected(true);
+    updateCommunicationDialogState();
+
+    if (m_communicationDialog)
+    {
+        m_communicationDialog->clearAllMessages();
+    }
+
+    if (m_operationLogWidget)
+    {
+        m_operationLogWidget->addSuccess(QString("Connection opened: %1 (%2)")
+                                             .arg(alias)
+                                             .arg(endpoint));
+    }
+
+    LOG_INFO(QString("Connection opened: %1, Endpoint: %2")
+                 .arg(alias)
+                 .arg(endpoint));
+    return true;
+}
+
+void MainWindow::closeConnectionInternal(const QString &connectionAlias)
+{
+    const QString alias = connectionAlias.isEmpty() ? m_viewModel->currentConnectionAlias() : connectionAlias;
+
+    if (m_serialController && m_serialController->isOpen())
+    {
+        m_serialController->closePort();
+    }
+
+    if (m_tcpController && m_tcpController->isOpen())
+    {
+        m_tcpController->closeConnection();
+    }
+
+    m_viewModel->setCurrentConnectionAlias(alias);
+    m_viewModel->setConnectionSelected(!alias.isEmpty());
+    m_viewModel->setConnected(false);
+
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    if (deviceTree && !alias.isEmpty())
+    {
+        deviceTree->setConnectionStatus(alias, false);
+    }
+
+    updateToolBarButtons();
+    updateCommunicationDialogState();
+}
+
 QStringList MainWindow::collectMeterAddresses() const
 {
     QStringList addresses;
@@ -1577,6 +2199,7 @@ void MainWindow::applyCurrentMeter(const MeterInfo &meterInfo)
 {
     MeterModel *meterModel = createMeterModel(meterInfo);
     m_currentMeterModel = meterModel;
+    m_realTimePhaseIndex = 0;
 
     if (m_currentMeterModel)
     {
@@ -1596,11 +2219,13 @@ void MainWindow::applyCurrentMeter(const MeterInfo &meterInfo)
 
     m_viewModel->setCurrentMeterAddress(meterInfo.address);
     updateConnectionStatus(m_viewModel->isConnected());
+    updateRealTimeDataDisplay(false);
 }
 
 void MainWindow::clearCurrentMeter()
 {
     m_currentMeterModel = nullptr;
+    m_realTimePhaseIndex = 0;
     m_protocolController->setMeterModel(nullptr);
 
     if (m_dataTableWidget)
@@ -1616,6 +2241,7 @@ void MainWindow::clearCurrentMeter()
 
     m_viewModel->setCurrentMeterAddress(QString());
     updateConnectionStatus(m_viewModel->isConnected());
+    updateRealTimeDataDisplay(false);
 }
 
 void MainWindow::refreshMeterPresence()
@@ -1634,6 +2260,61 @@ void MainWindow::refreshMeterPresence()
     {
         clearCurrentMeter();
     }
+}
+
+void MainWindow::updateRealTimeDataDisplay(bool advancePhase)
+{
+    if (!m_realTimeDataLabel || !m_realTimeBarWidget)
+    {
+        return;
+    }
+
+    const bool hasCurrentMeter = (m_currentMeterModel != nullptr) && !m_viewModel->currentMeterAddress().isEmpty();
+    m_realTimeBarWidget->setVisible(hasCurrentMeter);
+    if (!hasCurrentMeter)
+    {
+        return;
+    }
+
+    static const struct PhaseDisplayInfo
+    {
+        const char *name;
+        const char *voltageCode;
+        const char *currentCode;
+        const char *angleCode;
+    } phaseInfos[] = {
+        {"A相", "0x02010100", "0x02020100", "0x02070100"},
+        {"B相", "0x02010200", "0x02020200", "0x02070200"},
+        {"C相", "0x02010300", "0x02020300", "0x02070300"}};
+
+    constexpr int phaseCount = static_cast<int>(sizeof(phaseInfos) / sizeof(phaseInfos[0]));
+    if (advancePhase)
+    {
+        m_realTimePhaseIndex = (m_realTimePhaseIndex + 1) % phaseCount;
+    }
+
+    double forwardEnergy = 0.0;
+    double reverseEnergy = 0.0;
+    double phaseVoltage = 0.0;
+    double phaseCurrent = 0.0;
+    double phaseAngle = 0.0;
+
+    if (m_currentMeterModel)
+    {
+        forwardEnergy = m_currentMeterModel->getDataValue("0x00010000").toDouble();
+        reverseEnergy = m_currentMeterModel->getDataValue("0x00020000").toDouble();
+        phaseVoltage = m_currentMeterModel->getDataValue(phaseInfos[m_realTimePhaseIndex].voltageCode).toDouble();
+        phaseCurrent = m_currentMeterModel->getDataValue(phaseInfos[m_realTimePhaseIndex].currentCode).toDouble();
+        phaseAngle = m_currentMeterModel->getDataValue(phaseInfos[m_realTimePhaseIndex].angleCode).toDouble();
+    }
+
+    m_realTimeDataLabel->setText(QString("正向有功总电能: %1 | 反向有功总电能: %2 | %3电压: %4 | %3电流: %5 | %3相角: %6")
+                                     .arg(forwardEnergy, 0, 'f', 2)
+                                     .arg(reverseEnergy, 0, 'f', 2)
+                                     .arg(QString::fromUtf8(phaseInfos[m_realTimePhaseIndex].name))
+                                     .arg(phaseVoltage, 0, 'f', 1)
+                                     .arg(phaseCurrent, 0, 'f', 3)
+                                     .arg(phaseAngle, 0, 'f', 1));
 }
 
 void MainWindow::onCommunicationInteraction()
@@ -1768,7 +2449,9 @@ void MainWindow::onOpenConnectionRequested(const QString &connectionAlias)
     }
 
     // 获取连接配置
-    ConnectionConfig config = m_viewModel->connectionConfig(connectionAlias);
+    const ConnectionConfig config = m_viewModel->connectionConfig(connectionAlias);
+    openConnectionInternal(connectionAlias, config, false);
+    return;
 
     if (config.type == ConnectionType::Serial)
     {
@@ -1824,7 +2507,15 @@ void MainWindow::onOpenConnectionRequested(const QString &connectionAlias)
 
 void MainWindow::onCloseConnectionRequested(const QString &connectionAlias)
 {
-    Q_UNUSED(connectionAlias);
+#if 0
+    if (!m_viewModel->isConnected())
+    {
+        QMessageBox::information(this, "鎻愮ず", "杩炴帴宸茬粡鍏抽棴");
+        return;
+    }
+
+    closeConnectionInternal(connectionAlias);
+    return;
 
     if (!m_viewModel->isConnected())
     {
@@ -1843,6 +2534,15 @@ void MainWindow::onCloseConnectionRequested(const QString &connectionAlias)
     {
         deviceTree->setConnectionStatus(connectionAlias, false);
     }
+#endif
+
+    if (!m_viewModel->isConnected())
+    {
+        QMessageBox::information(this, "提示", "连接已经关闭");
+        return;
+    }
+
+    closeConnectionInternal(connectionAlias);
 }
 
 void MainWindow::onDeleteConnectionRequested(const QString &connectionAlias)
@@ -1857,10 +2557,7 @@ void MainWindow::onDeleteConnectionRequested(const QString &connectionAlias)
 
         if (m_viewModel->isConnected())
         {
-            if (m_serialController && m_serialController->isOpen())
-            {
-                m_serialController->closePort();
-            }
+            closeConnectionInternal(connectionAlias);
         }
 
         // 从设备树中删除连接节点
@@ -1886,6 +2583,106 @@ void MainWindow::onDeleteConnectionRequested(const QString &connectionAlias)
         LOG_INFO(QString("Connection deleted: %1").arg(connectionAlias));
         QMessageBox::information(this, "成功", "连接已删除");
     }
+}
+
+void MainWindow::onEditConnectionRequested(const QString &connectionAlias)
+{
+    if (!m_viewModel->hasConnectionConfig(connectionAlias))
+    {
+        QMessageBox::warning(this, "错误", "未找到连接配置");
+        return;
+    }
+
+    if (m_viewModel->isConnected() && m_viewModel->currentConnectionAlias() == connectionAlias)
+    {
+        QMessageBox::information(this, "提示", "请先关闭当前连接，再编辑连接配置");
+        return;
+    }
+
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    ConnectionConfig originalConfig = m_viewModel->connectionConfig(connectionAlias);
+
+    NewConnectionDialog dialog(this);
+    dialog.setEditMode(true);
+    dialog.setConnectionConfig(originalConfig);
+
+    if (deviceTree)
+    {
+        QStringList connectedPorts;
+        for (int i = 0; i < deviceTree->getTreeWidget()->topLevelItemCount(); ++i)
+        {
+            QTreeWidgetItem *item = deviceTree->getTreeWidget()->topLevelItem(i);
+            if (!item)
+            {
+                continue;
+            }
+
+            const ItemType itemType = static_cast<ItemType>(item->data(0, Qt::UserRole + 1).toInt());
+            if (itemType != ItemType::Connection)
+            {
+                continue;
+            }
+
+            const QString alias = item->data(0, Qt::UserRole).toString();
+            const bool isConnected = item->data(0, Qt::UserRole + 2).toBool();
+            if (isConnected && alias != connectionAlias)
+            {
+                connectedPorts.append(item->data(0, Qt::UserRole + 3).toString());
+            }
+        }
+        dialog.setConnectedPorts(connectedPorts);
+        dialog.setConnectionConfig(originalConfig);
+    }
+
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return;
+    }
+
+    const ConnectionConfig updatedConfig = dialog.getConnectionConfig();
+    if (updatedConfig.alias != connectionAlias && m_viewModel->hasConnectionConfig(updatedConfig.alias))
+    {
+        QMessageBox::warning(this, "错误", QString("连接别名 %1 已存在").arg(updatedConfig.alias));
+        return;
+    }
+
+    if (updatedConfig.type == ConnectionType::Serial && deviceTree && deviceTree->isPortConnected(updatedConfig.serialPort))
+    {
+        QMessageBox::warning(this, "错误", QString("串口 %1 已被连接，请使用其他串口").arg(updatedConfig.serialPort));
+        return;
+    }
+
+    if (updatedConfig.alias != connectionAlias)
+    {
+        m_viewModel->removeConnectionConfig(connectionAlias);
+    }
+    m_viewModel->upsertConnectionConfig(updatedConfig);
+
+    if (deviceTree)
+    {
+        ConnectionInfo connectionInfo;
+        connectionInfo.alias = updatedConfig.alias;
+        connectionInfo.type = (updatedConfig.type == ConnectionType::Serial) ? "串口" : "TCP";
+        connectionInfo.port = (updatedConfig.type == ConnectionType::Serial)
+                                  ? updatedConfig.serialPort
+                                  : QString("%1:%2").arg(updatedConfig.tcpAddress).arg(updatedConfig.tcpPort);
+        connectionInfo.isConnected = false;
+        connectionInfo.baudRate = updatedConfig.baudRate;
+        connectionInfo.dataBits = updatedConfig.dataBits;
+        connectionInfo.stopBits = updatedConfig.stopBits;
+        connectionInfo.parity = updatedConfig.parity;
+        connectionInfo.flowControl = updatedConfig.flowControl;
+        connectionInfo.tcpAddress = updatedConfig.tcpAddress;
+        connectionInfo.tcpPort = updatedConfig.tcpPort;
+        deviceTree->updateConnection(connectionAlias, connectionInfo);
+    }
+
+    m_viewModel->setCurrentConnectionAlias(updatedConfig.alias);
+    m_viewModel->setConnectionSelected(true);
+
+    LOG_INFO(QString("Connection updated: %1 -> %2")
+                 .arg(connectionAlias, updatedConfig.alias));
+    QMessageBox::information(this, "成功", "连接配置已更新");
 }
 
 void MainWindow::onDeleteMeterRequested(const QString &connectionAlias, const QString &meterAlias)

@@ -154,6 +154,8 @@ private:
     void setupTable();
     void populateCategory(const QString &category);
     void filterTable(const QString &filterText);
+    void updateExportButtonState();
+    QString selectedMeterAddress() const;
     void updateItemValue(const QString &diCode, const QVariant &value);
     void updateDataCount();
     bool isVariableData(const QString &diCode) const;

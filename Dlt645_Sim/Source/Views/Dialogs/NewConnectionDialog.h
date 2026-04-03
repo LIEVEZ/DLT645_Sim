@@ -28,6 +28,7 @@ public:
     ConnectionConfig getConnectionConfig() const;
     void setConnectionConfig(const ConnectionConfig &config);
     void setConnectedPorts(const QStringList &connectedPorts);
+    void setEditMode(bool editing);
 
 private slots:
     void onConnectionTypeChanged(int index);

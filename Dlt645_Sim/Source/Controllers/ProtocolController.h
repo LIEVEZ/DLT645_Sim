@@ -9,6 +9,7 @@
 #include "Models/MeterModel.h"
 #include "Services/ProtocolParser.h"
 #include "Controllers/SerialController.h"
+#include "Controllers/TcpController.h"
 
 /**
  * @brief 协议控制器
@@ -33,6 +34,7 @@ public:
      * @param controller 串口控制器
      */
     void setSerialController(SerialController *controller);
+    void setTcpController(TcpController *controller);
 
     /**
      * @brief 处理接收到的数据
@@ -128,6 +130,9 @@ private slots:
     void onSerialDataReceived(const QByteArray &data);
     void onSerialDataSent(const QByteArray &data);
     void onSerialConnectionStateChanged(bool connected);
+    void onTcpDataReceived(const QByteArray &data);
+    void onTcpDataSent(const QByteArray &data);
+    void onTcpConnectionStateChanged(bool connected);
     void onProtocolFrameParsed(const ProtocolFrame &frame);
     void onProtocolParseError(const QString &errorMessage);
     void onResponseTimerTimeout();
@@ -139,9 +144,13 @@ private:
     void verifyPassword(const ProtocolFrame &frame, MeterModel *meterModel);
     bool shouldRespondToAddress(const QByteArray &addressBytes) const;
     MeterModel *meterModelForAddress(const QByteArray &addressBytes) const;
+    bool hasActiveTransport() const;
+    bool sendTransportData(const QByteArray &data);
+    void resetTransportState();
 
     MeterModel *m_meterModel;
     SerialController *m_serialController;
+    TcpController *m_tcpController;
     ProtocolParser *m_protocolParser;
     bool m_autoResponseEnabled;
     int m_responseDelay;
