@@ -1,4 +1,4 @@
-#include "MeterModel.h"
+﻿#include "MeterModel.h"
 #include <QRandomGenerator>
 #include <QDateTime>
 #include <QDebug>
@@ -819,13 +819,6 @@ void MeterModel::resetAllData()
         initializeDefaultDataItems();
     }
     emit dataBatchChanged();
-    return;
-
-    QMutexLocker locker(&m_mutex);
-    for (auto it = m_dataItems.begin(); it != m_dataItems.end(); ++it)
-    {
-        it.value().value = 0.0;
-    }
 }
 
 void MeterModel::randomizeData()
@@ -834,158 +827,6 @@ void MeterModel::randomizeData()
     randomizeDataItems(m_dataItems, m_meterAddress);
     locker.unlock();
     emit dataBatchChanged();
-    return;
-    QRandomGenerator *rng = QRandomGenerator::global();
-
-    for (auto it = m_dataItems.begin(); it != m_dataItems.end(); ++it)
-    {
-        DataItem &item = it.value();
-        if (isDataBlockItem(item))
-        {
-            continue;
-        }
-
-        if (item.diCode == "0x04000000" || item.diCode == "0x04000401")
-        {
-            item.value = m_meterAddress;
-            continue;
-        }
-
-        if (item.diCode == "0x04000101")
-        {
-            item.value = compactDateWithWeek(QDate::currentDate().addDays(-rng->bounded(0, 7)));
-            continue;
-        }
-
-        if (item.diCode == "0x04000102")
-        {
-            item.value = QTime::currentTime().addSecs(rng->bounded(0, 24 * 60 * 60)).toString(QStringLiteral("HHmmss"));
-            continue;
-        }
-
-        if (item.format == "AA,AA,AA,AA,AA" && (item.description.contains(QStringLiteral("时间")) || item.description.contains(QStringLiteral("发生"))))
-        {
-            const QDateTime randomTime = QDateTime::currentDateTime().addSecs(-rng->bounded(0, 30 * 24 * 60 * 60));
-            item.value = compactDateTimeToMinutes(randomTime);
-            continue;
-        }
-
-        if (item.diCode.startsWith("0x06") && item.format == "AA,AA")
-        {
-            const int duration = rng->bounded(1, 60);
-            const int unitCode = (rng->bounded(0, 2) == 0) ? 2 : 3;
-            item.value = QStringLiteral("%1%2")
-                             .arg(duration, 2, 10, QChar('0'))
-                             .arg(unitCode, 2, 10, QChar('0'));
-            continue;
-        }
-
-        const QVariant originalValue = item.value;
-        const NumericFormatSpec formatSpec = parseNumericFormatSpec(item.format);
-        bool variableValueHandled = false;
-
-        if (item.diCode.startsWith("0x0202") || item.diCode == "0x02080001")
-        {
-            item.value = rng->bounded(0, 10000) / 1000.0;
-            variableValueHandled = true;
-        }
-        else if (item.diCode.startsWith("0x0203"))
-        {
-            item.value = rng->bounded(0, 300001) / 10000.0;
-            variableValueHandled = true;
-        }
-        else if (item.diCode.startsWith("0x0204"))
-        {
-            item.value = rng->bounded(-300000, 300001) / 10000.0;
-            variableValueHandled = true;
-        }
-        else if (item.diCode.startsWith("0x0205"))
-        {
-            item.value = rng->bounded(0, 300001) / 10000.0;
-            variableValueHandled = true;
-        }
-        else if (item.diCode.startsWith("0x0206"))
-        {
-            item.value = formatSpec.allowNegative
-                             ? rng->bounded(-1000, 1001) / 1000.0
-                             : rng->bounded(0, 1001) / 1000.0;
-            variableValueHandled = true;
-        }
-        else if (item.diCode.startsWith("0x0207"))
-        {
-            item.value = rng->bounded(0, 3600) / 10.0;
-            variableValueHandled = true;
-        }
-        else if (item.diCode == "0x02800002")
-        {
-            item.value = 50.0 + (rng->bounded(-50, 51) / 10.0);
-            variableValueHandled = true;
-        }
-
-        if (!variableValueHandled && item.diCode.startsWith("0x0201"))
-        {
-            // 变量数据：在合理范围内随机
-            if (item.diCode.contains("0100") || item.diCode.contains("0200") || item.diCode.contains("0300"))
-            {
-                // 电压：220V ± 10%
-                item.value = 220.0 + (rng->bounded(-2200, 2200) / 100.0);
-            }
-            else if (item.diCode.contains("0101") || item.diCode.contains("0201") || item.diCode.contains("0202"))
-            {
-                // 电流：0-10A
-                item.value = rng->bounded(0, 10000) / 1000.0;
-            }
-            else if (item.diCode.contains("0300"))
-            {
-                // 功率：0-100kW
-                item.value = rng->bounded(0, 100000) / 10000.0;
-            }
-            else if (item.diCode.contains("0600"))
-            {
-                // 功率因数：-1.0 ~ 1.0
-                item.value = formatSpec.allowNegative
-                                 ? rng->bounded(-1000, 1000) / 1000.0
-                                 : rng->bounded(0, 1000) / 1000.0;
-            }
-            else if (item.diCode.contains("0701"))
-            {
-                // 相角：0-360度
-                item.value = rng->bounded(0, 3600) / 10.0;
-            }
-            else if (item.diCode.contains("00002"))
-            {
-                // 频率：50Hz ± 5Hz
-                item.value = 50.0 + (rng->bounded(-50, 50) / 10.0);
-            }
-            else
-            {
-                item.value = rng->bounded(0, 1000) / 10.0;
-            }
-        }
-        else if (!variableValueHandled && item.diCode.startsWith("0x00"))
-        {
-            // 电能量数据：累加
-            item.value = item.value.toDouble() + rng->bounded(0, 100) / 100.0;
-        }
-        else if (!variableValueHandled)
-        {
-            // 其他数据：随机生成
-            item.value = rng->bounded(0, 10000) / 100.0;
-        }
-
-        if (formatSpec.valid)
-        {
-            item.value = normalizeValueForFormat(item.value, formatSpec);
-        }
-        else
-        {
-            item.value = originalValue;
-        }
-    }
-
-    synchronizeInstantaneousPowerTotals(m_dataItems);
-    synchronizeCurrentEnergyTotals(m_dataItems);
-    synchronizeDailyFreezeTotals(m_dataItems);
 }
 
 void MeterModel::randomizeData(const QList<QString> &diCodes)

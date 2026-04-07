@@ -1,4 +1,4 @@
-#include "DataTableWidget.h"
+﻿#include "DataTableWidget.h"
 #include "Utils/Logger.h"
 #include "../../Models/MeterModel.h"
 #include "../../Models/DataItem.h"

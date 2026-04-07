@@ -54,25 +54,14 @@ MainWindow::~MainWindow()
 
     if (m_operationLogWidget)
     {
-        m_operationLogWidget->addInfo(QString("杩炴帴宸插叧闂? %1").arg(m_viewModel->currentConnectionAlias()));
+        m_operationLogWidget->addInfo(QString("日志操作成功? %1").arg(m_viewModel->currentConnectionAlias()));
     }
     closeConnectionInternal(m_viewModel->currentConnectionAlias());
     if (m_operationLogWidget)
     {
-        m_operationLogWidget->addInfo(QString("杩炴帴宸插叧闂? %1").arg(m_viewModel->currentConnectionAlias()));
+        m_operationLogWidget->addInfo(QString("日志操作失败? %1").arg(m_viewModel->currentConnectionAlias()));
     }
     LOG_INFO(QString("Connection closed: %1").arg(m_viewModel->currentConnectionAlias()));
-    if (m_serialController && m_serialController->isOpen())
-    {
-        m_serialController->closePort();
-    }
-    if (m_tcpController && m_tcpController->isOpen())
-    {
-        m_tcpController->closeConnection();
-    }
-    delete ui;
-    return;
-
     if (m_serialController && m_serialController->isOpen())
     {
         m_serialController->closePort();
@@ -348,21 +337,10 @@ void MainWindow::setupStatusBar()
     QStatusBar *statusBar = this->statusBar();
     m_connectionStatusLabel = new QLabel(m_viewModel->connectionStatusText(), statusBar);
     statusBar->addPermanentWidget(m_connectionStatusLabel);
-
     m_meterAddressLabel = new QLabel(m_viewModel->meterAddressText(), statusBar);
     statusBar->addPermanentWidget(m_meterAddressLabel, 0);
     updateConnectionStatus(m_viewModel->isConnected());
-    return;
-
-    // 连接状态标签
-    QLabel *statusLabel = new QLabel("未连接", statusBar);
-    statusBar->addPermanentWidget(statusLabel);
-
-    // 电表地址标签
-    QLabel *addressLabel = new QLabel("地址: 000000000000", statusBar);
-    statusBar->addPermanentWidget(addressLabel, 0);
 }
-
 void MainWindow::applyDarkTheme()
 {
     QString styleSheet = R"(
@@ -966,8 +944,6 @@ void MainWindow::onToggleLightTheme(bool enabled)
 void MainWindow::onNewConnection()
 {
     NewConnectionDialog dialog(this);
-
-    // 获取已连接的端口列表并传递给对话框
     DeviceTreeWidget *deviceTree = deviceTreeWidget();
     if (deviceTree)
     {
@@ -978,107 +954,36 @@ void MainWindow::onNewConnection()
             QTreeWidgetItem *item = deviceTree->getTreeWidget()->topLevelItem(i);
             if (item)
             {
-                ItemType itemType = static_cast<ItemType>(item->data(0, Qt::UserRole + 1).toInt());
-                if (itemType == ItemType::Connection)
+                const QString port = item->data(0, Qt::UserRole + 3).toString();
+                const bool isConnected = item->data(0, Qt::UserRole + 2).toBool();
+                if (isConnected)
                 {
-                    bool isConnected = item->data(0, Qt::UserRole + 2).toBool();
-                    if (isConnected)
-                    {
-                        QString port = item->data(0, Qt::UserRole + 3).toString();
-                        connectedPorts.append(port);
-                    }
+                    connectedPorts.append(port);
                 }
             }
         }
         dialog.setConnectedPorts(connectedPorts);
     }
-
     if (dialog.exec() == QDialog::Accepted)
     {
         const ConnectionConfig config = dialog.getConnectionConfig();
         openConnectionInternal(config.alias, config, true);
-        return;
-
-        if (config.type == ConnectionType::Serial)
-        {
-            // 检查端口是否已被连接
-            DeviceTreeWidget *deviceTree = deviceTreeWidget();
-            if (deviceTree && deviceTree->isPortConnected(config.serialPort))
-            {
-                QMessageBox::warning(this, "错误", QString("串口 %1 已被连接，请先关闭现有连接").arg(config.serialPort));
-                return;
-            }
-
-            // 打开串口连接
-            SerialConfig serialConfig;
-            serialConfig.portName = config.serialPort;
-            serialConfig.baudRate = config.baudRate;
-            serialConfig.dataBits = static_cast<QSerialPort::DataBits>(config.dataBits);
-            serialConfig.stopBits = static_cast<QSerialPort::StopBits>(config.stopBits);
-            serialConfig.parity = static_cast<QSerialPort::Parity>(config.parity);
-
-            if (m_serialController->openPort(serialConfig))
-            {
-                LOG_INFO(QString("Serial port opened: %1, %2 baud")
-                             .arg(config.serialPort)
-                             .arg(config.baudRate));
-
-                // 连接成功后，添加连接节点到设备树
-                DeviceTreeWidget *deviceTree = deviceTreeWidget();
-                if (deviceTree)
-                {
-                    ConnectionInfo connInfo;
-                    connInfo.alias = config.alias;
-                    connInfo.type = "串口";
-                    connInfo.port = config.serialPort;
-                    connInfo.isConnected = true;
-                    // 保存串口配置
-                    connInfo.baudRate = config.baudRate;
-                    connInfo.dataBits = config.dataBits;
-                    connInfo.stopBits = config.stopBits;
-                    connInfo.parity = config.parity;
-                    connInfo.flowControl = config.flowControl;
-                    deviceTree->addConnection(connInfo);
-                }
-
-                // 保存连接配置和当前连接别名
-                m_viewModel->upsertConnectionConfig(config);
-                m_viewModel->setCurrentConnectionAlias(config.alias);
-                m_viewModel->setConnectionSelected(true);
-                m_viewModel->setConnected(true);
-            }
-            else
-            {
-                QMessageBox::warning(this, "错误", "无法打开串口");
-            }
-        }
-        else
-        {
-            // 打开TCP连接
-            QMessageBox::information(this, "提示",
-                                     "TCP连接功能待实现\n"
-                                     "IP: " +
-                                         config.tcpAddress + "\n"
-                                                             "Port: " +
-                                         QString::number(config.tcpPort));
-        }
     }
 }
-
 void MainWindow::onNewMeterDialog()
 {
     // 检查是否选中了连接节点
     DeviceTreeWidget *deviceTree = deviceTreeWidget();
     if (!deviceTree || !deviceTree->canAddMeter())
     {
-        QMessageBox::warning(this, "提示", "请你先选择一个连接节点");
+        QMessageBox::warning(this, "提示", "请先选择一个连接节点");
         return;
     }
 
     QString connectionAlias = deviceTree->getSelectedConnectionAlias();
     if (connectionAlias.isEmpty())
     {
-        QMessageBox::warning(this, "提示", "请1先选择一个连接节点");
+        QMessageBox::warning(this, "提示", "请先选择一个连接节点");
         return;
     }
 
@@ -1092,7 +997,7 @@ void MainWindow::onNewMeterDialog()
     {
         MeterConfig config = dialog.getMeterConfig();
 
-        // 创建MeterInfo结构体
+        // 创建 MeterInfo 结构体
         MeterInfo meterInfo;
         meterInfo.alias = config.alias;
         meterInfo.address = config.address;
@@ -1126,97 +1031,22 @@ void MainWindow::onOpenConnection()
 {
     if (m_viewModel->isConnected())
     {
-        QMessageBox::information(this, "提示", "连接已经打开");
+        QMessageBox::information(this, "提示", "已经有连接打开，请先关闭现有连接");
         return;
     }
-
-    // 检查是否选择了连接
     if (m_viewModel->currentConnectionAlias().isEmpty())
     {
-        QMessageBox::warning(this, "警告", "请先选择一个连接");
+        QMessageBox::warning(this, "提示", "请先选择一个连接");
         return;
     }
-
-    // 获取连接配置
     if (!m_viewModel->hasConnectionConfig(m_viewModel->currentConnectionAlias()))
     {
-        QMessageBox::warning(this, "警告", "连接配置不存在");
+        QMessageBox::warning(this, "错误", "未找到连接配置");
         return;
     }
-
     const ConnectionConfig config = m_viewModel->connectionConfig(m_viewModel->currentConnectionAlias());
     openConnectionInternal(m_viewModel->currentConnectionAlias(), config, false);
-    return;
-
-    // 打开串口连接
-    if (config.type == ConnectionType::Serial)
-    {
-        if (!m_serialController)
-        {
-            QMessageBox::warning(this, "警告", "串口控制器未初始化");
-            return;
-        }
-
-        // 创建串口配置
-        SerialConfig serialConfig;
-        serialConfig.portName = config.serialPort;
-        serialConfig.baudRate = config.baudRate;
-        serialConfig.dataBits = QSerialPort::Data8;
-        serialConfig.parity = QSerialPort::EvenParity;
-        serialConfig.stopBits = QSerialPort::OneStop;
-        serialConfig.flowControl = QSerialPort::NoFlowControl;
-
-        if (m_serialController->openPort(serialConfig))
-        {
-            m_viewModel->setConnected(true);
-
-            // 更新设备树连接状态
-            DeviceTreeWidget *deviceTree = deviceTreeWidget();
-            if (deviceTree)
-            {
-                deviceTree->setConnectionStatus(m_viewModel->currentConnectionAlias(), true);
-            }
-
-            // 更新工具栏按钮状态
-            updateCommunicationDialogState();
-
-            // 更新通信交互窗口状态
-            if (m_communicationDialog)
-            {
-                m_communicationDialog->clearAllMessages();
-            }
-
-            // 添加到操作日志
-            if (m_operationLogWidget)
-            {
-                m_operationLogWidget->addSuccess(QString("连接已打开: %1 (端口: %2, 波特率: %3)")
-                                                     .arg(m_viewModel->currentConnectionAlias())
-                                                     .arg(config.serialPort)
-                                                     .arg(config.baudRate));
-            }
-
-            LOG_INFO(QString("Connection opened: %1, Port: %2, BaudRate: %3")
-                         .arg(m_viewModel->currentConnectionAlias())
-                         .arg(config.serialPort)
-                         .arg(config.baudRate));
-        }
-        else
-        {
-            QMessageBox::critical(this, "错误", "打开串口失败");
-
-            // 添加到操作日志
-            if (m_operationLogWidget)
-            {
-                m_operationLogWidget->addError(QString("打开串口失败: %1").arg(config.serialPort));
-            }
-        }
-    }
-    else
-    {
-        QMessageBox::information(this, "提示", "TCP连接功能待实现");
-    }
 }
-
 void MainWindow::onCloseConnection()
 {
     if (!m_viewModel->isConnected())
@@ -1225,46 +1055,16 @@ void MainWindow::onCloseConnection()
         return;
     }
 
-    if (m_serialController && m_serialController->isOpen())
-    {
-        m_serialController->closePort();
-    }
-
-    // 更新连接状态
-    m_viewModel->setConnected(false);
-
-    // 更新设备树连接状态
-    if (m_tcpController && m_tcpController->isOpen())
-    {
-        m_tcpController->closeConnection();
-    }
-
-    if (!m_viewModel->currentConnectionAlias().isEmpty())
-    {
-        DeviceTreeWidget *deviceTree = deviceTreeWidget();
-        if (deviceTree)
-        {
-            deviceTree->setConnectionStatus(m_viewModel->currentConnectionAlias(), false);
-        }
-    }
-
-    // 更新工具栏按钮状态
-    updateToolBarButtons();
-
-    // 更新通信交互窗口状态
-    if (m_communicationDialog)
-    {
-    }
+    const QString connectionAlias = m_viewModel->currentConnectionAlias();
+    closeConnectionInternal(connectionAlias);
 
     // 添加到操作日志
     if (m_operationLogWidget)
     {
-        m_operationLogWidget->addInfo(QString("连接已关闭: %1").arg(m_viewModel->currentConnectionAlias()));
+        m_operationLogWidget->addInfo(QString("连接已关闭: %1").arg(connectionAlias));
     }
 
-    LOG_INFO(QString("Connection closed: %1").arg(m_viewModel->currentConnectionAlias()));
-
-    LOG_INFO(QString("Connection closed: %1").arg(m_viewModel->currentConnectionAlias()));
+    LOG_INFO(QString("Connection closed: %1").arg(connectionAlias));
 }
 
 void MainWindow::onDataUpdated()
@@ -1383,60 +1183,19 @@ void MainWindow::onRawDataSent(const QByteArray &data)
 
 void MainWindow::updateConnectionStatus(bool connected)
 {
-    QStatusBar *statusBar = this->statusBar();
-    Q_UNUSED(statusBar);
     Q_UNUSED(connected);
-
     if (m_connectionStatusLabel)
     {
         m_connectionStatusLabel->setText(m_viewModel->connectionStatusText());
         m_connectionStatusLabel->setStyleSheet(QString("padding: 2px 10px; color: %1;")
                                                    .arg(m_viewModel->connectionStatusColor().name()));
     }
-
     if (m_meterAddressLabel)
     {
         m_meterAddressLabel->setText(m_viewModel->meterAddressText());
     }
-
-    updateToolBarButtons();
-    return;
-
-    // 更新状态标签
-    QList<QLabel *> labels = statusBar->findChildren<QLabel *>();
-    if (!labels.isEmpty())
-    {
-        QLabel *statusLabel = labels.first();
-        if (connected)
-        {
-            statusLabel->setText("已连接");
-            if (m_viewModel->isDarkTheme())
-            {
-                statusLabel->setStyleSheet("padding: 2px 10px; color: #50C878;");
-            }
-            else
-            {
-                statusLabel->setStyleSheet("padding: 2px 10px; color: #50C878;");
-            }
-        }
-        else
-        {
-            statusLabel->setText("未连接");
-            if (m_viewModel->isDarkTheme())
-            {
-                statusLabel->setStyleSheet("padding: 2px 10px; color: #F14C4C;");
-            }
-            else
-            {
-                statusLabel->setStyleSheet("padding: 2px 10px; color: #F14C4C;");
-            }
-        }
-    }
-
-    // 更新工具栏按钮状态
     updateToolBarButtons();
 }
-
 void MainWindow::updateToolBarButtons()
 {
     // 更新连接按钮状态（互斥显示）
@@ -1492,433 +1251,8 @@ QString MainWindow::connectionEndpoint(const ConnectionConfig &config) const
     {
         return config.serialPort;
     }
-
     return QString("%1:%2").arg(config.tcpAddress).arg(config.tcpPort);
 }
-
-#if 0
-#if 0
-#if 0
-ConnectionInfo MainWindow::buildConnectionInfo(const ConnectionConfig &config, bool connected) const
-{
-    ConnectionInfo connectionInfo;
-    connectionInfo.alias = config.alias;
-    connectionInfo.type = (config.type == ConnectionType::Serial) ? "涓插彛" : "TCP";
-    connectionInfo.port = connectionEndpoint(config);
-    connectionInfo.isConnected = connected;
-    connectionInfo.baudRate = config.baudRate;
-    connectionInfo.dataBits = config.dataBits;
-    connectionInfo.stopBits = config.stopBits;
-    connectionInfo.parity = config.parity;
-    connectionInfo.flowControl = config.flowControl;
-    connectionInfo.tcpAddress = config.tcpAddress;
-    connectionInfo.tcpPort = config.tcpPort;
-    return connectionInfo;
-}
-
-bool MainWindow::openConnectionInternal(const QString &connectionAlias, const ConnectionConfig &config, bool addConnectionNode)
-{
-    DeviceTreeWidget *deviceTree = deviceTreeWidget();
-    const QString alias = connectionAlias.isEmpty() ? config.alias : connectionAlias;
-    const QString endpoint = connectionEndpoint(config);
-
-    if (deviceTree && deviceTree->isPortConnected(endpoint))
-    {
-        QMessageBox::warning(this, "閿欒", QString("杩炴帴 %1 宸茶鍗犵敤").arg(endpoint));
-        return false;
-    }
-
-    bool opened = false;
-    if (config.type == ConnectionType::Serial)
-    {
-        if (!m_serialController)
-        {
-            QMessageBox::warning(this, "警告", "串口控制器未初始化");
-            return false;
-        }
-
-        SerialConfig serialConfig;
-        serialConfig.portName = config.serialPort;
-        serialConfig.baudRate = config.baudRate;
-        serialConfig.dataBits = static_cast<QSerialPort::DataBits>(config.dataBits);
-        serialConfig.stopBits = static_cast<QSerialPort::StopBits>(config.stopBits);
-        serialConfig.parity = static_cast<QSerialPort::Parity>(config.parity);
-        serialConfig.flowControl = static_cast<QSerialPort::FlowControl>(config.flowControl);
-        opened = m_serialController->openPort(serialConfig);
-    }
-    else
-    {
-        if (!m_tcpController)
-        {
-            QMessageBox::warning(this, "警告", "TCP控制器未初始化");
-            return false;
-        }
-
-        TcpConfig tcpConfig;
-        tcpConfig.hostAddress = config.tcpAddress;
-        tcpConfig.port = static_cast<quint16>(config.tcpPort);
-        opened = m_tcpController->openConnection(tcpConfig);
-    }
-
-    if (!opened)
-    {
-        const QString errorText = (config.type == ConnectionType::Serial)
-                                      ? QString("鎵撳紑涓插彛澶辫触: %1").arg(endpoint)
-                                      : QString("TCP杩炴帴澶辫触: %1").arg(endpoint);
-        QMessageBox::critical(this, "閿欒", errorText);
-        if (m_operationLogWidget)
-        {
-            m_operationLogWidget->addError(errorText);
-        }
-        return false;
-    }
-
-    if (deviceTree)
-    {
-        if (addConnectionNode)
-        {
-            deviceTree->addConnection(buildConnectionInfo(config, true));
-        }
-        else
-        {
-            deviceTree->setConnectionStatus(alias, true);
-        }
-    }
-
-    m_viewModel->upsertConnectionConfig(config);
-    m_viewModel->setCurrentConnectionAlias(alias);
-    m_viewModel->setConnectionSelected(true);
-    m_viewModel->setConnected(true);
-    updateCommunicationDialogState();
-
-    if (m_communicationDialog)
-    {
-        m_communicationDialog->clearAllMessages();
-    }
-
-    if (m_operationLogWidget)
-    {
-        m_operationLogWidget->addSuccess(QString("杩炴帴宸叉墦寮€: %1 (%2)")
-                                             .arg(alias)
-                                             .arg(endpoint));
-    }
-
-    LOG_INFO(QString("Connection opened: %1, Endpoint: %2")
-                 .arg(alias)
-                 .arg(endpoint));
-    return true;
-}
-
-void MainWindow::closeConnectionInternal(const QString &connectionAlias)
-{
-    const QString alias = connectionAlias.isEmpty() ? m_viewModel->currentConnectionAlias() : connectionAlias;
-
-    if (m_serialController && m_serialController->isOpen())
-    {
-        m_serialController->closePort();
-    }
-
-    if (m_tcpController && m_tcpController->isOpen())
-    {
-        m_tcpController->closeConnection();
-    }
-
-    m_viewModel->setCurrentConnectionAlias(alias);
-    m_viewModel->setConnectionSelected(!alias.isEmpty());
-    m_viewModel->setConnected(false);
-
-    DeviceTreeWidget *deviceTree = deviceTreeWidget();
-    if (deviceTree && !alias.isEmpty())
-    {
-        deviceTree->setConnectionStatus(alias, false);
-    }
-
-    updateToolBarButtons();
-    updateCommunicationDialogState();
-}
-
-#endif
-
-ConnectionInfo MainWindow::buildConnectionInfo(const ConnectionConfig &config, bool connected) const
-{
-    ConnectionInfo connectionInfo;
-    connectionInfo.alias = config.alias;
-    connectionInfo.type = (config.type == ConnectionType::Serial) ? QStringLiteral("串口") : QStringLiteral("TCP");
-    connectionInfo.port = connectionEndpoint(config);
-    connectionInfo.isConnected = connected;
-    connectionInfo.baudRate = config.baudRate;
-    connectionInfo.dataBits = config.dataBits;
-    connectionInfo.stopBits = config.stopBits;
-    connectionInfo.parity = config.parity;
-    connectionInfo.flowControl = config.flowControl;
-    connectionInfo.tcpAddress = config.tcpAddress;
-    connectionInfo.tcpPort = config.tcpPort;
-    return connectionInfo;
-}
-
-bool MainWindow::openConnectionInternal(const QString &connectionAlias, const ConnectionConfig &config, bool addConnectionNode)
-{
-    DeviceTreeWidget *deviceTree = deviceTreeWidget();
-    const QString alias = connectionAlias.isEmpty() ? config.alias : connectionAlias;
-    const QString endpoint = connectionEndpoint(config);
-
-    if (deviceTree && deviceTree->isPortConnected(endpoint))
-    {
-        QMessageBox::warning(this, "错误", QString("连接 %1 已被占用").arg(endpoint));
-        return false;
-    }
-
-    bool opened = false;
-    if (config.type == ConnectionType::Serial)
-    {
-        if (!m_serialController)
-        {
-            QMessageBox::warning(this, "警告", "串口控制器未初始化");
-            return false;
-        }
-
-        SerialConfig serialConfig;
-        serialConfig.portName = config.serialPort;
-        serialConfig.baudRate = config.baudRate;
-        serialConfig.dataBits = static_cast<QSerialPort::DataBits>(config.dataBits);
-        serialConfig.stopBits = static_cast<QSerialPort::StopBits>(config.stopBits);
-        serialConfig.parity = static_cast<QSerialPort::Parity>(config.parity);
-        serialConfig.flowControl = static_cast<QSerialPort::FlowControl>(config.flowControl);
-        opened = m_serialController->openPort(serialConfig);
-    }
-    else
-    {
-        if (!m_tcpController)
-        {
-            QMessageBox::warning(this, "警告", "TCP控制器未初始化");
-            return false;
-        }
-
-        TcpConfig tcpConfig;
-        tcpConfig.hostAddress = config.tcpAddress;
-        tcpConfig.port = static_cast<quint16>(config.tcpPort);
-        opened = m_tcpController->openConnection(tcpConfig);
-    }
-
-    if (!opened)
-    {
-        const QString errorText = (config.type == ConnectionType::Serial)
-                                      ? QString("打开串口失败: %1").arg(endpoint)
-                                      : QString("TCP连接失败: %1").arg(endpoint);
-        QMessageBox::critical(this, "错误", errorText);
-        if (m_operationLogWidget)
-        {
-            m_operationLogWidget->addError(errorText);
-        }
-        return false;
-    }
-
-    if (deviceTree)
-    {
-        if (addConnectionNode)
-        {
-            deviceTree->addConnection(buildConnectionInfo(config, true));
-        }
-        else
-        {
-            deviceTree->setConnectionStatus(alias, true);
-        }
-    }
-
-    m_viewModel->upsertConnectionConfig(config);
-    m_viewModel->setCurrentConnectionAlias(alias);
-    m_viewModel->setConnectionSelected(true);
-    m_viewModel->setConnected(true);
-    updateCommunicationDialogState();
-
-    if (m_communicationDialog)
-    {
-        m_communicationDialog->clearAllMessages();
-    }
-
-    if (m_operationLogWidget)
-    {
-        m_operationLogWidget->addSuccess(QString("连接已打开: %1 (%2)")
-                                             .arg(alias)
-                                             .arg(endpoint));
-    }
-
-    LOG_INFO(QString("Connection opened: %1, Endpoint: %2")
-                 .arg(alias)
-                 .arg(endpoint));
-    return true;
-}
-
-void MainWindow::closeConnectionInternal(const QString &connectionAlias)
-{
-    const QString alias = connectionAlias.isEmpty() ? m_viewModel->currentConnectionAlias() : connectionAlias;
-
-    if (m_serialController && m_serialController->isOpen())
-    {
-        m_serialController->closePort();
-    }
-
-    if (m_tcpController && m_tcpController->isOpen())
-    {
-        m_tcpController->closeConnection();
-    }
-
-    m_viewModel->setCurrentConnectionAlias(alias);
-    m_viewModel->setConnectionSelected(!alias.isEmpty());
-    m_viewModel->setConnected(false);
-
-    DeviceTreeWidget *deviceTree = deviceTreeWidget();
-    if (deviceTree && !alias.isEmpty())
-    {
-        deviceTree->setConnectionStatus(alias, false);
-    }
-
-    updateToolBarButtons();
-    updateCommunicationDialogState();
-}
-
-#endif
-
-ConnectionInfo MainWindow::buildConnectionInfo(const ConnectionConfig &config, bool connected) const
-{
-    ConnectionInfo connectionInfo;
-    connectionInfo.alias = config.alias;
-    connectionInfo.type = (config.type == ConnectionType::Serial) ? QStringLiteral("串口") : QStringLiteral("TCP");
-    connectionInfo.port = connectionEndpoint(config);
-    connectionInfo.isConnected = connected;
-    connectionInfo.baudRate = config.baudRate;
-    connectionInfo.dataBits = config.dataBits;
-    connectionInfo.stopBits = config.stopBits;
-    connectionInfo.parity = config.parity;
-    connectionInfo.flowControl = config.flowControl;
-    connectionInfo.tcpAddress = config.tcpAddress;
-    connectionInfo.tcpPort = config.tcpPort;
-    return connectionInfo;
-}
-
-bool MainWindow::openConnectionInternal(const QString &connectionAlias, const ConnectionConfig &config, bool addConnectionNode)
-{
-    DeviceTreeWidget *deviceTree = deviceTreeWidget();
-    const QString alias = connectionAlias.isEmpty() ? config.alias : connectionAlias;
-    const QString endpoint = connectionEndpoint(config);
-
-    if (deviceTree && deviceTree->isPortConnected(endpoint))
-    {
-        QMessageBox::warning(this, "错误", QString("连接 %1 已被占用").arg(endpoint));
-        return false;
-    }
-
-    bool opened = false;
-    if (config.type == ConnectionType::Serial)
-    {
-        if (!m_serialController)
-        {
-            QMessageBox::warning(this, "警告", "串口控制器未初始化");
-            return false;
-        }
-
-        SerialConfig serialConfig;
-        serialConfig.portName = config.serialPort;
-        serialConfig.baudRate = config.baudRate;
-        serialConfig.dataBits = static_cast<QSerialPort::DataBits>(config.dataBits);
-        serialConfig.stopBits = static_cast<QSerialPort::StopBits>(config.stopBits);
-        serialConfig.parity = static_cast<QSerialPort::Parity>(config.parity);
-        serialConfig.flowControl = static_cast<QSerialPort::FlowControl>(config.flowControl);
-        opened = m_serialController->openPort(serialConfig);
-    }
-    else
-    {
-        if (!m_tcpController)
-        {
-            QMessageBox::warning(this, "警告", "TCP控制器未初始化");
-            return false;
-        }
-
-        TcpConfig tcpConfig;
-        tcpConfig.hostAddress = config.tcpAddress;
-        tcpConfig.port = static_cast<quint16>(config.tcpPort);
-        opened = m_tcpController->openConnection(tcpConfig);
-    }
-
-    if (!opened)
-    {
-        const QString errorText = (config.type == ConnectionType::Serial)
-                                      ? QString("打开串口失败: %1").arg(endpoint)
-                                      : QString("TCP连接失败: %1").arg(endpoint);
-        QMessageBox::critical(this, "错误", errorText);
-        if (m_operationLogWidget)
-        {
-            m_operationLogWidget->addError(errorText);
-        }
-        return false;
-    }
-
-    if (deviceTree)
-    {
-        if (addConnectionNode)
-        {
-            deviceTree->addConnection(buildConnectionInfo(config, true));
-        }
-        else
-        {
-            deviceTree->setConnectionStatus(alias, true);
-        }
-    }
-
-    m_viewModel->upsertConnectionConfig(config);
-    m_viewModel->setCurrentConnectionAlias(alias);
-    m_viewModel->setConnectionSelected(true);
-    m_viewModel->setConnected(true);
-    updateCommunicationDialogState();
-
-    if (m_communicationDialog)
-    {
-        m_communicationDialog->clearAllMessages();
-    }
-
-    if (m_operationLogWidget)
-    {
-        m_operationLogWidget->addSuccess(QString("连接已打开: %1 (%2)")
-                                             .arg(alias)
-                                             .arg(endpoint));
-    }
-
-    LOG_INFO(QString("Connection opened: %1, Endpoint: %2")
-                 .arg(alias)
-                 .arg(endpoint));
-    return true;
-}
-
-void MainWindow::closeConnectionInternal(const QString &connectionAlias)
-{
-    const QString alias = connectionAlias.isEmpty() ? m_viewModel->currentConnectionAlias() : connectionAlias;
-
-    if (m_serialController && m_serialController->isOpen())
-    {
-        m_serialController->closePort();
-    }
-
-    if (m_tcpController && m_tcpController->isOpen())
-    {
-        m_tcpController->closeConnection();
-    }
-
-    m_viewModel->setCurrentConnectionAlias(alias);
-    m_viewModel->setConnectionSelected(!alias.isEmpty());
-    m_viewModel->setConnected(false);
-
-    DeviceTreeWidget *deviceTree = deviceTreeWidget();
-    if (deviceTree && !alias.isEmpty())
-    {
-        deviceTree->setConnectionStatus(alias, false);
-    }
-
-    updateToolBarButtons();
-    updateCommunicationDialogState();
-}
-
-#endif
-
 ConnectionInfo MainWindow::buildConnectionInfo(const ConnectionConfig &config, bool connected) const
 {
     ConnectionInfo connectionInfo;
@@ -1935,19 +1269,16 @@ ConnectionInfo MainWindow::buildConnectionInfo(const ConnectionConfig &config, b
     connectionInfo.tcpPort = config.tcpPort;
     return connectionInfo;
 }
-
 bool MainWindow::openConnectionInternal(const QString &connectionAlias, const ConnectionConfig &config, bool addConnectionNode)
 {
     DeviceTreeWidget *deviceTree = deviceTreeWidget();
     const QString alias = connectionAlias.isEmpty() ? config.alias : connectionAlias;
     const QString endpoint = connectionEndpoint(config);
-
     if (deviceTree && deviceTree->isPortConnected(endpoint))
     {
         QMessageBox::warning(this, "Error", QString("Connection %1 is already in use").arg(endpoint));
         return false;
     }
-
     bool opened = false;
     if (config.type == ConnectionType::Serial)
     {
@@ -1956,7 +1287,6 @@ bool MainWindow::openConnectionInternal(const QString &connectionAlias, const Co
             QMessageBox::warning(this, "Warning", "Serial controller is not initialized");
             return false;
         }
-
         SerialConfig serialConfig;
         serialConfig.portName = config.serialPort;
         serialConfig.baudRate = config.baudRate;
@@ -1973,13 +1303,11 @@ bool MainWindow::openConnectionInternal(const QString &connectionAlias, const Co
             QMessageBox::warning(this, "Warning", "TCP controller is not initialized");
             return false;
         }
-
         TcpConfig tcpConfig;
         tcpConfig.hostAddress = config.tcpAddress;
         tcpConfig.port = static_cast<quint16>(config.tcpPort);
         opened = m_tcpController->openConnection(tcpConfig);
     }
-
     if (!opened)
     {
         const QString errorText = (config.type == ConnectionType::Serial)
@@ -1992,7 +1320,6 @@ bool MainWindow::openConnectionInternal(const QString &connectionAlias, const Co
         }
         return false;
     }
-
     if (deviceTree)
     {
         if (addConnectionNode)
@@ -2004,59 +1331,48 @@ bool MainWindow::openConnectionInternal(const QString &connectionAlias, const Co
             deviceTree->setConnectionStatus(alias, true);
         }
     }
-
     m_viewModel->upsertConnectionConfig(config);
     m_viewModel->setCurrentConnectionAlias(alias);
     m_viewModel->setConnectionSelected(true);
     m_viewModel->setConnected(true);
     updateCommunicationDialogState();
-
     if (m_communicationDialog)
     {
         m_communicationDialog->clearAllMessages();
     }
-
     if (m_operationLogWidget)
     {
         m_operationLogWidget->addSuccess(QString("Connection opened: %1 (%2)")
                                              .arg(alias)
                                              .arg(endpoint));
     }
-
     LOG_INFO(QString("Connection opened: %1, Endpoint: %2")
                  .arg(alias)
                  .arg(endpoint));
     return true;
 }
-
 void MainWindow::closeConnectionInternal(const QString &connectionAlias)
 {
     const QString alias = connectionAlias.isEmpty() ? m_viewModel->currentConnectionAlias() : connectionAlias;
-
     if (m_serialController && m_serialController->isOpen())
     {
         m_serialController->closePort();
     }
-
     if (m_tcpController && m_tcpController->isOpen())
     {
         m_tcpController->closeConnection();
     }
-
     m_viewModel->setCurrentConnectionAlias(alias);
     m_viewModel->setConnectionSelected(!alias.isEmpty());
     m_viewModel->setConnected(false);
-
     DeviceTreeWidget *deviceTree = deviceTreeWidget();
     if (deviceTree && !alias.isEmpty())
     {
         deviceTree->setConnectionStatus(alias, false);
     }
-
     updateToolBarButtons();
     updateCommunicationDialogState();
 }
-
 QStringList MainWindow::collectMeterAddresses() const
 {
     QStringList addresses;
@@ -2179,12 +1495,27 @@ void MainWindow::attachMeterPersistence(MeterModel *meterModel)
         return;
     }
 
-    connect(meterModel, &MeterModel::dataChanged, this, [this, meterModel](const QString &, const QVariant &)
-            { m_meterDataStore->saveMeterData(meterModel); });
+    connect(meterModel, &MeterModel::dataChanged, this, [this, meterModel](const QString &diCode, const QVariant &value)
+            {
+                if (m_meterDataStore->saveMeterData(meterModel))
+                {
+                    LOG_INFO(QString("保存当前数据: 电表地址=%1, DI=%2, 值=%3")
+                                 .arg(meterModel->getMeterAddress(), diCode, value.toString()));
+                } });
     connect(meterModel, &MeterModel::dataBatchChanged, this, [this, meterModel]()
-            { m_meterDataStore->saveMeterData(meterModel); });
-    connect(meterModel, &MeterModel::addressChanged, this, [this, meterModel](const QString &)
-            { m_meterDataStore->saveMeterData(meterModel); });
+            {
+                if (m_meterDataStore->saveMeterData(meterModel))
+                {
+                    LOG_INFO(QString("当前电表数据已批量保存到数据库: 电表地址=%1")
+                                 .arg(meterModel->getMeterAddress()));
+                } });
+    connect(meterModel, &MeterModel::addressChanged, this, [this, meterModel](const QString &newAddress)
+            {
+                if (m_meterDataStore->saveMeterData(meterModel))
+                {
+                    LOG_INFO(QString("电表地址更改后已保存到数据库: 电表地址=%1")
+                                 .arg(newAddress));
+                } });
 }
 
 MeterModel *MainWindow::createMeterModel(const MeterInfo &meterInfo)
@@ -2463,114 +1794,27 @@ void MainWindow::onMeterInfoSelected(const MeterInfo &meterInfo)
 
 void MainWindow::onOpenConnectionRequested(const QString &connectionAlias)
 {
-    // 检查是否已经有连接打开
     if (m_viewModel->isConnected())
     {
         QMessageBox::information(this, "提示", "已经有连接打开，请先关闭现有连接");
         return;
     }
-
-    // 检查连接配置是否存在
     if (!m_viewModel->hasConnectionConfig(connectionAlias))
     {
         QMessageBox::warning(this, "错误", "未找到连接配置");
         return;
     }
-
-    // 获取连接配置
     const ConnectionConfig config = m_viewModel->connectionConfig(connectionAlias);
     openConnectionInternal(connectionAlias, config, false);
-    return;
-
-    if (config.type == ConnectionType::Serial)
-    {
-        // 检查端口是否已被连接
-        DeviceTreeWidget *deviceTree = deviceTreeWidget();
-        if (deviceTree && deviceTree->isPortConnected(config.serialPort))
-        {
-            QMessageBox::warning(this, "错误", QString("串口 %1 已被连接，请先关闭现有连接").arg(config.serialPort));
-            return;
-        }
-
-        // 打开串口连接
-        SerialConfig serialConfig;
-        serialConfig.portName = config.serialPort;
-        serialConfig.baudRate = config.baudRate;
-        serialConfig.dataBits = static_cast<QSerialPort::DataBits>(config.dataBits);
-        serialConfig.stopBits = static_cast<QSerialPort::StopBits>(config.stopBits);
-        serialConfig.parity = static_cast<QSerialPort::Parity>(config.parity);
-
-        if (m_serialController->openPort(serialConfig))
-        {
-            LOG_INFO(QString("Serial port opened: %1, %2 baud")
-                         .arg(config.serialPort)
-                         .arg(config.baudRate));
-
-            // 更新设备树中的连接状态
-            if (deviceTree)
-            {
-                deviceTree->setConnectionStatus(connectionAlias, true);
-            }
-
-            // 保存当前连接别名并更新连接状态
-            m_viewModel->setCurrentConnectionAlias(connectionAlias);
-            m_viewModel->setConnectionSelected(true);
-            m_viewModel->setConnected(true);
-        }
-        else
-        {
-            QMessageBox::warning(this, "错误", "无法打开串口");
-        }
-    }
-    else
-    {
-        // TCP连接功能待实现
-        QMessageBox::information(this, "提示",
-                                 "TCP连接功能待实现\n"
-                                 "IP: " +
-                                     config.tcpAddress + "\n"
-                                                         "Port: " +
-                                     QString::number(config.tcpPort));
-    }
 }
 
 void MainWindow::onCloseConnectionRequested(const QString &connectionAlias)
 {
-#if 0
-    if (!m_viewModel->isConnected())
-    {
-        QMessageBox::information(this, "鎻愮ず", "杩炴帴宸茬粡鍏抽棴");
-        return;
-    }
-
-    closeConnectionInternal(connectionAlias);
-    return;
-
     if (!m_viewModel->isConnected())
     {
         QMessageBox::information(this, "提示", "连接已经关闭");
         return;
     }
-
-    if (m_serialController && m_serialController->isOpen())
-    {
-        m_serialController->closePort();
-    }
-
-    // 更新设备树中的连接状态
-    DeviceTreeWidget *deviceTree = deviceTreeWidget();
-    if (deviceTree)
-    {
-        deviceTree->setConnectionStatus(connectionAlias, false);
-    }
-#endif
-
-    if (!m_viewModel->isConnected())
-    {
-        QMessageBox::information(this, "提示", "连接已经关闭");
-        return;
-    }
-
     closeConnectionInternal(connectionAlias);
 }
 
@@ -2783,7 +2027,7 @@ void MainWindow::onNewMeterRequested(const QString &connectionAlias)
             return;
         }
 
-        // 创建MeterInfo结构体
+        // 创建 MeterInfo 结构体
         MeterInfo meterInfo;
         meterInfo.alias = config.alias;
         meterInfo.address = config.address;
