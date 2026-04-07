@@ -2,6 +2,7 @@
 #include <QRandomGenerator>
 #include <QDateTime>
 #include <QDebug>
+#include <QSet>
 #include <cmath>
 
 namespace
@@ -99,6 +100,10 @@ namespace
 
             spec.valid = true;
             spec.integerDigits = digitsBeforeDecimal;
+            if (spec.allowNegative && decimalIndex == 0)
+            {
+                spec.integerDigits += 2;
+            }
             spec.decimalDigits = digitsAfterDecimal;
             return spec;
         }
@@ -195,9 +200,9 @@ namespace
         return std::round(value * scale) / scale;
     }
 
-    void synchronizeFreezeGroupTotal(QMap<QString, DataItem> &items,
-                                     const QString &totalCode,
-                                     const QStringList &rateCodes)
+    void synchronizeGroupTotal(QMap<QString, DataItem> &items,
+                               const QString &totalCode,
+                               const QStringList &rateCodes)
     {
         if (!items.contains(totalCode))
         {
@@ -221,12 +226,48 @@ namespace
         totalItem.value = spec.valid ? normalizeValueForFormat(roundedSum, spec) : QVariant(roundedSum);
     }
 
+    void synchronizeCurrentEnergyTotals(QMap<QString, DataItem> &items)
+    {
+        const QStringList energyPrefixes = {
+            "0x0000",
+            "0x0001",
+            "0x0002",
+            "0x0003",
+            "0x0004",
+            "0x0005",
+            "0x0006",
+            "0x0007",
+            "0x0008",
+            "0x0009",
+            "0x000A"};
+
+        for (const QString &prefix : energyPrefixes)
+        {
+            synchronizeGroupTotal(items,
+                                  prefix + "0000",
+                                  {prefix + "0100", prefix + "0200", prefix + "0300", prefix + "0400"});
+        }
+    }
+
     void synchronizeDailyFreezeTotals(QMap<QString, DataItem> &items)
     {
-        synchronizeFreezeGroupTotal(items, "0x05060100", {"0x05060102", "0x05060103", "0x05060104", "0x05060105"});
-        synchronizeFreezeGroupTotal(items, "0x05060200", {"0x05060202", "0x05060203", "0x05060204", "0x05060205"});
-        synchronizeFreezeGroupTotal(items, "0x05060300", {"0x05060302", "0x05060303", "0x05060304", "0x05060305"});
-        synchronizeFreezeGroupTotal(items, "0x05060400", {"0x05060402", "0x05060403", "0x05060404", "0x05060405"});
+        synchronizeGroupTotal(items, "0x05060100", {"0x05060102", "0x05060103", "0x05060104", "0x05060105"});
+        synchronizeGroupTotal(items, "0x05060200", {"0x05060202", "0x05060203", "0x05060204", "0x05060205"});
+        synchronizeGroupTotal(items, "0x05060300", {"0x05060302", "0x05060303", "0x05060304", "0x05060305"});
+        synchronizeGroupTotal(items, "0x05060400", {"0x05060402", "0x05060403", "0x05060404", "0x05060405"});
+    }
+
+    void synchronizeInstantaneousPowerTotals(QMap<QString, DataItem> &items)
+    {
+        synchronizeGroupTotal(items, "0x02030000", {"0x02030100", "0x02030200", "0x02030300"});
+        synchronizeGroupTotal(items, "0x02040000", {"0x02040100", "0x02040200", "0x02040300"});
+        synchronizeGroupTotal(items, "0x02050000", {"0x02050100", "0x02050200", "0x02050300"});
+    }
+
+    void synchronizeDemandTotals(QMap<QString, DataItem> &items)
+    {
+        synchronizeGroupTotal(items, "0x01010000", {"0x01010100", "0x01010200", "0x01010300", "0x01010400"});
+        synchronizeGroupTotal(items, "0x01020000", {"0x01020100", "0x01020200", "0x01020300", "0x01020400"});
     }
 
     QString compactDateTimeToMinutes(const QDateTime &dateTime)
@@ -237,8 +278,168 @@ namespace
     QString compactDateWithWeek(const QDate &date)
     {
         const int weekCode = date.dayOfWeek() % 7;
-        return date.toString(QStringLiteral("yyMMdd"))
-               + QStringLiteral("%1").arg(weekCode, 2, 10, QChar('0'));
+        return date.toString(QStringLiteral("yyMMdd")) + QStringLiteral("%1").arg(weekCode, 2, 10, QChar('0'));
+    }
+
+    void randomizeDataItems(QMap<QString, DataItem> &items,
+                            const QString &meterAddress,
+                            const QSet<QString> *targetCodes = nullptr)
+    {
+        QRandomGenerator *rng = QRandomGenerator::global();
+
+        for (auto it = items.begin(); it != items.end(); ++it)
+        {
+            DataItem &item = it.value();
+            if (targetCodes && !targetCodes->contains(item.diCode))
+            {
+                continue;
+            }
+
+            if (isDataBlockItem(item))
+            {
+                continue;
+            }
+
+            if (item.diCode == "0x04000000" || item.diCode == "0x04000401")
+            {
+                item.value = meterAddress;
+                continue;
+            }
+
+            if (item.diCode == "0x04000101")
+            {
+                item.value = compactDateWithWeek(QDate::currentDate().addDays(-rng->bounded(0, 7)));
+                continue;
+            }
+
+            if (item.diCode == "0x04000102")
+            {
+                item.value = QTime::currentTime().addSecs(rng->bounded(0, 24 * 60 * 60)).toString(QStringLiteral("HHmmss"));
+                continue;
+            }
+
+            if (item.format == "AA,AA,AA,AA,AA" && (item.description.contains(QStringLiteral("鏃堕棿")) || item.description.contains(QStringLiteral("鍙戠敓"))))
+            {
+                const QDateTime randomTime = QDateTime::currentDateTime().addSecs(-rng->bounded(0, 30 * 24 * 60 * 60));
+                item.value = compactDateTimeToMinutes(randomTime);
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x01") && item.diCode.endsWith("01") && item.format == "AA,AA,AA,AA,AA")
+            {
+                const QDateTime randomTime = QDateTime::currentDateTime().addSecs(-rng->bounded(1, 24 * 60 * 60 + 1));
+                item.value = compactDateTimeToMinutes(randomTime);
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x06") && item.format == "AA,AA")
+            {
+                const int duration = rng->bounded(1, 60);
+                const int unitCode = (rng->bounded(0, 2) == 0) ? 2 : 3;
+                item.value = QStringLiteral("%1%2")
+                                 .arg(duration, 2, 10, QChar('0'))
+                                 .arg(unitCode, 2, 10, QChar('0'));
+                continue;
+            }
+
+            const QVariant originalValue = item.value;
+            const NumericFormatSpec formatSpec = parseNumericFormatSpec(item.format);
+            bool variableValueHandled = false;
+
+            if (item.diCode.startsWith("0x0202") || item.diCode == "0x02080001")
+            {
+                item.value = rng->bounded(0, 10000) / 1000.0;
+                variableValueHandled = true;
+            }
+            else if (item.diCode.startsWith("0x0203"))
+            {
+                item.value = rng->bounded(0, 300001) / 10000.0;
+                variableValueHandled = true;
+            }
+            else if (item.diCode.startsWith("0x0204"))
+            {
+                item.value = rng->bounded(-300000, 300001) / 10000.0;
+                variableValueHandled = true;
+            }
+            else if (item.diCode.startsWith("0x0205"))
+            {
+                item.value = rng->bounded(0, 300001) / 10000.0;
+                variableValueHandled = true;
+            }
+            else if (item.diCode.startsWith("0x0206"))
+            {
+                item.value = formatSpec.allowNegative
+                                 ? rng->bounded(-1000, 1001) / 1000.0
+                                 : rng->bounded(0, 1001) / 1000.0;
+                variableValueHandled = true;
+            }
+            else if (item.diCode.startsWith("0x0207"))
+            {
+                item.value = rng->bounded(0, 3600) / 10.0;
+                variableValueHandled = true;
+            }
+            else if (item.diCode == "0x02800002")
+            {
+                item.value = 50.0 + (rng->bounded(-50, 51) / 10.0);
+                variableValueHandled = true;
+            }
+
+            if (!variableValueHandled && item.diCode.startsWith("0x0201"))
+            {
+                if (item.diCode.contains("0100") || item.diCode.contains("0200") || item.diCode.contains("0300"))
+                {
+                    item.value = 220.0 + (rng->bounded(-2200, 2200) / 100.0);
+                }
+                else if (item.diCode.contains("0101") || item.diCode.contains("0201") || item.diCode.contains("0202"))
+                {
+                    item.value = rng->bounded(0, 10000) / 1000.0;
+                }
+                else if (item.diCode.contains("0300"))
+                {
+                    item.value = rng->bounded(0, 100000) / 10000.0;
+                }
+                else if (item.diCode.contains("0600"))
+                {
+                    item.value = formatSpec.allowNegative
+                                     ? rng->bounded(-1000, 1000) / 1000.0
+                                     : rng->bounded(0, 1000) / 1000.0;
+                }
+                else if (item.diCode.contains("0701"))
+                {
+                    item.value = rng->bounded(0, 3600) / 10.0;
+                }
+                else if (item.diCode.contains("00002"))
+                {
+                    item.value = 50.0 + (rng->bounded(-50, 50) / 10.0);
+                }
+                else
+                {
+                    item.value = rng->bounded(0, 1000) / 10.0;
+                }
+            }
+            else if (!variableValueHandled && item.diCode.startsWith("0x00"))
+            {
+                item.value = item.value.toDouble() + rng->bounded(0, 100) / 100.0;
+            }
+            else if (!variableValueHandled)
+            {
+                item.value = rng->bounded(0, 10000) / 100.0;
+            }
+
+            if (formatSpec.valid)
+            {
+                item.value = normalizeValueForFormat(item.value, formatSpec);
+            }
+            else
+            {
+                item.value = originalValue;
+            }
+        }
+
+        synchronizeDemandTotals(items);
+        synchronizeInstantaneousPowerTotals(items);
+        synchronizeCurrentEnergyTotals(items);
+        synchronizeDailyFreezeTotals(items);
     }
 }
 MeterModel::MeterModel(QObject *parent)
@@ -458,8 +659,7 @@ QVariant MeterModel::getDataValue(const QString &diCode) const
                     }
                 }
             }
-            else if (diCode == "0x05060101" || diCode == "0x05060201"
-                     || diCode == "0x05060301" || diCode == "0x05060401")
+            else if (diCode == "0x05060101" || diCode == "0x05060201" || diCode == "0x05060301" || diCode == "0x05060401")
             {
                 const QString basePrefix = diCode.left(8);
                 const QStringList codes = {basePrefix + "05",
@@ -500,10 +700,19 @@ bool MeterModel::setDataValue(const QString &diCode, const QVariant &value)
         if (m_dataItems.contains(diCode))
         {
             m_dataItems[diCode].value = value;
-            if (diCode.startsWith("0x050601")
-                || diCode.startsWith("0x050602")
-                || diCode.startsWith("0x050603")
-                || diCode.startsWith("0x050604"))
+            if (diCode.startsWith("0x00"))
+            {
+                synchronizeCurrentEnergyTotals(m_dataItems);
+            }
+            if (diCode.startsWith("0x0101") || diCode.startsWith("0x0102"))
+            {
+                synchronizeDemandTotals(m_dataItems);
+            }
+            if (diCode.startsWith("0x0203") || diCode.startsWith("0x0204") || diCode.startsWith("0x0205"))
+            {
+                synchronizeInstantaneousPowerTotals(m_dataItems);
+            }
+            if (diCode.startsWith("0x050601") || diCode.startsWith("0x050602") || diCode.startsWith("0x050603") || diCode.startsWith("0x050604"))
             {
                 synchronizeDailyFreezeTotals(m_dataItems);
             }
@@ -517,6 +726,41 @@ bool MeterModel::setDataValue(const QString &diCode, const QVariant &value)
     }
 
     return updated;
+}
+
+void MeterModel::applyPersistedData(const QMap<QString, QVariant> &dataSnapshot)
+{
+    if (dataSnapshot.isEmpty())
+    {
+        return;
+    }
+
+    {
+        QMutexLocker locker(&m_mutex);
+        for (auto it = dataSnapshot.constBegin(); it != dataSnapshot.constEnd(); ++it)
+        {
+            if (m_dataItems.contains(it.key()))
+            {
+                m_dataItems[it.key()].value = it.value();
+            }
+        }
+
+        if (m_dataItems.contains("0x04000000"))
+        {
+            m_dataItems["0x04000000"].value = m_meterAddress;
+        }
+        if (m_dataItems.contains("0x04000401"))
+        {
+            m_dataItems["0x04000401"].value = m_meterAddress;
+        }
+
+        synchronizeDemandTotals(m_dataItems);
+        synchronizeInstantaneousPowerTotals(m_dataItems);
+        synchronizeCurrentEnergyTotals(m_dataItems);
+        synchronizeDailyFreezeTotals(m_dataItems);
+    }
+
+    emit dataBatchChanged();
 }
 
 QList<DataItem> MeterModel::getDataItemsByCategory(DataCategory category) const
@@ -569,6 +813,14 @@ QList<DataItem> MeterModel::getAllDataItems() const
 
 void MeterModel::resetAllData()
 {
+    {
+        QMutexLocker locker(&m_mutex);
+        m_dataItems.clear();
+        initializeDefaultDataItems();
+    }
+    emit dataBatchChanged();
+    return;
+
     QMutexLocker locker(&m_mutex);
     for (auto it = m_dataItems.begin(); it != m_dataItems.end(); ++it)
     {
@@ -579,6 +831,10 @@ void MeterModel::resetAllData()
 void MeterModel::randomizeData()
 {
     QMutexLocker locker(&m_mutex);
+    randomizeDataItems(m_dataItems, m_meterAddress);
+    locker.unlock();
+    emit dataBatchChanged();
+    return;
     QRandomGenerator *rng = QRandomGenerator::global();
 
     for (auto it = m_dataItems.begin(); it != m_dataItems.end(); ++it)
@@ -607,9 +863,7 @@ void MeterModel::randomizeData()
             continue;
         }
 
-        if (item.format == "AA,AA,AA,AA,AA"
-            && (item.description.contains(QStringLiteral("时间"))
-                || item.description.contains(QStringLiteral("发生"))))
+        if (item.format == "AA,AA,AA,AA,AA" && (item.description.contains(QStringLiteral("时间")) || item.description.contains(QStringLiteral("发生"))))
         {
             const QDateTime randomTime = QDateTime::currentDateTime().addSecs(-rng->bounded(0, 30 * 24 * 60 * 60));
             item.value = compactDateTimeToMinutes(randomTime);
@@ -628,8 +882,47 @@ void MeterModel::randomizeData()
 
         const QVariant originalValue = item.value;
         const NumericFormatSpec formatSpec = parseNumericFormatSpec(item.format);
+        bool variableValueHandled = false;
 
-        if (item.diCode.startsWith("0x02"))
+        if (item.diCode.startsWith("0x0202") || item.diCode == "0x02080001")
+        {
+            item.value = rng->bounded(0, 10000) / 1000.0;
+            variableValueHandled = true;
+        }
+        else if (item.diCode.startsWith("0x0203"))
+        {
+            item.value = rng->bounded(0, 300001) / 10000.0;
+            variableValueHandled = true;
+        }
+        else if (item.diCode.startsWith("0x0204"))
+        {
+            item.value = rng->bounded(-300000, 300001) / 10000.0;
+            variableValueHandled = true;
+        }
+        else if (item.diCode.startsWith("0x0205"))
+        {
+            item.value = rng->bounded(0, 300001) / 10000.0;
+            variableValueHandled = true;
+        }
+        else if (item.diCode.startsWith("0x0206"))
+        {
+            item.value = formatSpec.allowNegative
+                             ? rng->bounded(-1000, 1001) / 1000.0
+                             : rng->bounded(0, 1001) / 1000.0;
+            variableValueHandled = true;
+        }
+        else if (item.diCode.startsWith("0x0207"))
+        {
+            item.value = rng->bounded(0, 3600) / 10.0;
+            variableValueHandled = true;
+        }
+        else if (item.diCode == "0x02800002")
+        {
+            item.value = 50.0 + (rng->bounded(-50, 51) / 10.0);
+            variableValueHandled = true;
+        }
+
+        if (!variableValueHandled && item.diCode.startsWith("0x0201"))
         {
             // 变量数据：在合理范围内随机
             if (item.diCode.contains("0100") || item.diCode.contains("0200") || item.diCode.contains("0300"))
@@ -669,12 +962,12 @@ void MeterModel::randomizeData()
                 item.value = rng->bounded(0, 1000) / 10.0;
             }
         }
-        else if (item.diCode.startsWith("0x00"))
+        else if (!variableValueHandled && item.diCode.startsWith("0x00"))
         {
             // 电能量数据：累加
             item.value = item.value.toDouble() + rng->bounded(0, 100) / 100.0;
         }
-        else
+        else if (!variableValueHandled)
         {
             // 其他数据：随机生成
             item.value = rng->bounded(0, 10000) / 100.0;
@@ -690,7 +983,22 @@ void MeterModel::randomizeData()
         }
     }
 
+    synchronizeInstantaneousPowerTotals(m_dataItems);
+    synchronizeCurrentEnergyTotals(m_dataItems);
     synchronizeDailyFreezeTotals(m_dataItems);
+}
+
+void MeterModel::randomizeData(const QList<QString> &diCodes)
+{
+    QMutexLocker locker(&m_mutex);
+    const QSet<QString> targetCodes(diCodes.begin(), diCodes.end());
+    if (targetCodes.isEmpty())
+    {
+        return;
+    }
+    randomizeDataItems(m_dataItems, m_meterAddress, &targetCodes);
+    locker.unlock();
+    emit dataBatchChanged();
 }
 
 void MeterModel::initializeDefaultDataItems()
@@ -714,14 +1022,14 @@ void MeterModel::initializeEnergyData()
     m_dataItems["0x00000200"] = DataItem("0x00000200", "(当前)组合有功费率2电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00000300"] = DataItem("0x00000300", "(当前)组合有功费率3电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00000400"] = DataItem("0x00000400", "(当前)组合有功费率4电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
-    m_dataItems["0x0000FF00"] = DataItem("0x0000FF00", "(当前)组合有功电能数据块", 0.0, "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
+    m_dataItems["0x0000FF00"] = DataItem("0x0000FF00", "(当前)组合有功电能数据块", QVariantList(), "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
     // 2. 正向有功电能 [0001]
     m_dataItems["0x00010000"] = DataItem("0x00010000", "(当前)正向有功总电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00010100"] = DataItem("0x00010100", "(当前)正向有功费率1电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00010200"] = DataItem("0x00010200", "(当前)正向有功费率2电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00010300"] = DataItem("0x00010300", "(当前)正向有功费率3电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00010400"] = DataItem("0x00010400", "(当前)正向有功费率4电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
-    m_dataItems["0x0001FF00"] = DataItem("0x0001FF00", "(当前)正向有功电能数据块", 0.0, "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
+    m_dataItems["0x0001FF00"] = DataItem("0x0001FF00", "(当前)正向有功电能数据块", QVariantList(), "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
 
     // 3. 反向有功电能 [0002]
     m_dataItems["0x00020000"] = DataItem("0x00020000", "(当前)反向有功总电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
@@ -729,7 +1037,7 @@ void MeterModel::initializeEnergyData()
     m_dataItems["0x00020200"] = DataItem("0x00020200", "(当前)反向有功费率2电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00020300"] = DataItem("0x00020300", "(当前)反向有功费率3电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00020400"] = DataItem("0x00020400", "(当前)反向有功费率4电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
-    m_dataItems["0x0002FF00"] = DataItem("0x0002FF00", "(当前)反向有功电能数据块", 0.0, "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
+    m_dataItems["0x0002FF00"] = DataItem("0x0002FF00", "(当前)反向有功电能数据块", QVariantList(), "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
 
     // 4. 组合无功 1 电能 [0003]
     m_dataItems["0x00030000"] = DataItem("0x00030000", "(当前)组合无功1总电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
@@ -737,7 +1045,7 @@ void MeterModel::initializeEnergyData()
     m_dataItems["0x00030200"] = DataItem("0x00030200", "(当前)组合无功1费率2电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00030300"] = DataItem("0x00030300", "(当前)组合无功1费率3电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00030400"] = DataItem("0x00030400", "(当前)组合无功1费率4电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
-    m_dataItems["0x0003FF00"] = DataItem("0x0003FF00", "(当前)组合无功1电能数据块", 0.0, "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
+    m_dataItems["0x0003FF00"] = DataItem("0x0003FF00", "(当前)组合无功1电能数据块", QVariantList(), "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
 
     // 5. 组合无功 2 电能 [0004]
     m_dataItems["0x00040000"] = DataItem("0x00040000", "(当前)组合无功2总电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
@@ -745,7 +1053,7 @@ void MeterModel::initializeEnergyData()
     m_dataItems["0x00040200"] = DataItem("0x00040200", "(当前)组合无功2费率2电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00040300"] = DataItem("0x00040300", "(当前)组合无功2费率3电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00040400"] = DataItem("0x00040400", "(当前)组合无功2费率4电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
-    m_dataItems["0x0004FF00"] = DataItem("0x0004FF00", "(当前)组合无功2电能数据块", 0.0, "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
+    m_dataItems["0x0004FF00"] = DataItem("0x0004FF00", "(当前)组合无功2电能数据块", QVariantList(), "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
 
     // 6. 四象限无功电能 [0005-0008]
     // 第一象限无功电能 [0005]
@@ -754,7 +1062,7 @@ void MeterModel::initializeEnergyData()
     m_dataItems["0x00050200"] = DataItem("0x00050200", "(当前)第一象限无功费率2电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00050300"] = DataItem("0x00050300", "(当前)第一象限无功费率3电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00050400"] = DataItem("0x00050400", "(当前)第一象限无功费率4电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
-    m_dataItems["0x0005FF00"] = DataItem("0x0005FF00", "(当前)第一象限无功电能数据块", 0.0, "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
+    m_dataItems["0x0005FF00"] = DataItem("0x0005FF00", "(当前)第一象限无功电能数据块", QVariantList(), "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
 
     // 第二象限无功电能 [0006]
     m_dataItems["0x00060000"] = DataItem("0x00060000", "(当前)第二象限无功总电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
@@ -762,7 +1070,7 @@ void MeterModel::initializeEnergyData()
     m_dataItems["0x00060200"] = DataItem("0x00060200", "(当前)第二象限无功费率2电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00060300"] = DataItem("0x00060300", "(当前)第二象限无功费率3电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00060400"] = DataItem("0x00060400", "(当前)第二象限无功费率4电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
-    m_dataItems["0x0006FF00"] = DataItem("0x0006FF00", "(当前)第二象限无功电能数据块", 0.0, "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
+    m_dataItems["0x0006FF00"] = DataItem("0x0006FF00", "(当前)第二象限无功电能数据块", QVariantList(), "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
 
     // 第三象限无功电能 [0007]
     m_dataItems["0x00070000"] = DataItem("0x00070000", "(当前)第三象限无功总电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
@@ -770,7 +1078,7 @@ void MeterModel::initializeEnergyData()
     m_dataItems["0x00070200"] = DataItem("0x00070200", "(当前)第三象限无功费率2电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00070300"] = DataItem("0x00070300", "(当前)第三象限无功费率3电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00070400"] = DataItem("0x00070400", "(当前)第三象限无功费率4电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
-    m_dataItems["0x0007FF00"] = DataItem("0x0007FF00", "(当前)第三象限无功电能数据块", 0.0, "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
+    m_dataItems["0x0007FF00"] = DataItem("0x0007FF00", "(当前)第三象限无功电能数据块", QVariantList(), "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
 
     // 第四象限无功电能 [0008]
     m_dataItems["0x00080000"] = DataItem("0x00080000", "(当前)第四象限无功总电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
@@ -778,7 +1086,7 @@ void MeterModel::initializeEnergyData()
     m_dataItems["0x00080200"] = DataItem("0x00080200", "(当前)第四象限无功费率2电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00080300"] = DataItem("0x00080300", "(当前)第四象限无功费率3电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00080400"] = DataItem("0x00080400", "(当前)第四象限无功费率4电能", 0.0, "kvarh", "F9,AA,AA,.,AA", false, 2);
-    m_dataItems["0x0008FF00"] = DataItem("0x0008FF00", "(当前)第四象限无功电能数据块", 0.0, "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
+    m_dataItems["0x0008FF00"] = DataItem("0x0008FF00", "(当前)第四象限无功电能数据块", QVariantList(), "-", "F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA:F9,AA,AA,.,AA", false, 2);
 
     // 7. 视在电能 [0009-000A]
     // 正向视在电能 [0009]
@@ -821,6 +1129,7 @@ void MeterModel::initializeEnergyData()
     m_dataItems["0x00950000"] = DataItem("0x00950000", "(当前)A相反向有功基波电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00960000"] = DataItem("0x00960000", "(当前)A相正向有功谐波电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
     m_dataItems["0x00970000"] = DataItem("0x00970000", "(当前)A相反向有功谐波电能", 0.0, "kWh", "F9,AA,AA,.,AA", false, 2);
+    synchronizeCurrentEnergyTotals(m_dataItems);
 }
 
 void MeterModel::initializeDemandData()
@@ -828,7 +1137,7 @@ void MeterModel::initializeDemandData()
     // 最大需量及发生时间 (0x01xxxxxx)
     const QDateTime now = QDateTime::currentDateTime();
 
-    m_dataItems["0x01010000"] = DataItem("0x01010000", "(当前)正向有功总最大需量", 12.3456, "kW", "AA,.,AA,AA", false, 4);
+    m_dataItems["0x01010000"] = DataItem("0x01010000", "(当前)正向有功总最大需量", 36.3985, "kW", "AA,AA,.,AA,AA", false, 4);
     m_dataItems["0x01010001"] = DataItem("0x01010001", "(当前)正向有功总最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-5 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
     m_dataItems["0x01010100"] = DataItem("0x01010100", "(当前)正向有功费率1最大需量", 10.1023, "kW", "AA,.,AA,AA", false, 4);
     m_dataItems["0x01010101"] = DataItem("0x01010101", "(当前)正向有功费率1最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-4 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
@@ -840,7 +1149,7 @@ void MeterModel::initializeDemandData()
     m_dataItems["0x01010401"] = DataItem("0x01010401", "(当前)正向有功费率4最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-1 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
     m_dataItems["0x0101FF00"] = DataItem("0x0101FF00", "(当前)正向有功最大需量及发生时间数据块", QVariantList(), "-", "AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA", false, 0);
 
-    m_dataItems["0x01020000"] = DataItem("0x01020000", "(当前)反向有功总最大需量", 6.5432, "kW", "AA,.,AA,AA", false, 4);
+    m_dataItems["0x01020000"] = DataItem("0x01020000", "(当前)反向有功总最大需量", 15.0738, "kW", "AA,AA,.,AA,AA", false, 4);
     m_dataItems["0x01020001"] = DataItem("0x01020001", "(当前)反向有功总最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-10 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
     m_dataItems["0x01020100"] = DataItem("0x01020100", "(当前)反向有功费率1最大需量", 5.4321, "kW", "AA,.,AA,AA", false, 4);
     m_dataItems["0x01020101"] = DataItem("0x01020101", "(当前)反向有功费率1最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-9 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
@@ -851,6 +1160,7 @@ void MeterModel::initializeDemandData()
     m_dataItems["0x01020400"] = DataItem("0x01020400", "(当前)反向有功费率4最大需量", 2.1098, "kW", "AA,.,AA,AA", false, 4);
     m_dataItems["0x01020401"] = DataItem("0x01020401", "(当前)反向有功费率4最大需量发生时间", compactDateTimeToMinutes(now.addSecs(-6 * 60 * 60)), "-", "AA,AA,AA,AA,AA", false, 0);
     m_dataItems["0x0102FF00"] = DataItem("0x0102FF00", "(当前)反向有功最大需量及发生时间数据块", QVariantList(), "-", "AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA:AA,AA,AA,AA,AA:AA,.,AA,AA", false, 0);
+    synchronizeDemandTotals(m_dataItems);
 }
 
 void MeterModel::initializeVariableData()
@@ -860,50 +1170,51 @@ void MeterModel::initializeVariableData()
     m_dataItems["0x02010100"] = DataItem("0x02010100", "A相电压", 20.1, "V", "AA,xx", false, 1);
     m_dataItems["0x02010200"] = DataItem("0x02010200", "B相电压", 220.2, "V", "AA,xx", false, 1);
     m_dataItems["0x02010300"] = DataItem("0x02010300", "C相电压", 220.3, "V", "AA,xx", false, 1);
-    m_dataItems["0x0201FF00"] = DataItem("0x02010400", "电压数据块", 0.0, "-", "AA,xx:AA,xx:AA,xx", false, 1);
+    m_dataItems["0x0201FF00"] = DataItem("0x02010400", "电压数据块", QVariantList(), "-", "AA,xx:AA,xx:AA,xx", false, 1);
 
     // 电流
     m_dataItems["0x02020100"] = DataItem("0x02020100", "A相电流", 1.01, "A", "AA,xx,AA", false, 3);
     m_dataItems["0x02020200"] = DataItem("0x02020200", "B相电流", 1.023, "A", "AA,xx,AA", false, 3);
     m_dataItems["0x02020300"] = DataItem("0x02020300", "C相电流", 1.1, "A", "AA,xx,AA", false, 3);
-    m_dataItems["0x0202FF00"] = DataItem("0x0202FF00", "电流数据块", 0.0, "-", "AA,xx,AA:AA,xx,AA:AA,xx,AA", false, 3);
+    m_dataItems["0x0202FF00"] = DataItem("0x0202FF00", "电流数据块", QVariantList(), "-", "AA,xx,AA:AA,xx,AA:AA,xx,AA", false, 3);
 
     // 功率
     m_dataItems["0x02030000"] = DataItem("0x02030000", "瞬时总有功功率", 0.0, "kW", "AA,.,AA,AA", false, 4);
     m_dataItems["0x02030100"] = DataItem("0x02030100", "瞬时A相有功功率", 0.0, "kW", "AA,.,AA,AA", false, 4);
     m_dataItems["0x02030200"] = DataItem("0x02030200", "瞬时B相有功功率", 0.0, "kW", "AA,.,AA,AA", false, 4);
     m_dataItems["0x02030300"] = DataItem("0x02030300", "瞬时C相有功功率", 0.0, "kW", "AA,.,AA,AA", false, 4);
-    m_dataItems["0x0203FF00"] = DataItem("0x0203FF00", "瞬时有功功率数据块", 0.0, "-", "AA,.,AA,AA:AA,.,AA,AA:AA,.,AA,AA:AA,.,AA,AA", false, 4);
+    m_dataItems["0x0203FF00"] = DataItem("0x0203FF00", "瞬时有功功率数据块", QVariantList(), "-", "AA,.,AA,AA:AA,.,AA,AA:AA,.,AA,AA:AA,.,AA,AA", false, 4);
 
     m_dataItems["0x02040000"] = DataItem("0x02040000", "瞬时总无功功率", 0.0, "kvar", "F9,.,AA,AA", false, 4);
     m_dataItems["0x02040100"] = DataItem("0x02040100", "瞬时A相无功功率", 0.0, "kvar", "F9,.,AA,AA", false, 4);
     m_dataItems["0x02040200"] = DataItem("0x02040200", "瞬时B相无功功率", 0.0, "kvar", "F9,.,AA,AA", false, 4);
     m_dataItems["0x02040300"] = DataItem("0x02040300", "瞬时C相无功功率", 0.0, "kvar", "F9,.,AA,AA", false, 4);
-    m_dataItems["0x0204FF00"] = DataItem("0x0204FF00", "瞬时无功功率数据块", 0.0, "-", "F9,.,AA,AA:F9,.,AA,AA:F9,.,AA,AA:F9,.,AA,AA", false, 4);
+    m_dataItems["0x0204FF00"] = DataItem("0x0204FF00", "瞬时无功功率数据块", QVariantList(), "-", "F9,.,AA,AA:F9,.,AA,AA:F9,.,AA,AA:F9,.,AA,AA", false, 4);
 
     m_dataItems["0x02050000"] = DataItem("0x02050000", "瞬时总视在功率", 0.0, "kVA", "AA,.,AA,AA", false, 4);
     m_dataItems["0x02050100"] = DataItem("0x02050100", "瞬时A相视在功率", 0.0, "kVA", "AA,.,AA,AA", false, 4);
     m_dataItems["0x02050200"] = DataItem("0x02050200", "瞬时B相视在功率", 0.0, "kVA", "AA,.,AA,AA", false, 4);
     m_dataItems["0x02050300"] = DataItem("0x02050300", "瞬时C相视在功率", 0.0, "kVA", "AA,.,AA,AA", false, 4);
-    m_dataItems["0x0205FF00"] = DataItem("0x0205FF00", "瞬时视在功率数据块", 0.0, "-", "AA,.,AA,AA:AA,.,AA,AA:AA,.,AA,AA:AA,.,AA,AA", false, 4);
+    m_dataItems["0x0205FF00"] = DataItem("0x0205FF00", "瞬时视在功率数据块", QVariantList(), "-", "AA,.,AA,AA:AA,.,AA,AA:AA,.,AA,AA:AA,.,AA,AA", false, 4);
 
     // 功率因数
     m_dataItems["0x02060000"] = DataItem("0x02060000", "总功率因数", 1.0, "none", "xx,AA", false, 3);
     m_dataItems["0x02060100"] = DataItem("0x02060100", "A相功率因数", 1.0, "none", "xx,AA", false, 3);
     m_dataItems["0x02060200"] = DataItem("0x02060200", "B相功率因数", 1.0, "none", "xx,AA", false, 3);
     m_dataItems["0x02060300"] = DataItem("0x02060300", "C相功率因数", 1.0, "none", "xx,AA", false, 3);
-    m_dataItems["0x0206FF00"] = DataItem("0x0206FF00", "功率因数数据块", 0.0, "-", "xx,AA:xx,AA:xx,AA:xx,AA", false, 3);
+    m_dataItems["0x0206FF00"] = DataItem("0x0206FF00", "功率因数数据块", QVariantList(), "-", "xx,AA:xx,AA:xx,AA:xx,AA", false, 3);
 
     // 相角
     m_dataItems["0x02070100"] = DataItem("0x02070100", "A相相角", 0.0, "°", "AA,xx", false, 1);
     m_dataItems["0x02070200"] = DataItem("0x02070200", "B相相角", 0.0, "°", "AA,xx", false, 1);
     m_dataItems["0x02070300"] = DataItem("0x02070300", "C相相角", 0.0, "°", "AA,xx", false, 1);
-    m_dataItems["0x0207FF00"] = DataItem("0x0207FF00", "相角数据块", 0.0, "-", "AA,xx:AA,xx:AA,xx:AA,xx", false, 1);
+    m_dataItems["0x0207FF00"] = DataItem("0x0207FF00", "相角数据块", QVariantList(), "-", "AA,xx:AA,xx:AA,xx:AA,xx", false, 1);
 
     // 零相电流
     m_dataItems["0x02080001"] = DataItem("0x02080001", "零相电流", 0.0, "A", "AA,xx,AA", false, 3);
     // 频率
     m_dataItems["0x02800002"] = DataItem("0x02800002", "电网频率", 50.0, "Hz", "AA,.,AA", false, 2);
+    synchronizeInstantaneousPowerTotals(m_dataItems);
 }
 
 void MeterModel::initializeEventData()

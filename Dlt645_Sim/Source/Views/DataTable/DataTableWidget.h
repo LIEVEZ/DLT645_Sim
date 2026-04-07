@@ -144,10 +144,12 @@ private slots:
     void onRefreshClicked();
     void onResetClicked();
     void onRandomizeClicked();
+    void onRandomizeCurrentClicked();
     void onExportClicked();
     void onCustomContextMenuRequested(const QPoint &pos);
     void onValidationFailed(const QString &message);
     void onMeterDataChanged(const QString &diCode, const QVariant &newValue);
+    void onMeterBatchChanged();
 
 private:
     void setupUI();
@@ -158,6 +160,7 @@ private:
     QString selectedMeterAddress() const;
     void updateItemValue(const QString &diCode, const QVariant &value);
     void updateDataCount();
+    QList<QString> currentTableDiCodes() const;
     bool isVariableData(const QString &diCode) const;
     void exportToCSV(const QString &fileName);
     void exportToExcel(const QString &fileName);
@@ -174,6 +177,7 @@ private:
     QPushButton *m_refreshButton;
     QPushButton *m_resetButton;
     QPushButton *m_randomizeButton;
+    QPushButton *m_randomizeCurrentButton;
     QPushButton *m_exportButton;
     QLabel *m_meterInfoLabel;
     QLabel *m_formatHintLabel;

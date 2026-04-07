@@ -96,7 +96,7 @@ bool NumericDelegate::validateNumericValue(const QString &value) const
 // ==================== DataTableWidget ====================
 
 DataTableWidget::DataTableWidget(QWidget *parent)
-    : QWidget(parent), m_meterModel(nullptr), m_currentCategory(""), m_meterAlias(""), m_meterAddress("")
+    : QWidget(parent), m_meterModel(nullptr), m_randomizeCurrentButton(nullptr), m_currentCategory(""), m_meterAlias(""), m_meterAddress("")
 {
     setupUI();
 
@@ -114,6 +114,8 @@ void DataTableWidget::setMeterModel(MeterModel *meterModel)
     {
         disconnect(m_meterModel, &MeterModel::dataChanged,
                    this, &DataTableWidget::onMeterDataChanged);
+        disconnect(m_meterModel, &MeterModel::dataBatchChanged,
+                   this, &DataTableWidget::onMeterBatchChanged);
     }
 
     m_meterModel = meterModel;
@@ -123,6 +125,8 @@ void DataTableWidget::setMeterModel(MeterModel *meterModel)
     {
         connect(m_meterModel, &MeterModel::dataChanged,
                 this, &DataTableWidget::onMeterDataChanged, Qt::UniqueConnection);
+        connect(m_meterModel, &MeterModel::dataBatchChanged,
+                this, &DataTableWidget::onMeterBatchChanged, Qt::UniqueConnection);
     }
 
     updateExportButtonState();
@@ -168,6 +172,10 @@ void DataTableWidget::setupUI()
     m_randomizeButton->setMinimumWidth(120);
     connect(m_randomizeButton, &QPushButton::clicked, this, &DataTableWidget::onRandomizeClicked);
     toolBarLayout->addWidget(m_randomizeButton);
+    m_randomizeCurrentButton = new QPushButton("随机化当前数据", this);
+    m_randomizeCurrentButton->setMinimumWidth(120);
+    connect(m_randomizeCurrentButton, &QPushButton::clicked, this, &DataTableWidget::onRandomizeCurrentClicked);
+    toolBarLayout->addWidget(m_randomizeCurrentButton);
 
     // 创建导出按钮
     m_exportButton = new QPushButton("导出", this);
@@ -329,12 +337,15 @@ void DataTableWidget::refreshTable()
     qDebug() << "DataTableWidget::refreshTable()" << m_currentCategory;
     populateCategory(m_currentCategory);
     updateDataCount();
+    updateExportButtonState();
 }
 
 void DataTableWidget::setCategory(const QString &category)
 {
     m_currentCategory = category;
     populateCategory(category);
+    updateDataCount();
+    updateExportButtonState();
 }
 
 void DataTableWidget::onCategorySelected(const QString &categoryName, const QString &meterAlias)
@@ -544,8 +555,6 @@ void DataTableWidget::onResetClicked()
     if (reply == QMessageBox::Yes)
     {
         m_meterModel->resetAllData();
-        m_meterModel->setDataValue("0x04000000", m_meterModel->getMeterAddress());
-        refreshTable();
         LOG_INFO("所有数据已重置为默认值");
     }
 }
@@ -559,9 +568,26 @@ void DataTableWidget::onRandomizeClicked()
     }
 
     m_meterModel->randomizeData();
-    m_meterModel->setDataValue("0x04000000", m_meterModel->getMeterAddress());
-    refreshTable();
     LOG_INFO("所有数据已随机化");
+}
+
+void DataTableWidget::onRandomizeCurrentClicked()
+{
+    if (!m_meterModel)
+    {
+        QMessageBox::information(this, "Select Meter", "Please select a meter first.");
+        return;
+    }
+
+    const QList<QString> diCodes = currentTableDiCodes();
+    if (diCodes.isEmpty())
+    {
+        QMessageBox::information(this, "提示", "当前没有可随机化的数据项。");
+        return;
+    }
+
+    m_meterModel->randomizeData(diCodes);
+    LOG_INFO(QString("当前数据列表已随机化，共 %1 项").arg(diCodes.size()));
 }
 
 void DataTableWidget::onExportClicked()
@@ -646,6 +672,12 @@ void DataTableWidget::onMeterDataChanged(const QString &diCode, const QVariant &
     updateExportButtonState();
 }
 
+void DataTableWidget::onMeterBatchChanged()
+{
+    refreshTable();
+    updateExportButtonState();
+}
+
 void DataTableWidget::filterTable(const QString &filterText)
 {
     for (int i = 0; i < m_tableWidget->rowCount(); ++i)
@@ -674,6 +706,10 @@ void DataTableWidget::updateExportButtonState()
     }
 
     m_exportButton->setEnabled(m_meterModel != nullptr);
+    if (m_randomizeCurrentButton)
+    {
+        m_randomizeCurrentButton->setEnabled(m_meterModel != nullptr && !m_currentCategory.isEmpty());
+    }
 }
 
 QString DataTableWidget::selectedMeterAddress() const
@@ -689,6 +725,29 @@ QString DataTableWidget::selectedMeterAddress() const
     }
 
     return QString();
+}
+
+QList<QString> DataTableWidget::currentTableDiCodes() const
+{
+    QList<QString> diCodes;
+    diCodes.reserve(m_tableWidget->rowCount());
+
+    for (int row = 0; row < m_tableWidget->rowCount(); ++row)
+    {
+        QTableWidgetItem *diItem = m_tableWidget->item(row, 0);
+        if (!diItem)
+        {
+            continue;
+        }
+
+        const QString diCode = diItem->data(Qt::UserRole).toString();
+        if (!diCode.isEmpty())
+        {
+            diCodes.append(diCode);
+        }
+    }
+
+    return diCodes;
 }
 
 void DataTableWidget::updateItemValue(const QString &diCode, const QVariant &value)

@@ -1,4 +1,4 @@
-QT       += core gui serialport network
+QT       += core gui serialport network sql
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -30,6 +30,7 @@ SOURCES += \
     Source/ViewModels/MainWindowViewModel.cpp \
     Source/Services/ProtocolParser.cpp \
     Source/Services/DataGenerator.cpp \
+    Source/Services/MeterDataStore.cpp \
     Source/Controllers/SerialController.cpp \
     Source/Controllers/TcpController.cpp \
     Source/Controllers/ProtocolController.cpp \
@@ -54,6 +55,7 @@ HEADERS += \
     Source/ViewModels/MainWindowViewModel.h \
     Source/Services/ProtocolParser.h \
     Source/Services/DataGenerator.h \
+    Source/Services/MeterDataStore.h \
     Source/Controllers/SerialController.h \
     Source/Controllers/TcpController.h \
     Source/Controllers/ProtocolController.h \

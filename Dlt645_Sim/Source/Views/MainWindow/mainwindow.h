@@ -71,6 +71,7 @@ private slots:
     void onToggleLightTheme(bool enabled);
 
 private:
+    void attachMeterPersistence(MeterModel *meterModel);
     void setupUI();
     void setupConnections();
     void setupMenuBar();
@@ -124,6 +125,7 @@ private:
     QAction *m_lightThemeAction;
 
     CommunicationDialog *m_communicationDialog;
+    class MeterDataStore *m_meterDataStore;
     QMap<QString, MeterModel *> m_meterModelsByAddress;
     MeterModel *m_currentMeterModel;
 };

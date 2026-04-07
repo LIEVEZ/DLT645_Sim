@@ -8,6 +8,7 @@
 #include "Views/Dialogs/NewMeterDialog.h"
 #include "Views/Dialogs/CommunicationDialog.h"
 #include "Views/CommunicationBar/CommunicationBarWidget.h"
+#include "Services/MeterDataStore.h"
 #include <QSerialPortInfo>
 #include <QMessageBox>
 #include <QVBoxLayout>
@@ -27,7 +28,7 @@
 #include <QTreeWidgetItem>
 #include <QDebug>
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow), m_serialController(new SerialController(this)), m_tcpController(new TcpController(this)), m_protocolController(new ProtocolController(this)), m_dataGenerator(new DataGenerator(this)), m_viewModel(new MainWindowViewModel(this)), m_operationLogWidget(nullptr), m_dataTableWidget(nullptr), m_mainSplitter(nullptr), m_bottomSplitter(nullptr), m_connectionButtonStack(nullptr), m_connectionStatusLabel(nullptr), m_meterAddressLabel(nullptr), m_realTimeBarWidget(nullptr), m_realTimeDataLabel(nullptr), m_realTimeDataTimer(nullptr), m_realTimePhaseIndex(0), m_newConnectionAction(nullptr), m_newMeterAction(nullptr), m_openConnectionAction(nullptr), m_closeConnectionAction(nullptr), m_commInteractionAction(nullptr), m_darkThemeAction(nullptr), m_lightThemeAction(nullptr), m_communicationDialog(nullptr), m_currentMeterModel(nullptr)
+    : QMainWindow(parent), ui(new Ui::MainWindow), m_serialController(new SerialController(this)), m_tcpController(new TcpController(this)), m_protocolController(new ProtocolController(this)), m_dataGenerator(new DataGenerator(this)), m_viewModel(new MainWindowViewModel(this)), m_operationLogWidget(nullptr), m_dataTableWidget(nullptr), m_mainSplitter(nullptr), m_bottomSplitter(nullptr), m_connectionButtonStack(nullptr), m_connectionStatusLabel(nullptr), m_meterAddressLabel(nullptr), m_realTimeBarWidget(nullptr), m_realTimeDataLabel(nullptr), m_realTimeDataTimer(nullptr), m_realTimePhaseIndex(0), m_newConnectionAction(nullptr), m_newMeterAction(nullptr), m_openConnectionAction(nullptr), m_closeConnectionAction(nullptr), m_commInteractionAction(nullptr), m_darkThemeAction(nullptr), m_lightThemeAction(nullptr), m_communicationDialog(nullptr), m_meterDataStore(new MeterDataStore(this)), m_currentMeterModel(nullptr)
 {
     ui->setupUi(this);
     setupUI();
@@ -2171,6 +2172,21 @@ MeterInfo MainWindow::findMeterInfo(const QString &connectionAlias, const QStrin
     return meterInfo;
 }
 
+void MainWindow::attachMeterPersistence(MeterModel *meterModel)
+{
+    if (!meterModel || !m_meterDataStore || !m_meterDataStore->isReady())
+    {
+        return;
+    }
+
+    connect(meterModel, &MeterModel::dataChanged, this, [this, meterModel](const QString &, const QVariant &)
+            { m_meterDataStore->saveMeterData(meterModel); });
+    connect(meterModel, &MeterModel::dataBatchChanged, this, [this, meterModel]()
+            { m_meterDataStore->saveMeterData(meterModel); });
+    connect(meterModel, &MeterModel::addressChanged, this, [this, meterModel](const QString &)
+            { m_meterDataStore->saveMeterData(meterModel); });
+}
+
 MeterModel *MainWindow::createMeterModel(const MeterInfo &meterInfo)
 {
     if (meterInfo.address.isEmpty())
@@ -2182,6 +2198,20 @@ MeterModel *MainWindow::createMeterModel(const MeterInfo &meterInfo)
     if (!meterModel)
     {
         meterModel = new MeterModel(this);
+        meterModel->setMeterAddress(meterInfo.address);
+        meterModel->setOperatorCode(meterInfo.operatorCode);
+        meterModel->setPassword(meterInfo.password);
+        meterModel->setIncludePrefixFE(meterInfo.includeLeadingFE);
+
+        if (m_meterDataStore && m_meterDataStore->isReady())
+        {
+            if (!m_meterDataStore->loadMeterData(meterModel))
+            {
+                m_meterDataStore->saveMeterData(meterModel);
+            }
+        }
+
+        attachMeterPersistence(meterModel);
         m_meterModelsByAddress.insert(meterInfo.address, meterModel);
     }
 
@@ -2189,7 +2219,6 @@ MeterModel *MainWindow::createMeterModel(const MeterInfo &meterInfo)
     meterModel->setOperatorCode(meterInfo.operatorCode);
     meterModel->setPassword(meterInfo.password);
     meterModel->setIncludePrefixFE(meterInfo.includeLeadingFE);
-    meterModel->setDataValue("0x04000000", meterInfo.address);
 
     m_protocolController->registerMeterModel(meterInfo.address, meterModel);
     return meterModel;

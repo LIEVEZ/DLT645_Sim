@@ -283,9 +283,9 @@
 
 | DI | 名称 | 单位 | 格式 |
 | --- | --- | --- | --- |
-| `0x01010000` | `(当前)正向有功总最大需量` | `kW` | `XX.XXXX` |
+| `0x01010000` | `(当前)正向有功总最大需量` | `kW` | `XXXX.XXXX` |
 | `0x01010100` | `(当前)正向有功费率1最大需量` | `kW` | `XX.XXXX` |
-| `0x01020000` | `(当前)反向有功总最大需量` | `kW` | `XX.XXXX` |
+| `0x01020000` | `(当前)反向有功总最大需量` | `kW` | `XXXX.XXXX` |
 
 当前阶段更偏向需量值本身，发生时间相关细节仍可继续补充。
 
@@ -396,4 +396,3 @@
 - [NewConnectionDialog.cpp](/e:/04_Git/01_github/DLT645_Sim/Dlt645_Sim/Source/Views/Dialogs/NewConnectionDialog.cpp)
 - [NewMeterDialog.cpp](/e:/04_Git/01_github/DLT645_Sim/Dlt645_Sim/Source/Views/Dialogs/NewMeterDialog.cpp)
 - [MeterModel.cpp](/e:/04_Git/01_github/DLT645_Sim/Dlt645_Sim/Source/Models/MeterModel.cpp)
-

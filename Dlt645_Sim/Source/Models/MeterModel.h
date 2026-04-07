@@ -2,6 +2,7 @@
 #define METERMODEL_H
 
 #include <QObject>
+#include <QList>
 #include <QMap>
 #include <QMutex>
 #include "DataItem.h"
@@ -102,6 +103,7 @@ public:
      * @return 是否成功
      */
     bool setDataValue(const QString &diCode, const QVariant &value);
+    void applyPersistedData(const QMap<QString, QVariant> &dataSnapshot);
 
     /**
      * @brief 获取指定分类的所有数据项
@@ -193,6 +195,7 @@ public:
      * @brief 随机化所有数据
      */
     void randomizeData();
+    void randomizeData(const QList<QString> &diCodes);
 
     /**
      * @brief 初始化默认数据项
@@ -206,6 +209,7 @@ signals:
      * @param newValue 新值
      */
     void dataChanged(const QString &diCode, const QVariant &newValue);
+    void dataBatchChanged();
 
     /**
      * @brief 电表地址变更信号
