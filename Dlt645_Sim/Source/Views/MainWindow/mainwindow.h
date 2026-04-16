@@ -20,6 +20,7 @@
 #include "Views/DeviceTree/DeviceTreeWidget.h"
 #include "Views/Dialogs/CommunicationDialog.h"
 #include "Views/Dialogs/NewConnectionDialog.h"
+#include "Views/Dialogs/QueryFrameDialog.h"
 #include "Views/OperationLog/OperationLogWidget.h"
 
 QT_BEGIN_NAMESPACE
@@ -32,6 +33,7 @@ QT_END_NAMESPACE
 struct ProtocolFrame;
 struct ConnectionInfo;
 struct MeterInfo;
+class FrameParseDialog;
 
 class MainWindow : public QMainWindow
 {
@@ -49,12 +51,15 @@ private slots:
     void onDataUpdated();
     void onRealTimeDataRotationTimeout();
     void onConnectionStateChanged(bool connected);
-    void onProtocolFrameReceived(const ProtocolFrame &frame);
-    void onProtocolFrameSent(const ProtocolFrame &frame);
+    void onProtocolFrameReceived(const ProtocolFrame &frame, const QByteArray &rawFrame);
+    void onProtocolFrameSent(const ProtocolFrame &frame, const QByteArray &rawFrame);
     void onRawDataReceived(const QByteArray &data);
     void onRawDataSent(const QByteArray &data);
     void onCommunicationInteraction();
     void onCommunicationDialogClosed();
+    void onQueryFrameGenerator();
+    void onQueryFrameDialogClosed();
+    void onFrameParseDialog();
     void onLoggerLogEntryAdded(LogLevel level, const QDateTime &timestamp, const QString &message);
 
     void onSearchTextChanged(const QString &text);
@@ -82,6 +87,8 @@ private:
     void updateConnectionStatus(bool connected);
     void updateToolBarButtons();
     void updateCommunicationDialogState();
+    void updateQueryFrameDialogState();
+    void updateFrameParseDialogState();
     DeviceTreeWidget *deviceTreeWidget() const;
     QStringList collectMeterAddresses() const;
     QStringList collectMeterAddressesForConnection(const QString &connectionAlias) const;
@@ -119,12 +126,18 @@ private:
     QAction *m_newConnectionAction;
     QAction *m_newMeterAction;
     QAction *m_openConnectionAction;
+    QAction *m_openConnectionSeparatorAction;
     QAction *m_closeConnectionAction;
+    QAction *m_closeConnectionSeparatorAction;
     QAction *m_commInteractionAction;
+    QAction *m_queryFrameAction;
+    QAction *m_frameParseAction;
     QAction *m_darkThemeAction;
     QAction *m_lightThemeAction;
 
     CommunicationDialog *m_communicationDialog;
+    QueryFrameDialog *m_queryFrameDialog;
+    FrameParseDialog *m_frameParseDialog;
     class MeterDataStore *m_meterDataStore;
     QMap<QString, MeterModel *> m_meterModelsByAddress;
     MeterModel *m_currentMeterModel;

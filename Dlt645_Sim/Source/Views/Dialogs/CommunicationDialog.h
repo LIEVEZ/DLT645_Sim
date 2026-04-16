@@ -4,7 +4,6 @@
 #include <QDialog>
 #include <QCloseEvent>
 #include <QTableWidget>
-#include <QTextEdit>
 #include <QLabel>
 #include <QPushButton>
 #include <QCheckBox>
@@ -18,6 +17,7 @@
 #include <QDateTime>
 
 class MeterModel;
+class FrameParseResultWidget;
 
 /**
  * @brief 报文方向枚举
@@ -220,7 +220,7 @@ private:
     QComboBox *m_comboDisplayFormat;
 
     QTableWidget *m_tableMessages;
-    QTextEdit *m_textDetail;
+    FrameParseResultWidget *m_detailWidget;
 
     QLabel *m_labelStatistics;
 

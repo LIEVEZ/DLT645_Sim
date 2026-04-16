@@ -106,10 +106,6 @@ void SerialController::onReadyRead()
     QByteArray data = m_serialPort->readAll();
     m_receiveBuffer.append(data);
 
-    LOG_DEBUG(QString("Received %1 bytes: %2")
-                  .arg(data.size())
-                  .arg(QString(data.toHex())));
-
     emit dataReceived(m_receiveBuffer);
     m_receiveBuffer.clear();
 }

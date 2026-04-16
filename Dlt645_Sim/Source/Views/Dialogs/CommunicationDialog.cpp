@@ -1,7 +1,9 @@
 #include "CommunicationDialog.h"
 #include "Models/DataItem.h"
 #include "Services/ProtocolParser.h"
+#include "Utils/DLT645FrameFormatter.h"
 #include "Utils/DLT645DataHelper.h"
+#include "Views/Common/FrameParseResultWidget.h"
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -11,11 +13,12 @@
 #include <QCloseEvent>
 #include <QDebug>
 CommunicationDialog::CommunicationDialog(const QString &connectionName, QWidget *parent)
-    : QDialog(parent), m_connectionName(connectionName), m_portName(""), m_baudRate(2400), m_isConnected(false), m_meterModel(nullptr), m_isPaused(false), m_autoScroll(true), m_displayFormat(DisplayFormat::Hex), m_filterRequest(true), m_filterResponse(true), m_filterError(true), m_filterText(""), m_connectionInfoBar(nullptr), m_filterBar(nullptr)
+    : QDialog(parent), m_connectionName(connectionName), m_portName(""), m_baudRate(2400), m_isConnected(false), m_meterModel(nullptr), m_connectionInfoBar(nullptr), m_filterBar(nullptr), m_isPaused(false), m_autoScroll(true), m_displayFormat(DisplayFormat::Hex), m_filterRequest(true), m_filterResponse(true), m_filterError(true), m_filterText("")
 {
     setupUI();
     setWindowTitle(QString("通信交互 - %1").arg(connectionName));
     resize(800, 600);
+    setWindowTitle(QStringLiteral("通信交互 - %1").arg(connectionName));
     // 不设置WA_DeleteOnClose，由主窗口管理窗口生命周期
 }
 
@@ -31,8 +34,8 @@ void CommunicationDialog::setMeterModel(MeterModel *meterModel)
 void CommunicationDialog::setupUI()
 {
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(5);
-    mainLayout->setContentsMargins(10, 10, 10, 10);
+    mainLayout->setSpacing(10);
+    mainLayout->setContentsMargins(12, 12, 12, 12);
 
     // 连接信息栏
     setupConnectionInfoBar();
@@ -44,58 +47,80 @@ void CommunicationDialog::setupUI()
 
     // 创建分割器
     QSplitter *splitter = new QSplitter(Qt::Vertical, this);
+    splitter->setChildrenCollapsible(false);
+    splitter->setHandleWidth(10);
 
     // 报文列表
     setupMessageTable();
-    splitter->addWidget(m_tableMessages);
+    QGroupBox *messageGroup = new QGroupBox(QString::fromUtf8("报文列表"), this);
+    messageGroup->setTitle(QStringLiteral("报文列表"));
+    QVBoxLayout *messageLayout = new QVBoxLayout(messageGroup);
+    messageLayout->setContentsMargins(10, 12, 10, 10);
+    messageLayout->addWidget(m_tableMessages);
+    splitter->addWidget(messageGroup);
 
     // 报文详情
     setupMessageDetail();
-    splitter->addWidget(m_textDetail);
+    QGroupBox *detailGroup = new QGroupBox(QString::fromUtf8("帧解析"), this);
+    detailGroup->setTitle(QStringLiteral("帧解析"));
+    QVBoxLayout *detailLayout = new QVBoxLayout(detailGroup);
+    detailLayout->setContentsMargins(10, 12, 10, 10);
+    detailLayout->addWidget(m_detailWidget);
+    splitter->addWidget(detailGroup);
 
     // 设置分割器比例
-    splitter->setStretchFactor(0, 2);
-    splitter->setStretchFactor(1, 1);
-    splitter->setSizes({400, 200});
+    splitter->setStretchFactor(0, 5);
+    splitter->setStretchFactor(1, 2);
+    splitter->setSizes({500, 140});
 
     mainLayout->addWidget(splitter);
 
     // 统计信息栏
     setupStatisticsBar();
-    mainLayout->addWidget(m_labelStatistics);
+    QGroupBox *statisticsGroup = new QGroupBox(QString::fromUtf8("统计信息"), this);
+    statisticsGroup->setTitle(QStringLiteral("统计信息"));
+    QVBoxLayout *statisticsLayout = new QVBoxLayout(statisticsGroup);
+    statisticsLayout->setContentsMargins(10, 12, 10, 10);
+    statisticsLayout->addWidget(m_labelStatistics);
+    mainLayout->addWidget(statisticsGroup);
 }
 
 void CommunicationDialog::setupConnectionInfoBar()
 {
     // 创建容器控件
-    m_connectionInfoBar = new QWidget(this);
+    m_connectionInfoBar = new QGroupBox(QString::fromUtf8("连接信息"), this);
+    static_cast<QGroupBox *>(m_connectionInfoBar)->setTitle(QStringLiteral("连接信息"));
     QHBoxLayout *layout = new QHBoxLayout(m_connectionInfoBar);
     layout->setSpacing(10);
-    layout->setContentsMargins(5, 5, 5, 5);
+    layout->setContentsMargins(10, 12, 10, 10);
 
     // 连接信息标签
     m_labelConnectionInfo = new QLabel(m_connectionInfoBar);
-    m_labelConnectionInfo->setStyleSheet("QLabel { padding: 5px; border-radius: 3px; }");
+    m_labelConnectionInfo->setObjectName(QStringLiteral("infoLabel"));
+    m_labelConnectionInfo->setText(QStringLiteral("连接：未设置"));
     m_labelConnectionInfo->setText("连接：未设置");
 
     // 状态标签
     m_labelStatus = new QLabel(m_connectionInfoBar);
-    m_labelStatus->setStyleSheet("QLabel { padding: 5px; border-radius: 3px; }");
+    m_labelStatus->setObjectName(QStringLiteral("statusLabel"));
     updateConnectionStatus();
 
     // 清空按钮
     m_btnClear = new QPushButton("清空", m_connectionInfoBar);
     m_btnClear->setMinimumWidth(80);
+    m_btnClear->setText(QStringLiteral("清空"));
     connect(m_btnClear, &QPushButton::clicked, this, &CommunicationDialog::onClearClicked);
 
     // 暂停按钮
     m_btnPause = new QPushButton("暂停", m_connectionInfoBar);
     m_btnPause->setMinimumWidth(80);
+    m_btnPause->setText(QStringLiteral("暂停"));
     connect(m_btnPause, &QPushButton::clicked, this, &CommunicationDialog::togglePause);
 
     // 导出按钮
     m_btnExport = new QPushButton("导出", m_connectionInfoBar);
     m_btnExport->setMinimumWidth(80);
+    m_btnExport->setText(QStringLiteral("导出"));
     connect(m_btnExport, &QPushButton::clicked, this, &CommunicationDialog::onExportClicked);
 
     layout->addWidget(m_labelConnectionInfo);
@@ -109,26 +134,31 @@ void CommunicationDialog::setupConnectionInfoBar()
 void CommunicationDialog::setupFilterBar()
 {
     // 创建容器控件
-    m_filterBar = new QWidget(this);
+    m_filterBar = new QGroupBox(QString::fromUtf8("过滤条件"), this);
+    static_cast<QGroupBox *>(m_filterBar)->setTitle(QStringLiteral("过滤条件"));
     QHBoxLayout *layout = new QHBoxLayout(m_filterBar);
     layout->setSpacing(10);
-    layout->setContentsMargins(5, 5, 5, 5);
+    layout->setContentsMargins(10, 12, 10, 10);
 
     // 过滤输入框
     m_lineEditFilter = new QLineEdit(m_filterBar);
     m_lineEditFilter->setPlaceholderText("过滤报文内容...");
+    m_lineEditFilter->setPlaceholderText(QStringLiteral("过滤报文内容..."));
     connect(m_lineEditFilter, &QLineEdit::textChanged, this, &CommunicationDialog::onFilterChanged);
 
     // 类型过滤复选框
     m_checkBoxRequest = new QCheckBox("请求帧", m_filterBar);
+    m_checkBoxRequest->setText(QStringLiteral("请求帧"));
     m_checkBoxRequest->setChecked(true);
     connect(m_checkBoxRequest, &QCheckBox::stateChanged, this, &CommunicationDialog::onFilterTypeChanged);
 
     m_checkBoxResponse = new QCheckBox("应答帧", m_filterBar);
+    m_checkBoxResponse->setText(QStringLiteral("应答帧"));
     m_checkBoxResponse->setChecked(true);
     connect(m_checkBoxResponse, &QCheckBox::stateChanged, this, &CommunicationDialog::onFilterTypeChanged);
 
     m_checkBoxError = new QCheckBox("错误帧", m_filterBar);
+    m_checkBoxError->setText(QStringLiteral("错误帧"));
     m_checkBoxError->setChecked(true);
     connect(m_checkBoxError, &QCheckBox::stateChanged, this, &CommunicationDialog::onFilterTypeChanged);
 
@@ -146,6 +176,11 @@ void CommunicationDialog::setupFilterBar()
     layout->addWidget(m_checkBoxError);
     layout->addStretch();
     layout->addWidget(m_comboDisplayFormat);
+
+    if (QLabel *filterLabel = qobject_cast<QLabel *>(layout->itemAt(0)->widget()))
+    {
+        filterLabel->setText(QStringLiteral("过滤:"));
+    }
 }
 
 void CommunicationDialog::setupMessageTable()
@@ -159,6 +194,7 @@ void CommunicationDialog::setupMessageTable()
     m_tableMessages->setSelectionMode(QAbstractItemView::SingleSelection);
     m_tableMessages->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_tableMessages->verticalHeader()->setVisible(false);
+    m_tableMessages->setMinimumHeight(220);
 
     // 设置列宽
     m_tableMessages->setColumnWidth(0, 120); // 时间
@@ -167,6 +203,9 @@ void CommunicationDialog::setupMessageTable()
 
     // 表头样式
     m_tableMessages->horizontalHeader()->setStretchLastSection(true);
+    m_tableMessages->setHorizontalHeaderLabels({QStringLiteral("时间"),
+                                                QStringLiteral("方向"),
+                                                QStringLiteral("完整报文")});
 
     connect(m_tableMessages, &QTableWidget::itemSelectionChanged,
             this, &CommunicationDialog::onMessageSelectionChanged);
@@ -174,16 +213,16 @@ void CommunicationDialog::setupMessageTable()
 
 void CommunicationDialog::setupMessageDetail()
 {
-    m_textDetail = new QTextEdit(this);
-    m_textDetail->setReadOnly(true);
-    m_textDetail->setFont(QFont("Consolas", 9));
+    m_detailWidget = new FrameParseResultWidget(this);
+    m_detailWidget->setObjectName(QStringLiteral("detailResultWidget"));
+    m_detailWidget->setMinimumHeight(100);
 }
 
 void CommunicationDialog::setupStatisticsBar()
 {
     m_labelStatistics = new QLabel(this);
-    m_labelStatistics->setStyleSheet(
-        "QLabel { padding: 5px; border-radius: 3px; }");
+    m_labelStatistics->setObjectName(QStringLiteral("statisticsLabel"));
+    m_labelStatistics->setWordWrap(true);
     updateStatistics();
 }
 
@@ -198,6 +237,10 @@ void CommunicationDialog::setConnectionInfo(const QString &portName, int baudRat
                        .arg(baudRate);
 
     // 更新连接信息标签
+    info = QStringLiteral("连接：%1  %2：%3")
+               .arg(m_connectionName)
+               .arg(portName)
+               .arg(baudRate);
     m_labelConnectionInfo->setText(info);
 }
 
@@ -212,12 +255,14 @@ void CommunicationDialog::updateConnectionStatus()
     if (m_isConnected)
     {
         m_labelStatus->setText("状态：🟢 已连接");
-        m_labelStatus->setStyleSheet("QLabel { padding: 5px; border-radius: 3px; color: green; }");
+        m_labelStatus->setText(QStringLiteral("状态：🟢 已连接"));
+        m_labelStatus->setStyleSheet(QStringLiteral("QLabel { padding: 5px 10px; border-radius: 3px; color: #22C55E; background-color: rgba(34, 197, 94, 0.12); }"));
     }
     else
     {
         m_labelStatus->setText("状态：🔴 未连接");
-        m_labelStatus->setStyleSheet("QLabel { padding: 5px; border-radius: 3px; color: red; }");
+        m_labelStatus->setText(QStringLiteral("状态：🔴 未连接"));
+        m_labelStatus->setStyleSheet(QStringLiteral("QLabel { padding: 5px 10px; border-radius: 3px; color: #EF4444; background-color: rgba(239, 68, 68, 0.12); }"));
     }
 }
 
@@ -301,7 +346,7 @@ void CommunicationDialog::clearAllMessages()
 {
     m_messages.clear();
     m_tableMessages->setRowCount(0);
-    m_textDetail->clear();
+    m_detailWidget->clearResult();
 
     // 重置统计信息
     m_statistics = CommunicationStatistics();
@@ -348,7 +393,7 @@ bool CommunicationDialog::exportMessages(const QString &filePath)
 void CommunicationDialog::togglePause()
 {
     m_isPaused = !m_isPaused;
-    m_btnPause->setText(m_isPaused ? "恢复" : "暂停");
+    m_btnPause->setText(m_isPaused ? QStringLiteral("恢复") : QStringLiteral("暂停"));
 }
 
 void CommunicationDialog::refreshMessageList()
@@ -440,14 +485,14 @@ void CommunicationDialog::onMessageSelectionChanged()
     const int currentRow = m_tableMessages->currentRow();
     if (currentRow < 0)
     {
-        m_textDetail->clear();
+        m_detailWidget->clearResult();
         return;
     }
 
     QTableWidgetItem *timeItem = m_tableMessages->item(currentRow, 0);
     if (!timeItem)
     {
-        m_textDetail->clear();
+        m_detailWidget->clearResult();
         return;
     }
 
@@ -465,7 +510,7 @@ void CommunicationDialog::onAutoScrollChanged(int state)
 
 void CommunicationDialog::updateStatistics()
 {
-    QString stats = QString("发送帧数：%1  |  接收帧数：%2  |  错误帧数：%3  |  成功率：%4%")
+    QString stats = QStringLiteral("发送帧数：%1  |  接收帧数：%2  |  错误帧数：%3  |  成功率：%4%")
                         .arg(m_statistics.sentFrames)
                         .arg(m_statistics.receivedFrames)
                         .arg(m_statistics.errorFrames)
@@ -618,12 +663,7 @@ QString CommunicationDialog::formatMessage(const CommunicationMessage &message, 
 
 QString CommunicationDialog::formatHex(const QByteArray &data) const
 {
-    QString result;
-    for (int i = 0; i < data.size(); ++i)
-    {
-        result += QString("%1 ").arg((quint8)data[i], 2, 16, QChar('0')).toUpper();
-    }
-    return result.trimmed();
+    return DLT645FrameFormatter::formatHex(data);
 }
 
 QString CommunicationDialog::formatAscii(const QByteArray &data) const
@@ -751,11 +791,17 @@ void CommunicationDialog::updateMessageDetail(int row)
 {
     if (row < 0 || row >= m_messages.size())
     {
-        m_textDetail->clear();
+        m_detailWidget->clearResult();
         return;
     }
 
     const CommunicationMessage &message = m_messages[row];
+
+    m_detailWidget->setParseResult(
+        DLT645FrameFormatter::buildParseDisplayResult(message.fullFrame, m_meterModel, message.checksumValid));
+    return;
+
+#if 0
 
     QString detail;
 
@@ -897,6 +943,7 @@ void CommunicationDialog::updateMessageDetail(int row)
     detail += QString::fromUtf8("\n校验和状态：") + (message.checksumValid ? QString::fromUtf8("OK 有效") : QString::fromUtf8("X 无效")) + QString::fromUtf8("\n");
 
     m_textDetail->setText(detail);
+#endif
 }
 
 void CommunicationDialog::closeEvent(QCloseEvent *event)
@@ -911,63 +958,76 @@ void CommunicationDialog::applyDarkTheme()
         QDialog {
             background-color: #2B2B2B;
         }
-        
+
+        QGroupBox {
+            color: #FFFFFF;
+            border: 1px solid #555555;
+            border-radius: 4px;
+            margin-top: 10px;
+            padding-top: 10px;
+        }
+
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 4px;
+        }
+
         QLabel {
             color: #FFFFFF;
             font-family: "Microsoft YaHei";
         }
-        
+
+        QLabel#infoLabel,
+        QLabel#statisticsLabel {
+            padding: 5px 0;
+        }
+
         QPushButton {
             background-color: #3C3F41;
             color: #FFFFFF;
             border: 1px solid #555555;
             border-radius: 3px;
-            padding: 5px 15px;
+            padding: 6px 14px;
         }
-        
+
         QPushButton:hover {
             background-color: #4E5254;
         }
-        
+
         QPushButton:pressed {
             background-color: #2B2B2B;
         }
-        
-        QLineEdit {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 3px;
-            padding: 5px;
-        }
-        
-        QLineEdit:focus {
-            border: 1px solid #094771;
-        }
-        
+
+        QLineEdit,
         QComboBox {
             background-color: #3C3F41;
             color: #FFFFFF;
             border: 1px solid #555555;
             border-radius: 3px;
-            padding: 5px;
+            padding: 6px 8px;
         }
-        
+
+        QLineEdit:focus,
+        QComboBox:focus {
+            border: 1px solid #094771;
+        }
+
         QComboBox::drop-down {
             border: none;
         }
-        
+
         QComboBox QAbstractItemView {
             background-color: #3C3F41;
             color: #FFFFFF;
             selection-background-color: #094771;
         }
-        
+
         QCheckBox {
             color: #FFFFFF;
             spacing: 4px;
         }
-        
+
         QCheckBox::indicator {
             width: 16px;
             height: 16px;
@@ -975,29 +1035,30 @@ void CommunicationDialog::applyDarkTheme()
             border-radius: 3px;
             background-color: #3C3F41;
         }
-        
+
         QCheckBox::indicator:checked {
             background-color: #094771;
             border: 1px solid #094771;
         }
-        
+
         QTableWidget {
-            background-color: #2B2B2B;
+            background-color: #3C3F41;
             color: #FFFFFF;
-            border: none;
-            gridline-color: #3C3F41;
+            border: 1px solid #555555;
+            border-radius: 3px;
+            gridline-color: #4B4F51;
         }
-        
+
         QTableWidget::item {
             padding: 5px;
-            border-bottom: 1px solid #3C3F41;
+            border-bottom: 1px solid #4B4F51;
         }
-        
+
         QTableWidget::item:selected {
             background-color: #094771;
             color: #FFFFFF;
         }
-        
+
         QHeaderView::section {
             background-color: #3C3F41;
             color: #FFFFFF;
@@ -1005,19 +1066,32 @@ void CommunicationDialog::applyDarkTheme()
             border: none;
             border-bottom: 1px solid #555555;
         }
-        
-        QTextEdit {
-            background-color: #2B2B2B;
+
+        QTextEdit,
+        QTextEdit#detailTextEdit {
+            background-color: #3C3F41;
             color: #FFFFFF;
-            padding: 10px;
+            border: 1px solid #555555;
+            border-radius: 3px;
+            padding: 8px;
         }
-        
+
+        QTextEdit:focus,
+        QTextEdit#detailTextEdit:focus {
+            border: 1px solid #094771;
+        }
+
         QSplitter::handle {
             background-color: #555555;
         }
     )";
 
     setStyleSheet(styleSheet);
+
+    if (m_detailWidget)
+    {
+        m_detailWidget->applyDarkTheme();
+    }
 }
 
 void CommunicationDialog::applyLightTheme()
@@ -1026,63 +1100,76 @@ void CommunicationDialog::applyLightTheme()
         QDialog {
             background-color: #FFFFFF;
         }
-        
+
+        QGroupBox {
+            color: #000000;
+            border: 1px solid #CCCCCC;
+            border-radius: 4px;
+            margin-top: 10px;
+            padding-top: 10px;
+        }
+
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 4px;
+        }
+
         QLabel {
             color: #000000;
             font-family: "Microsoft YaHei";
         }
-        
+
+        QLabel#infoLabel,
+        QLabel#statisticsLabel {
+            padding: 5px 0;
+        }
+
         QPushButton {
             background-color: #F0F0F0;
             color: #000000;
             border: 1px solid #CCCCCC;
             border-radius: 3px;
-            padding: 5px 15px;
+            padding: 6px 14px;
         }
-        
+
         QPushButton:hover {
             background-color: #E0E0E0;
         }
-        
+
         QPushButton:pressed {
             background-color: #D0D0D0;
         }
-        
-        QLineEdit {
-            background-color: #FFFFFF;
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-            padding: 5px;
-        }
-        
-        QLineEdit:focus {
-            border: 1px solid #0078D7;
-        }
-        
+
+        QLineEdit,
         QComboBox {
             background-color: #FFFFFF;
             color: #000000;
             border: 1px solid #CCCCCC;
             border-radius: 3px;
-            padding: 5px;
+            padding: 6px 8px;
         }
-        
+
+        QLineEdit:focus,
+        QComboBox:focus {
+            border: 1px solid #0078D7;
+        }
+
         QComboBox::drop-down {
             border: none;
         }
-        
+
         QComboBox QAbstractItemView {
             background-color: #FFFFFF;
             color: #000000;
             selection-background-color: #0078D7;
         }
-        
+
         QCheckBox {
             color: #000000;
             spacing: 4px;
         }
-        
+
         QCheckBox::indicator {
             width: 16px;
             height: 16px;
@@ -1090,29 +1177,30 @@ void CommunicationDialog::applyLightTheme()
             border-radius: 3px;
             background-color: #FFFFFF;
         }
-        
+
         QCheckBox::indicator:checked {
             background-color: #0078D7;
             border: 1px solid #0078D7;
         }
-        
+
         QTableWidget {
             background-color: #FFFFFF;
             color: #000000;
-            border: none;
+            border: 1px solid #CCCCCC;
+            border-radius: 3px;
             gridline-color: #E0E0E0;
         }
-        
+
         QTableWidget::item {
             padding: 5px;
             border-bottom: 1px solid #E0E0E0;
         }
-        
+
         QTableWidget::item:selected {
             background-color: #0078D7;
             color: #FFFFFF;
         }
-        
+
         QHeaderView::section {
             background-color: #F0F0F0;
             color: #000000;
@@ -1120,17 +1208,30 @@ void CommunicationDialog::applyLightTheme()
             border: none;
             border-bottom: 1px solid #CCCCCC;
         }
-        
-        QTextEdit {
+
+        QTextEdit,
+        QTextEdit#detailTextEdit {
             background-color: #FFFFFF;
             color: #000000;
-            padding: 10px;
+            border: 1px solid #CCCCCC;
+            border-radius: 3px;
+            padding: 8px;
         }
-        
+
+        QTextEdit:focus,
+        QTextEdit#detailTextEdit:focus {
+            border: 1px solid #0078D7;
+        }
+
         QSplitter::handle {
             background-color: #CCCCCC;
         }
     )";
 
     setStyleSheet(styleSheet);
+
+    if (m_detailWidget)
+    {
+        m_detailWidget->applyLightTheme();
+    }
 }

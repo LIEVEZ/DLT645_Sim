@@ -106,13 +106,13 @@ signals:
      * @brief 帧接收信号
      * @param frame 接收到的帧
      */
-    void frameReceived(const ProtocolFrame &frame);
+    void frameReceived(const ProtocolFrame &frame, const QByteArray &rawFrame);
 
     /**
      * @brief 帧发送信号
      * @param frame 发送的帧
      */
-    void frameSent(const ProtocolFrame &frame);
+    void frameSent(const ProtocolFrame &frame, const QByteArray &rawFrame);
 
     /**
      * @brief 原始数据接收信号（包含前导码）
@@ -142,6 +142,7 @@ private:
     void processWriteRequest(const ProtocolFrame &frame, MeterModel *meterModel);
     void sendResponse(const ProtocolFrame &response, MeterModel *meterModel = nullptr);
     void verifyPassword(const ProtocolFrame &frame, MeterModel *meterModel);
+    bool tryTakeNextReceivedFrame(ProtocolFrame &frame, QByteArray &rawFrame);
     bool shouldRespondToAddress(const QByteArray &addressBytes) const;
     MeterModel *meterModelForAddress(const QByteArray &addressBytes) const;
     bool hasActiveTransport() const;

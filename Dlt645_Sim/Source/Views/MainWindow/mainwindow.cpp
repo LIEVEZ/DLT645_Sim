@@ -7,6 +7,8 @@
 #include "Views/Dialogs/NewConnectionDialog.h"
 #include "Views/Dialogs/NewMeterDialog.h"
 #include "Views/Dialogs/CommunicationDialog.h"
+#include "Views/Dialogs/FrameParseDialog.h"
+#include "Views/Dialogs/QueryFrameDialog.h"
 #include "Views/CommunicationBar/CommunicationBarWidget.h"
 #include "Services/MeterDataStore.h"
 #include <QSerialPortInfo>
@@ -23,12 +25,14 @@
 #include <QTimer>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QSize>
 #include <QStackedWidget>
+#include <QStyle>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QDebug>
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow), m_serialController(new SerialController(this)), m_tcpController(new TcpController(this)), m_protocolController(new ProtocolController(this)), m_dataGenerator(new DataGenerator(this)), m_viewModel(new MainWindowViewModel(this)), m_operationLogWidget(nullptr), m_dataTableWidget(nullptr), m_mainSplitter(nullptr), m_bottomSplitter(nullptr), m_connectionButtonStack(nullptr), m_connectionStatusLabel(nullptr), m_meterAddressLabel(nullptr), m_realTimeBarWidget(nullptr), m_realTimeDataLabel(nullptr), m_realTimeDataTimer(nullptr), m_realTimePhaseIndex(0), m_newConnectionAction(nullptr), m_newMeterAction(nullptr), m_openConnectionAction(nullptr), m_closeConnectionAction(nullptr), m_commInteractionAction(nullptr), m_darkThemeAction(nullptr), m_lightThemeAction(nullptr), m_communicationDialog(nullptr), m_meterDataStore(new MeterDataStore(this)), m_currentMeterModel(nullptr)
+    : QMainWindow(parent), ui(new Ui::MainWindow), m_serialController(new SerialController(this)), m_tcpController(new TcpController(this)), m_protocolController(new ProtocolController(this)), m_dataGenerator(new DataGenerator(this)), m_viewModel(new MainWindowViewModel(this)), m_operationLogWidget(nullptr), m_dataTableWidget(nullptr), m_mainSplitter(nullptr), m_bottomSplitter(nullptr), m_connectionButtonStack(nullptr), m_connectionStatusLabel(nullptr), m_meterAddressLabel(nullptr), m_realTimeBarWidget(nullptr), m_realTimeDataLabel(nullptr), m_realTimeDataTimer(nullptr), m_realTimePhaseIndex(0), m_newConnectionAction(nullptr), m_newMeterAction(nullptr), m_openConnectionAction(nullptr), m_openConnectionSeparatorAction(nullptr), m_closeConnectionAction(nullptr), m_closeConnectionSeparatorAction(nullptr), m_commInteractionAction(nullptr), m_queryFrameAction(nullptr), m_frameParseAction(nullptr), m_darkThemeAction(nullptr), m_lightThemeAction(nullptr), m_communicationDialog(nullptr), m_queryFrameDialog(nullptr), m_frameParseDialog(nullptr), m_meterDataStore(new MeterDataStore(this)), m_currentMeterModel(nullptr)
 {
     ui->setupUi(this);
     setupUI();
@@ -41,7 +45,7 @@ MainWindow::MainWindow(QWidget *parent)
     applyDarkTheme();
 
     // 初始化数据生成器
-    // m_dataGenerator->start(1000); // 1秒刷新一次
+    // m_dataGenerator->start(1000); // 1 秒刷新一次
 
     // 初始化工具栏按钮状态
     updateConnectionStatus(m_viewModel->isConnected());
@@ -54,12 +58,12 @@ MainWindow::~MainWindow()
 
     if (m_operationLogWidget)
     {
-        m_operationLogWidget->addInfo(QString("日志操作成功? %1").arg(m_viewModel->currentConnectionAlias()));
+        m_operationLogWidget->addInfo(QString("准备关闭连接: %1").arg(m_viewModel->currentConnectionAlias()));
     }
     closeConnectionInternal(m_viewModel->currentConnectionAlias());
     if (m_operationLogWidget)
     {
-        m_operationLogWidget->addInfo(QString("日志操作失败? %1").arg(m_viewModel->currentConnectionAlias()));
+        m_operationLogWidget->addInfo(QString("连接已关闭: %1").arg(m_viewModel->currentConnectionAlias()));
     }
     LOG_INFO(QString("Connection closed: %1").arg(m_viewModel->currentConnectionAlias()));
     if (m_serialController && m_serialController->isOpen())
@@ -76,7 +80,7 @@ MainWindow::~MainWindow()
 void MainWindow::setupUI()
 {
     // 设置窗口属性
-    setWindowTitle("DLT645 电表模拟器");
+    setWindowTitle(QStringLiteral("DLT645 电表模拟器"));
     setMinimumSize(1200, 800);
     resize(1440, 900);
 
@@ -191,11 +195,11 @@ void MainWindow::setupConnections()
     connect(m_viewModel, &MainWindowViewModel::hasMeterChanged,
             m_protocolController, &ProtocolController::setHasMeter);
 
-    // 连接协议控制器和串口控制器
+    // 连接协议控制器和通信控制器
     m_protocolController->setSerialController(m_serialController);
     m_protocolController->setTcpController(m_tcpController);
 
-    // 连接串口信号
+    // 连接通信状态信号
     connect(m_serialController, &SerialController::connectionStateChanged,
             this, &MainWindow::onConnectionStateChanged);
     connect(m_tcpController, &TcpController::connectionStateChanged,
@@ -215,7 +219,7 @@ void MainWindow::setupConnections()
     connect(m_dataGenerator, &DataGenerator::dataUpdated,
             this, &MainWindow::onDataUpdated);
 
-    // 连接Logger信号到操作日志
+    // 连接 Logger 信号到操作日志
     connect(Logger::instance(), &Logger::logEntryAdded,
             this, &MainWindow::onLoggerLogEntryAdded);
 
@@ -229,7 +233,7 @@ void MainWindow::setupConnections()
                 this, &MainWindow::onMeterSelected);
         connect(deviceTree, &DeviceTreeWidget::meterInfoSelected,
                 this, &MainWindow::onMeterInfoSelected);
-        // 将categorySelected信号连接到DataTableWidget
+        // 将 categorySelected 信号连接到 DataTableWidget
         connect(deviceTree, &DeviceTreeWidget::categorySelected,
                 m_dataTableWidget, &DataTableWidget::onCategorySelected);
         connect(deviceTree, &DeviceTreeWidget::openConnectionRequested,
@@ -252,84 +256,110 @@ void MainWindow::setupMenuBar()
     QMenuBar *menuBar = this->menuBar();
 
     // 文件菜单
-    QMenu *fileMenu = menuBar->addMenu("文件(&F)");
+    QMenu *fileMenu = menuBar->addMenu(QStringLiteral("文件(&F)"));
 
-    QAction *exitAction = fileMenu->addAction("退出(&X)");
+    QAction *exitAction = fileMenu->addAction(QStringLiteral("退出(&X)"));
     exitAction->setShortcut(QKeySequence("Ctrl+Q"));
     connect(exitAction, &QAction::triggered, this, &QMainWindow::close);
 
     // 视图菜单
-    QMenu *viewMenu = menuBar->addMenu("视图(&V)");
+    QMenu *viewMenu = menuBar->addMenu(QStringLiteral("视图(&V)"));
 
-    m_darkThemeAction = viewMenu->addAction("深色主题");
+    m_darkThemeAction = viewMenu->addAction(QStringLiteral("深色主题"));
     m_darkThemeAction->setCheckable(true);
     m_darkThemeAction->setChecked(true);
     connect(m_darkThemeAction, &QAction::triggered, this, &MainWindow::onToggleDarkTheme);
 
-    m_lightThemeAction = viewMenu->addAction("浅色主题");
+    m_lightThemeAction = viewMenu->addAction(QStringLiteral("浅色主题"));
     m_lightThemeAction->setCheckable(true);
     m_lightThemeAction->setChecked(false);
     connect(m_lightThemeAction, &QAction::triggered, this, &MainWindow::onToggleLightTheme);
 
     // 帮助菜单
-    QMenu *helpMenu = menuBar->addMenu("帮助(&H)");
+    QMenu *helpMenu = menuBar->addMenu(QStringLiteral("帮助(&H)"));
 
-    QAction *aboutAction = helpMenu->addAction("关于(&A)");
+    QAction *aboutAction = helpMenu->addAction(QStringLiteral("关于(&A)"));
     connect(aboutAction, &QAction::triggered, [=]()
-            { QMessageBox::about(this, "关于 DLT645 电表模拟器",
-                                 "DLT645-2007 电表模拟器\n\n"
-                                 "版本: 1.0.0\n\n"
-                                 "基于Qt5开发的工业级电表模拟器\n\n"
-                                 "支持串口通信、七类数据项、实时数据模拟"); });
+            { QMessageBox::about(this, QStringLiteral("关于 DLT645 电表模拟器"),
+                                 QStringLiteral("DLT645-2007 电表模拟器\n\n"
+                                                "版本: 1.0.0\n\n"
+                                                "基于 Qt5 开发的工业级电表模拟器\n\n"
+                                                "支持串口通信、七类数据项、实时数据模拟")); });
 }
 
 void MainWindow::setupToolBar()
 {
-    QToolBar *toolBar = addToolBar("主工具栏");
+    QToolBar *toolBar = addToolBar(QStringLiteral("主工具栏"));
     toolBar->setMovable(false);
     toolBar->setFloatable(false);
-    toolBar->setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    toolBar->setObjectName(QStringLiteral("mainToolBar"));
+    toolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    toolBar->setIconSize(QSize(18, 18));
 
     // 新建连接
-    m_newConnectionAction = new QAction("🔗 新建连接", this);
+    m_newConnectionAction = new QAction(QStringLiteral("新建连接"), this);
     m_newConnectionAction->setShortcut(QKeySequence("Ctrl+N"));
-    m_newConnectionAction->setToolTip("打开串口/TCP配置对话框");
+    m_newConnectionAction->setToolTip(QStringLiteral("打开串口/TCP 配置对话框"));
+    m_newConnectionAction->setText(QStringLiteral("新建连接"));
+    m_newConnectionAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogNewFolder));
     connect(m_newConnectionAction, &QAction::triggered, this, &MainWindow::onNewConnection);
     toolBar->addAction(m_newConnectionAction);
+    toolBar->addSeparator();
 
     // 新建电表
-    m_newMeterAction = new QAction("📊 新建电表", this);
+    m_newMeterAction = new QAction(QStringLiteral("新建电表"), this);
     m_newMeterAction->setShortcut(QKeySequence("Ctrl+M"));
-    m_newMeterAction->setToolTip("打开电表配置对话框");
+    m_newMeterAction->setToolTip(QStringLiteral("打开电表配置对话框"));
+    m_newMeterAction->setText(QStringLiteral("新建电表"));
+    m_newMeterAction->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
     connect(m_newMeterAction, &QAction::triggered, this, &MainWindow::onNewMeterDialog);
     toolBar->addAction(m_newMeterAction);
-
     toolBar->addSeparator();
 
     // 打开连接
-    m_openConnectionAction = new QAction("▶️ 打开连接", this);
+    m_openConnectionAction = new QAction(QStringLiteral("打开连接"), this);
     m_openConnectionAction->setShortcut(QKeySequence("Ctrl+O"));
-    m_openConnectionAction->setToolTip("激活选中的通信连接");
+    m_openConnectionAction->setToolTip(QStringLiteral("激活选中的通信连接"));
+    m_openConnectionAction->setText(QStringLiteral("打开连接"));
+    m_openConnectionAction->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
     connect(m_openConnectionAction, &QAction::triggered, this, &MainWindow::onOpenConnection);
     toolBar->addAction(m_openConnectionAction);
+    m_openConnectionSeparatorAction = toolBar->addSeparator();
 
     // 关闭连接
-    m_closeConnectionAction = new QAction("⏹️ 关闭连接", this);
+    m_closeConnectionAction = new QAction(QStringLiteral("关闭连接"), this);
     m_closeConnectionAction->setShortcut(QKeySequence("Ctrl+W"));
-    m_closeConnectionAction->setToolTip("断开当前通信连接");
+    m_closeConnectionAction->setToolTip(QStringLiteral("断开当前通信连接"));
+    m_closeConnectionAction->setText(QStringLiteral("关闭连接"));
+    m_closeConnectionAction->setIcon(style()->standardIcon(QStyle::SP_DialogCloseButton));
     connect(m_closeConnectionAction, &QAction::triggered, this, &MainWindow::onCloseConnection);
     toolBar->addAction(m_closeConnectionAction);
-
-    toolBar->addSeparator();
+    m_closeConnectionSeparatorAction = toolBar->addSeparator();
 
     // 通信交互
-    m_commInteractionAction = new QAction("💬 通信交互", this);
+    m_commInteractionAction = new QAction(QStringLiteral("通信交互"), this);
     m_commInteractionAction->setShortcut(QKeySequence("Ctrl+I"));
-    m_commInteractionAction->setToolTip("打开通信调试窗口");
+    m_commInteractionAction->setToolTip(QStringLiteral("打开通信调试窗口"));
+    m_commInteractionAction->setText(QStringLiteral("通信交互"));
+    m_commInteractionAction->setIcon(style()->standardIcon(QStyle::SP_MessageBoxInformation));
     connect(m_commInteractionAction, &QAction::triggered, this, &MainWindow::onCommunicationInteraction);
     toolBar->addAction(m_commInteractionAction);
-
     toolBar->addSeparator();
+
+    m_queryFrameAction = new QAction(QStringLiteral("查询帧生成"), this);
+    m_queryFrameAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+G")));
+    m_queryFrameAction->setToolTip(QStringLiteral("打开 DLT645 查询帧生成窗口"));
+    m_queryFrameAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogContentsView));
+    connect(m_queryFrameAction, &QAction::triggered, this, &MainWindow::onQueryFrameGenerator);
+    toolBar->addAction(m_queryFrameAction);
+    toolBar->addSeparator();
+
+    m_frameParseAction = new QAction(QStringLiteral("解析帧"), this);
+    m_frameParseAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+G")));
+    m_frameParseAction->setToolTip(QStringLiteral("打开 DLT645 帧解析窗口"));
+    m_frameParseAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogDetailedView));
+    connect(m_frameParseAction, &QAction::triggered, this, &MainWindow::onFrameParseDialog);
+    toolBar->addAction(m_frameParseAction);
 }
 
 void MainWindow::setupStatusBar()
@@ -362,33 +392,49 @@ void MainWindow::applyDarkTheme()
             background-color: #094771;
         }
         
-        QToolBar {
-            background-color: #4E5254;
-            border-bottom: 1px solid #3C3F41;
-            spacing: 10px;
-            padding: 5px;
+        QToolBar#mainToolBar {
+            background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                              stop:0 #565A5D, stop:1 #4A4E51);
+            border: none;
+            border-bottom: 1px solid #383B3D;
+            spacing: 8px;
+            padding: 6px 10px;
+        }
+
+        QToolBar#mainToolBar::separator {
+            width: 1px;
+            margin: 8px 6px;
+            background-color: rgba(255, 255, 255, 0.18);
         }
         
-        QToolButton {
+        QToolBar#mainToolBar QToolButton {
             background-color: transparent;
             border: 1px solid transparent;
-            border-radius: 4px;
-            padding: 6px 12px;
+            border-radius: 8px;
+            padding: 7px 14px;
             color: #FFFFFF;
             font-size: 10pt;
-            min-width: 80px;
+            font-weight: 500;
+            min-width: 98px;
+            min-height: 22px;
         }
         
-        QToolButton:hover {
-            background-color: #5A5E60;
-            border: 1px solid #6A6E70;
+        QToolBar#mainToolBar QToolButton:hover {
+            background-color: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.18);
         }
         
-        QToolButton:pressed {
-            background-color: #3C3F41;
+        QToolBar#mainToolBar QToolButton:pressed,
+        QToolBar#mainToolBar QToolButton:checked {
+            background-color: rgba(9, 71, 113, 0.72);
+            border: 1px solid rgba(110, 178, 226, 0.55);
+        }
+
+        QToolBar#mainToolBar QToolButton:disabled {
+            color: rgba(255, 255, 255, 0.42);
         }
         
-        QToolButton[popupMode="1"] {
+        QToolBar#mainToolBar QToolButton[popupMode="1"] {
             padding-right: 20px;
         }
         
@@ -606,7 +652,7 @@ void MainWindow::applyDarkTheme()
 
     setStyleSheet(styleSheet);
 
-    // 更新容器背景色
+    // 鏇存柊瀹瑰櫒鑳屾櫙鑹?
     QWidget *commBar = findChild<QWidget *>("communicationBarWidget");
     if (commBar)
         commBar->setStyleSheet("background-color: #4E5254;");
@@ -645,33 +691,49 @@ void MainWindow::applyLightTheme()
             background-color: #E0E0E0;
         }
         
-        QToolBar {
-            background-color: #F5F5F5;
-            border-bottom: 1px solid #E0E0E0;
-            spacing: 10px;
-            padding: 5px;
+        QToolBar#mainToolBar {
+            background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                              stop:0 #FAFAFA, stop:1 #F1F3F5);
+            border: none;
+            border-bottom: 1px solid #DADDE1;
+            spacing: 8px;
+            padding: 6px 10px;
+        }
+
+        QToolBar#mainToolBar::separator {
+            width: 1px;
+            margin: 8px 6px;
+            background-color: rgba(0, 0, 0, 0.14);
         }
         
-        QToolButton {
+        QToolBar#mainToolBar QToolButton {
             background-color: transparent;
             border: 1px solid transparent;
-            border-radius: 4px;
-            padding: 6px 12px;
+            border-radius: 8px;
+            padding: 7px 14px;
             color: #000000;
             font-size: 10pt;
-            min-width: 80px;
+            font-weight: 500;
+            min-width: 98px;
+            min-height: 22px;
         }
         
-        QToolButton:hover {
-            background-color: #E8E8E8;
-            border: 1px solid #D0D0D0;
+        QToolBar#mainToolBar QToolButton:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+            border: 1px solid rgba(0, 0, 0, 0.12);
         }
         
-        QToolButton:pressed {
-            background-color: #D0D0D0;
+        QToolBar#mainToolBar QToolButton:pressed,
+        QToolBar#mainToolBar QToolButton:checked {
+            background-color: rgba(0, 120, 215, 0.12);
+            border: 1px solid rgba(0, 120, 215, 0.32);
+        }
+
+        QToolBar#mainToolBar QToolButton:disabled {
+            color: rgba(0, 0, 0, 0.34);
         }
         
-        QToolButton[popupMode="1"] {
+        QToolBar#mainToolBar QToolButton[popupMode="1"] {
             padding-right: 20px;
         }
         
@@ -889,7 +951,7 @@ void MainWindow::applyLightTheme()
 
     setStyleSheet(styleSheet);
 
-    // 更新容器背景色
+    // 鏇存柊瀹瑰櫒鑳屾櫙鑹?
     QWidget *commBar = findChild<QWidget *>("communicationBarWidget");
     if (commBar)
         commBar->setStyleSheet("background-color: #F5F5F5;");
@@ -916,10 +978,18 @@ void MainWindow::onToggleDarkTheme(bool enabled)
         m_lightThemeAction->setChecked(false);
         applyDarkTheme();
 
-        // 更新通信交互窗口主题
+        // 更新通信相关窗口主题
         if (m_communicationDialog)
         {
             m_communicationDialog->applyDarkTheme();
+        }
+        if (m_queryFrameDialog)
+        {
+            m_queryFrameDialog->applyDarkTheme();
+        }
+        if (m_frameParseDialog)
+        {
+            m_frameParseDialog->applyDarkTheme();
         }
     }
 }
@@ -933,10 +1003,18 @@ void MainWindow::onToggleLightTheme(bool enabled)
         m_lightThemeAction->setChecked(true);
         applyLightTheme();
 
-        // 更新通信交互窗口主题
+        // 更新通信相关窗口主题
         if (m_communicationDialog)
         {
             m_communicationDialog->applyLightTheme();
+        }
+        if (m_queryFrameDialog)
+        {
+            m_queryFrameDialog->applyLightTheme();
+        }
+        if (m_frameParseDialog)
+        {
+            m_frameParseDialog->applyLightTheme();
         }
     }
 }
@@ -948,7 +1026,7 @@ void MainWindow::onNewConnection()
     if (deviceTree)
     {
         QStringList connectedPorts;
-        // 遍历所有连接节点，收集已连接的端口
+        // 遍历所有连接节点，收集已经连接的串口
         for (int i = 0; i < deviceTree->getTreeWidget()->topLevelItemCount(); ++i)
         {
             QTreeWidgetItem *item = deviceTree->getTreeWidget()->topLevelItem(i);
@@ -972,18 +1050,18 @@ void MainWindow::onNewConnection()
 }
 void MainWindow::onNewMeterDialog()
 {
-    // 检查是否选中了连接节点
+    // 确保当前选中了连接节点
     DeviceTreeWidget *deviceTree = deviceTreeWidget();
     if (!deviceTree || !deviceTree->canAddMeter())
     {
-        QMessageBox::warning(this, "提示", "请先选择一个连接节点");
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("请先选择一个连接节点"));
         return;
     }
 
     QString connectionAlias = deviceTree->getSelectedConnectionAlias();
     if (connectionAlias.isEmpty())
     {
-        QMessageBox::warning(this, "提示", "请先选择一个连接节点");
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("请先选择一个连接节点"));
         return;
     }
 
@@ -1005,7 +1083,7 @@ void MainWindow::onNewMeterDialog()
         meterInfo.password = config.password;
         meterInfo.includeLeadingFE = config.includePrefixFE;
 
-        // 添加电表节点到设备树（第2层级）
+        // 添加电表节点到设备树（第 2 层级）
         deviceTree->addMeter(connectionAlias, meterInfo);
 
         refreshMeterPresence();
@@ -1016,7 +1094,7 @@ void MainWindow::onNewMeterDialog()
         QList<QLabel *> labels = statusBar->findChildren<QLabel *>();
         if (labels.size() >= 2)
         {
-            labels[1]->setText("地址: " + config.address);
+            labels[1]->setText(QStringLiteral("地址: ") + config.address);
         }
 
         LOG_INFO(QString("Meter added: Alias=%1, Address=%2, OperatorCode=%3, IncludePrefixFE=%4")
@@ -1031,17 +1109,17 @@ void MainWindow::onOpenConnection()
 {
     if (m_viewModel->isConnected())
     {
-        QMessageBox::information(this, "提示", "已经有连接打开，请先关闭现有连接");
+        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("已经有连接打开，请先关闭现有连接"));
         return;
     }
     if (m_viewModel->currentConnectionAlias().isEmpty())
     {
-        QMessageBox::warning(this, "提示", "请先选择一个连接");
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("请先选择一个连接"));
         return;
     }
     if (!m_viewModel->hasConnectionConfig(m_viewModel->currentConnectionAlias()))
     {
-        QMessageBox::warning(this, "错误", "未找到连接配置");
+        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("未找到连接配置"));
         return;
     }
     const ConnectionConfig config = m_viewModel->connectionConfig(m_viewModel->currentConnectionAlias());
@@ -1051,7 +1129,7 @@ void MainWindow::onCloseConnection()
 {
     if (!m_viewModel->isConnected())
     {
-        QMessageBox::information(this, "提示", "连接已经关闭");
+        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("连接已经关闭"));
         return;
     }
 
@@ -1069,7 +1147,7 @@ void MainWindow::onCloseConnection()
 
 void MainWindow::onDataUpdated()
 {
-    // 数据更新时刷新UI
+    // 数据更新时刷新界面
     updateRealTimeDataDisplay(false);
 }
 
@@ -1103,82 +1181,72 @@ void MainWindow::onConnectionStateChanged(bool connected)
     }
 }
 
-void MainWindow::onProtocolFrameReceived(const ProtocolFrame &frame)
+void MainWindow::onProtocolFrameReceived(const ProtocolFrame &frame, const QByteArray &rawFrame)
 {
     // LOG_INFO(QString("Frame received: %1").arg(frame.toString()));
+    const quint8 baseControlCode = frame.controlCode & 0x7F;
+    const bool isResponse = (frame.controlCode & 0x80) != 0;
+    const bool isErrorFrame = (baseControlCode == 0x51 || baseControlCode == 0x52);
 
     // 添加到操作日志
     if (m_operationLogWidget)
     {
         m_operationLogWidget->addCommunication(QString("接收帧: %1").arg(frame.toString()));
     }
+
+    if (!m_communicationDialog)
+    {
+        return;
+    }
+
+    CommunicationMessage message;
+    message.timestamp = QDateTime::currentDateTime();
+    message.direction = MessageDirection::Receive;
+    message.type = isErrorFrame ? MessageType::Error : (isResponse ? MessageType::Response : MessageType::Request);
+    message.controlCode = frame.controlCode;
+    message.dataLength = frame.dataLength;
+    message.fullFrame = rawFrame;
+    message.checksumValid = true;
+    m_communicationDialog->addMessage(message);
 }
 
-void MainWindow::onProtocolFrameSent(const ProtocolFrame &frame)
+void MainWindow::onProtocolFrameSent(const ProtocolFrame &frame, const QByteArray &rawFrame)
 {
     // LOG_INFO(QString("===Frame sent: %1").arg(frame.toString()));
+    const quint8 baseControlCode = frame.controlCode & 0x7F;
+    const bool isResponse = (frame.controlCode & 0x80) != 0;
+    const bool isErrorFrame = (baseControlCode == 0x51 || baseControlCode == 0x52);
 
     // 添加到操作日志
     if (m_operationLogWidget)
     {
         m_operationLogWidget->addCommunication(QString("发送帧: %1").arg(frame.toString()));
     }
+
+    if (!m_communicationDialog)
+    {
+        return;
+    }
+
+    CommunicationMessage message;
+    message.timestamp = QDateTime::currentDateTime();
+    message.direction = MessageDirection::Transmit;
+    message.type = isErrorFrame ? MessageType::Error : (isResponse ? MessageType::Response : MessageType::Request);
+    message.controlCode = frame.controlCode;
+    message.dataLength = frame.dataLength;
+    message.fullFrame = rawFrame;
+    message.checksumValid = true;
+    m_communicationDialog->addMessage(message);
 }
 
 void MainWindow::onRawDataReceived(const QByteArray &data)
 {
-    // 将原始数据（包含前导码）转换为CommunicationMessage并添加到通信交互窗口
-    if (m_communicationDialog)
-    {
-        CommunicationMessage message;
-        message.timestamp = QDateTime::currentDateTime();
-        message.direction = MessageDirection::Receive;
-        message.type = MessageType::Request;
-        message.fullFrame = data; // 使用原始数据，包含前导码
-        message.checksumValid = true;
-
-        // 从原始数据中解析控制码和数据长度（跳过前导码）
-        int startIndex = 0;
-        while (startIndex < data.size() && static_cast<quint8>(data[startIndex]) == 0xFE)
-        {
-            startIndex++;
-        }
-        if (startIndex + 9 < data.size())
-        {
-            message.controlCode = static_cast<quint8>(data[startIndex + 8]);
-            message.dataLength = static_cast<quint8>(data[startIndex + 9]);
-        }
-
-        m_communicationDialog->addMessage(message);
-    }
+    Q_UNUSED(data);
 }
 
 void MainWindow::onRawDataSent(const QByteArray &data)
 {
-    // 将原始数据（包含前导码）转换为CommunicationMessage并添加到通信交互窗口
-    if (m_communicationDialog)
-    {
-        CommunicationMessage message;
-        message.timestamp = QDateTime::currentDateTime();
-        message.direction = MessageDirection::Transmit;
-        message.type = MessageType::Response;
-        message.fullFrame = data;
-        message.checksumValid = true;
-
-        // 从原始数据中解析控制码和数据长度（跳过前导码）
-        int startIndex = 0;
-        while (startIndex < data.size() && static_cast<quint8>(data[startIndex]) == 0xFE)
-        {
-            startIndex++;
-        }
-        if (startIndex + 9 < data.size())
-        {
-            message.controlCode = static_cast<quint8>(data[startIndex + 8]);
-            message.dataLength = static_cast<quint8>(data[startIndex + 9]);
-        }
-
-        m_communicationDialog->addMessage(message);
-    }
+    Q_UNUSED(data);
 }
 
 void MainWindow::updateConnectionStatus(bool connected)
@@ -1202,15 +1270,31 @@ void MainWindow::updateToolBarButtons()
     if (m_viewModel->isConnected())
     {
         m_openConnectionAction->setVisible(false);
+        if (m_openConnectionSeparatorAction)
+        {
+            m_openConnectionSeparatorAction->setVisible(false);
+        }
         m_closeConnectionAction->setVisible(true);
+        if (m_closeConnectionSeparatorAction)
+        {
+            m_closeConnectionSeparatorAction->setVisible(true);
+        }
     }
     else
     {
         m_openConnectionAction->setVisible(true);
+        if (m_openConnectionSeparatorAction)
+        {
+            m_openConnectionSeparatorAction->setVisible(true);
+        }
         m_closeConnectionAction->setVisible(false);
+        if (m_closeConnectionSeparatorAction)
+        {
+            m_closeConnectionSeparatorAction->setVisible(false);
+        }
     }
 
-    // 更新建电表按钮状态（未选中连接时禁用）
+    // 更新新建电表按钮状态（未选中连接时禁用）
     m_newMeterAction->setEnabled(m_viewModel->isNewMeterEnabled());
 
     // 更新通信交互按钮状态（连接已打开时启用）
@@ -1238,6 +1322,36 @@ void MainWindow::updateCommunicationDialogState()
     }
 
     m_communicationDialog->setConnectionStatus(m_viewModel->isConnected());
+}
+
+void MainWindow::updateQueryFrameDialogState()
+{
+    if (!m_queryFrameDialog)
+    {
+        return;
+    }
+
+    m_queryFrameDialog->setMeterModel(m_currentMeterModel);
+    if (m_currentMeterModel)
+    {
+        m_queryFrameDialog->setDefaultMeterAddress(m_currentMeterModel->getMeterAddress());
+        m_queryFrameDialog->setIncludePrefixFE(m_currentMeterModel->getIncludePrefixFE());
+    }
+    else
+    {
+        m_queryFrameDialog->setDefaultMeterAddress(QString());
+        m_queryFrameDialog->setIncludePrefixFE(false);
+    }
+}
+
+void MainWindow::updateFrameParseDialogState()
+{
+    if (!m_frameParseDialog)
+    {
+        return;
+    }
+
+    m_frameParseDialog->setMeterModel(m_currentMeterModel);
 }
 
 DeviceTreeWidget *MainWindow::deviceTreeWidget() const
@@ -1576,6 +1690,8 @@ void MainWindow::applyCurrentMeter(const MeterInfo &meterInfo)
     {
         m_communicationDialog->setMeterModel(m_currentMeterModel);
     }
+    updateQueryFrameDialogState();
+    updateFrameParseDialogState();
 
     m_viewModel->setCurrentMeterAddress(meterInfo.address);
     updateConnectionStatus(m_viewModel->isConnected());
@@ -1598,6 +1714,8 @@ void MainWindow::clearCurrentMeter()
     {
         m_communicationDialog->setMeterModel(nullptr);
     }
+    updateQueryFrameDialogState();
+    updateFrameParseDialogState();
 
     m_viewModel->setCurrentMeterAddress(QString());
     updateConnectionStatus(m_viewModel->isConnected());
@@ -1668,7 +1786,7 @@ void MainWindow::updateRealTimeDataDisplay(bool advancePhase)
         phaseAngle = m_currentMeterModel->getDataValue(phaseInfos[m_realTimePhaseIndex].angleCode).toDouble();
     }
 
-    m_realTimeDataLabel->setText(QString("正向有功总电能: %1 | 反向有功总电能: %2 | %3电压: %4 | %3电流: %5 | %3相角: %6")
+    m_realTimeDataLabel->setText(QStringLiteral("正向有功总电能: %1 | 反向有功总电能: %2 | %3电压: %4 | %3电流: %5 | %3相角: %6")
                                      .arg(forwardEnergy, 0, 'f', 2)
                                      .arg(reverseEnergy, 0, 'f', 2)
                                      .arg(QString::fromUtf8(phaseInfos[m_realTimePhaseIndex].name))
@@ -1679,7 +1797,7 @@ void MainWindow::updateRealTimeDataDisplay(bool advancePhase)
 
 void MainWindow::onCommunicationInteraction()
 {
-    // 如果窗口已存在，则显示并激活
+    // 如果窗口已经存在，则显示并激活
     if (m_communicationDialog)
     {
         m_communicationDialog->show();
@@ -1688,7 +1806,7 @@ void MainWindow::onCommunicationInteraction()
         return;
     }
 
-    //
+    // 创建通信交互窗口
     m_communicationDialog = new CommunicationDialog(m_viewModel->currentConnectionAlias(), this);
     m_communicationDialog->setMeterModel(m_protocolController->meterModel());
 
@@ -1735,8 +1853,73 @@ void MainWindow::onCommunicationDialogClosed()
     }
 }
 
+void MainWindow::onQueryFrameGenerator()
+{
+    if (m_queryFrameDialog)
+    {
+        updateQueryFrameDialogState();
+        m_queryFrameDialog->show();
+        m_queryFrameDialog->raise();
+        m_queryFrameDialog->activateWindow();
+        return;
+    }
+
+    m_queryFrameDialog = new QueryFrameDialog(this);
+    updateQueryFrameDialogState();
+
+    if (m_viewModel->isDarkTheme())
+    {
+        m_queryFrameDialog->applyDarkTheme();
+    }
+    else
+    {
+        m_queryFrameDialog->applyLightTheme();
+    }
+
+    connect(m_queryFrameDialog, &QueryFrameDialog::dialogClosed,
+            this, &MainWindow::onQueryFrameDialogClosed);
+
+    m_queryFrameDialog->show();
+}
+
+void MainWindow::onQueryFrameDialogClosed()
+{
+    if (m_queryFrameDialog)
+    {
+        m_queryFrameDialog->deleteLater();
+        m_queryFrameDialog = nullptr;
+    }
+}
+
+void MainWindow::onFrameParseDialog()
+{
+    if (m_frameParseDialog)
+    {
+        updateFrameParseDialogState();
+        m_frameParseDialog->show();
+        m_frameParseDialog->raise();
+        m_frameParseDialog->activateWindow();
+        return;
+    }
+
+    m_frameParseDialog = new FrameParseDialog(this);
+    updateFrameParseDialogState();
+
+    if (m_viewModel->isDarkTheme())
+    {
+        m_frameParseDialog->applyDarkTheme();
+    }
+    else
+    {
+        m_frameParseDialog->applyLightTheme();
+    }
+
+    m_frameParseDialog->show();
+}
+
 void MainWindow::onLoggerLogEntryAdded(LogLevel level, const QDateTime &timestamp, const QString &message)
 {
+    Q_UNUSED(timestamp);
     if (!m_operationLogWidget)
     {
         return;
@@ -1746,7 +1929,7 @@ void MainWindow::onLoggerLogEntryAdded(LogLevel level, const QDateTime &timestam
     switch (level)
     {
     case LogLevel::Debug:
-        // 调试日志不显示在操作日志中
+        // 调试日志不显示到操作日志窗口
         break;
     case LogLevel::Info:
         m_operationLogWidget->addInfo(message);
@@ -1796,12 +1979,12 @@ void MainWindow::onOpenConnectionRequested(const QString &connectionAlias)
 {
     if (m_viewModel->isConnected())
     {
-        QMessageBox::information(this, "提示", "已经有连接打开，请先关闭现有连接");
+        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("已经有连接打开，请先关闭现有连接"));
         return;
     }
     if (!m_viewModel->hasConnectionConfig(connectionAlias))
     {
-        QMessageBox::warning(this, "错误", "未找到连接配置");
+        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("未找到连接配置"));
         return;
     }
     const ConnectionConfig config = m_viewModel->connectionConfig(connectionAlias);
@@ -1812,17 +1995,18 @@ void MainWindow::onCloseConnectionRequested(const QString &connectionAlias)
 {
     if (!m_viewModel->isConnected())
     {
-        QMessageBox::information(this, "提示", "连接已经关闭");
+        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("连接已经关闭"));
         return;
     }
     closeConnectionInternal(connectionAlias);
 }
-
 void MainWindow::onDeleteConnectionRequested(const QString &connectionAlias)
 {
-    QMessageBox::StandardButton reply = QMessageBox::question(this, "确认删除",
-                                                              QString("确定要删除连接 \"%1\" 吗？").arg(connectionAlias),
-                                                              QMessageBox::Yes | QMessageBox::No);
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        QStringLiteral("确认删除"),
+        QStringLiteral("确定要删除连接 \"%1\" 吗？").arg(connectionAlias),
+        QMessageBox::Yes | QMessageBox::No);
 
     if (reply == QMessageBox::Yes)
     {
@@ -1833,7 +2017,7 @@ void MainWindow::onDeleteConnectionRequested(const QString &connectionAlias)
             closeConnectionInternal(connectionAlias);
         }
 
-        // 从设备树中删除连接节点
+        // 从设备树和协议注册表中清理该连接下的电表
         DeviceTreeWidget *deviceTree = deviceTreeWidget();
         if (deviceTree)
         {
@@ -1854,21 +2038,20 @@ void MainWindow::onDeleteConnectionRequested(const QString &connectionAlias)
         refreshMeterPresence();
 
         LOG_INFO(QString("Connection deleted: %1").arg(connectionAlias));
-        QMessageBox::information(this, "成功", "连接已删除");
+        QMessageBox::information(this, QStringLiteral("成功"), QStringLiteral("连接已删除"));
     }
 }
-
 void MainWindow::onEditConnectionRequested(const QString &connectionAlias)
 {
     if (!m_viewModel->hasConnectionConfig(connectionAlias))
     {
-        QMessageBox::warning(this, "错误", "未找到连接配置");
+        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("未找到连接配置"));
         return;
     }
 
     if (m_viewModel->isConnected() && m_viewModel->currentConnectionAlias() == connectionAlias)
     {
-        QMessageBox::information(this, "提示", "请先关闭当前连接，再编辑连接配置");
+        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("请先关闭当前连接，再编辑连接配置"));
         return;
     }
 
@@ -1915,13 +2098,13 @@ void MainWindow::onEditConnectionRequested(const QString &connectionAlias)
     const ConnectionConfig updatedConfig = dialog.getConnectionConfig();
     if (updatedConfig.alias != connectionAlias && m_viewModel->hasConnectionConfig(updatedConfig.alias))
     {
-        QMessageBox::warning(this, "错误", QString("连接别名 %1 已存在").arg(updatedConfig.alias));
+        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("连接别名 %1 已存在").arg(updatedConfig.alias));
         return;
     }
 
     if (updatedConfig.type == ConnectionType::Serial && deviceTree && deviceTree->isPortConnected(updatedConfig.serialPort))
     {
-        QMessageBox::warning(this, "错误", QString("串口 %1 已被连接，请使用其他串口").arg(updatedConfig.serialPort));
+        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("串口 %1 已被连接，请使用其他串口").arg(updatedConfig.serialPort));
         return;
     }
 
@@ -1935,7 +2118,7 @@ void MainWindow::onEditConnectionRequested(const QString &connectionAlias)
     {
         ConnectionInfo connectionInfo;
         connectionInfo.alias = updatedConfig.alias;
-        connectionInfo.type = (updatedConfig.type == ConnectionType::Serial) ? "串口" : "TCP";
+        connectionInfo.type = (updatedConfig.type == ConnectionType::Serial) ? QStringLiteral("串口") : QStringLiteral("TCP");
         connectionInfo.port = (updatedConfig.type == ConnectionType::Serial)
                                   ? updatedConfig.serialPort
                                   : QString("%1:%2").arg(updatedConfig.tcpAddress).arg(updatedConfig.tcpPort);
@@ -1955,14 +2138,15 @@ void MainWindow::onEditConnectionRequested(const QString &connectionAlias)
 
     LOG_INFO(QString("Connection updated: %1 -> %2")
                  .arg(connectionAlias, updatedConfig.alias));
-    QMessageBox::information(this, "成功", "连接配置已更新");
+    QMessageBox::information(this, QStringLiteral("成功"), QStringLiteral("连接配置已更新"));
 }
-
 void MainWindow::onDeleteMeterRequested(const QString &connectionAlias, const QString &meterAlias)
 {
-    QMessageBox::StandardButton reply = QMessageBox::question(this, "确认删除",
-                                                              QString("确定要删除电表 \"%1\" 吗？").arg(meterAlias),
-                                                              QMessageBox::Yes | QMessageBox::No);
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        QStringLiteral("确认删除"),
+        QStringLiteral("确定要删除电表 \"%1\" 吗？").arg(meterAlias),
+        QMessageBox::Yes | QMessageBox::No);
 
     if (reply == QMessageBox::Yes)
     {
@@ -1988,20 +2172,19 @@ void MainWindow::onDeleteMeterRequested(const QString &connectionAlias, const QS
         LOG_INFO(QString("Meter deleted: %1").arg(meterAlias));
     }
 }
-
 void MainWindow::onNewMeterRequested(const QString &connectionAlias)
 {
-    // 检查连接是否已打开
+    // 检查连接是否已经打开
     if (!m_viewModel->isConnected())
     {
-        QMessageBox::warning(this, "提示", "请先打开连接");
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("请先打开连接"));
         return;
     }
 
     DeviceTreeWidget *deviceTree = deviceTreeWidget();
     if (!deviceTree)
     {
-        QMessageBox::warning(this, "提示", "未找到设备树");
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("未找到设备树"));
         return;
     }
 
@@ -2020,10 +2203,10 @@ void MainWindow::onNewMeterRequested(const QString &connectionAlias)
     {
         MeterConfig config = dialog.getMeterConfig();
 
-        // 检查通信地址是否已存在
+        // 检查通信地址是否已经存在
         if (deviceTree->isMeterAddressExists(config.address))
         {
-            QMessageBox::warning(this, "错误", QString("通信地址 %1 已存在，请使用不同的地址").arg(config.address));
+            QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("通信地址 %1 已存在，请使用不同的地址").arg(config.address));
             return;
         }
 
@@ -2048,7 +2231,7 @@ void MainWindow::onNewMeterRequested(const QString &connectionAlias)
         QList<QLabel *> labels = statusBar->findChildren<QLabel *>();
         if (labels.size() >= 2)
         {
-            labels[1]->setText("地址: " + config.address);
+            labels[1]->setText(QStringLiteral("地址: ") + config.address);
         }
 
         LOG_INFO(QString("Meter added: Alias=%1, Address=%2, OperatorCode=%3, IncludePrefixFE=%4")
@@ -2057,6 +2240,6 @@ void MainWindow::onNewMeterRequested(const QString &connectionAlias)
                      .arg(config.operatorCode)
                      .arg(config.includePrefixFE ? "true" : "false"));
 
-        QMessageBox::information(this, "成功", "电表已添加");
+        QMessageBox::information(this, QStringLiteral("成功"), QStringLiteral("电表已添加"));
     }
 }

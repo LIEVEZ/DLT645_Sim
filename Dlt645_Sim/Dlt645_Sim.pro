@@ -22,6 +22,7 @@ SOURCES += \
     Source/main.cpp \
     Source/Views/MainWindow/mainwindow.cpp \
     Source/Utils/BCDHelper.cpp \
+    Source/Utils/DLT645FrameFormatter.cpp \
     Source/Utils/DLT645DataHelper.cpp \
     Source/Utils/ChecksumHelper.cpp \
     Source/Utils/Logger.cpp \
@@ -37,15 +38,19 @@ SOURCES += \
     Source/Views/OperationLog/OperationLogWidget.cpp \
     Source/Views/DeviceTree/DeviceTreeWidget.cpp \
     Source/Views/DataTable/DataTableWidget.cpp \
+    Source/Views/Common/FrameParseResultWidget.cpp \
     Source/Views/CommunicationBar/CommunicationBarWidget.cpp \
     Source/Views/Dialogs/NewConnectionDialog.cpp \
     Source/Views/Dialogs/NewMeterDialog.cpp \
-    Source/Views/Dialogs/CommunicationDialog.cpp
+    Source/Views/Dialogs/CommunicationDialog.cpp \
+    Source/Views/Dialogs/FrameParseDialog.cpp \
+    Source/Views/Dialogs/QueryFrameDialog.cpp
 
 # 头文件
 HEADERS += \
     Source/Views/MainWindow/mainwindow.h \
     Source/Utils/BCDHelper.h \
+    Source/Utils/DLT645FrameFormatter.h \
     Source/Utils/DLT645DataHelper.h \
     Source/Utils/ChecksumHelper.h \
     Source/Utils/Logger.h \
@@ -62,10 +67,13 @@ HEADERS += \
     Source/Views/OperationLog/OperationLogWidget.h \
     Source/Views/DeviceTree/DeviceTreeWidget.h \
     Source/Views/DataTable/DataTableWidget.h \
+    Source/Views/Common/FrameParseResultWidget.h \
     Source/Views/CommunicationBar/CommunicationBarWidget.h \
     Source/Views/Dialogs/NewConnectionDialog.h \
     Source/Views/Dialogs/NewMeterDialog.h \
-    Source/Views/Dialogs/CommunicationDialog.h
+    Source/Views/Dialogs/CommunicationDialog.h \
+    Source/Views/Dialogs/FrameParseDialog.h \
+    Source/Views/Dialogs/QueryFrameDialog.h
 
 # UI文件
 FORMS += \

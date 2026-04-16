@@ -103,54 +103,21 @@ void ProtocolController::setTcpController(TcpController *controller)
 
 void ProtocolController::processReceivedData(const QByteArray &data)
 {
+    emit rawDataReceived(data);
+    if (data.isEmpty())
+    {
+        return;
+    }
+
     m_receiveBuffer.append(data);
 
     qDebug() << "processReceivedData data:" << data.toHex();
-    while (!m_receiveBuffer.isEmpty())
+
+    ProtocolFrame frame;
+    QByteArray rawFrame;
+    while (tryTakeNextReceivedFrame(frame, rawFrame))
     {
-        int startIndex = 0;
-        while (startIndex < m_receiveBuffer.size() &&
-               static_cast<quint8>(m_receiveBuffer[startIndex]) == 0xFE)
-        {
-            startIndex++;
-        }
-
-        if (startIndex >= m_receiveBuffer.size())
-        {
-            m_receiveBuffer.clear();
-            break;
-        }
-
-        if (static_cast<quint8>(m_receiveBuffer[startIndex]) != 0x68)
-        {
-            LOG_WARNING(QString("Invalid data in buffer, clearing. First byte: 0x%1")
-                            .arg(static_cast<quint8>(m_receiveBuffer[0]), 2, 16, QChar('0')));
-            m_receiveBuffer.clear();
-            break;
-        }
-
-        const QByteArray frameData = m_receiveBuffer.mid(startIndex);
-        const ProtocolFrame frame = m_protocolParser->parseFrame(frameData);
-
-        if (!frame.isValid())
-        {
-            const int minFrameSize = 12;
-            if (m_receiveBuffer.size() - startIndex < minFrameSize)
-            {
-                break;
-            }
-
-            LOG_WARNING(QString("Failed to parse frame with sufficient data, clearing buffer"));
-            m_receiveBuffer.clear();
-            break;
-        }
-
-        const int actualFrameSize = startIndex + frame.parsedSize;
-        const QByteArray rawData = m_receiveBuffer.left(actualFrameSize);
-        emit rawDataReceived(rawData);
-
-        m_receiveBuffer = m_receiveBuffer.mid(actualFrameSize);
-        emit frameReceived(frame);
+        emit frameReceived(frame, rawFrame);
 
         const quint8 controlCode = frame.controlCode & 0x7F;
         const bool needsAddressValidation =
@@ -206,6 +173,116 @@ void ProtocolController::processReceivedData(const QByteArray &data)
     }
 }
 
+bool ProtocolController::tryTakeNextReceivedFrame(ProtocolFrame &frame, QByteArray &rawFrame)
+{
+    auto trimBufferForFrame = [this]() -> bool
+    {
+        while (!m_receiveBuffer.isEmpty())
+        {
+            const int first68Index = m_receiveBuffer.indexOf(static_cast<char>(0x68));
+            if (first68Index < 0)
+            {
+                int trailingFECount = 0;
+                for (int i = m_receiveBuffer.size() - 1; i >= 0; --i)
+                {
+                    if (static_cast<quint8>(m_receiveBuffer[i]) != 0xFE)
+                    {
+                        break;
+                    }
+                    ++trailingFECount;
+                }
+
+                if (trailingFECount == m_receiveBuffer.size())
+                {
+                    if (m_receiveBuffer.size() > 4)
+                    {
+                        m_receiveBuffer = m_receiveBuffer.right(4);
+                    }
+                }
+                else if (trailingFECount > 0)
+                {
+                    const int invalidCount = m_receiveBuffer.size() - trailingFECount;
+                    LOG_WARNING(QString("Discarding %1 invalid byte(s) before DLT645 prefix bytes").arg(invalidCount));
+                    m_receiveBuffer = m_receiveBuffer.right(qMin(trailingFECount, 4));
+                }
+                else
+                {
+                    LOG_WARNING(QString("No DLT645 start flag found, clearing %1 invalid byte(s)").arg(m_receiveBuffer.size()));
+                    m_receiveBuffer.clear();
+                }
+                return false;
+            }
+
+            int framePrefixIndex = first68Index;
+            while (framePrefixIndex > 0 &&
+                   static_cast<quint8>(m_receiveBuffer[framePrefixIndex - 1]) == 0xFE)
+            {
+                --framePrefixIndex;
+            }
+
+            if (framePrefixIndex > 0)
+            {
+                LOG_WARNING(QString("Discarding %1 invalid leading byte(s) before DLT645 frame").arg(framePrefixIndex));
+                m_receiveBuffer.remove(0, framePrefixIndex);
+                continue;
+            }
+
+            return true;
+        }
+
+        return false;
+    };
+
+    while (trimBufferForFrame())
+    {
+        int startIndex = 0;
+        while (startIndex < m_receiveBuffer.size() &&
+               static_cast<quint8>(m_receiveBuffer[startIndex]) == 0xFE)
+        {
+            ++startIndex;
+        }
+
+        if (startIndex >= m_receiveBuffer.size())
+        {
+            return false;
+        }
+
+        constexpr int minimumHeaderSize = 10; // 68 + 地址6 + 68 + 控制码 + 长度
+        if (m_receiveBuffer.size() < startIndex + minimumHeaderSize)
+        {
+            return false;
+        }
+
+        if (static_cast<quint8>(m_receiveBuffer[startIndex + 7]) != 0x68)
+        {
+            LOG_WARNING(QString("Invalid DLT645 second start flag, resynchronizing buffer"));
+            m_receiveBuffer.remove(0, startIndex + 1);
+            continue;
+        }
+
+        const int dataLength = static_cast<quint8>(m_receiveBuffer[startIndex + 9]);
+        const int expectedFrameSize = startIndex + 12 + dataLength;
+        if (m_receiveBuffer.size() < expectedFrameSize)
+        {
+            return false;
+        }
+
+        rawFrame = m_receiveBuffer.left(expectedFrameSize);
+        frame = m_protocolParser->parseFrame(rawFrame);
+        if (!frame.isValid())
+        {
+            LOG_WARNING(QString("Failed to parse complete DLT645 frame, resynchronizing buffer"));
+            m_receiveBuffer.remove(0, startIndex + 1);
+            continue;
+        }
+
+        m_receiveBuffer.remove(0, expectedFrameSize);
+        return true;
+    }
+
+    return false;
+}
+
 void ProtocolController::sendReadRequest(const QString &diCode)
 {
     if (!hasActiveTransport())
@@ -221,19 +298,11 @@ void ProtocolController::sendReadRequest(const QString &diCode)
 
     QByteArray address = ProtocolParser::addressToBytes(m_meterModel->getMeterAddress());
     ProtocolFrame frame = m_protocolParser->buildReadRequest(address, diCode, m_meterModel->getIncludePrefixFE());
-
-    QByteArray frameData = frame.toByteArray();
-    if (m_meterModel->getIncludePrefixFE())
-    {
-        frameData.prepend(0xFE);
-        frameData.prepend(0xFE);
-        frameData.prepend(0xFE);
-        frameData.prepend(0xFE);
-    }
+    const QByteArray frameData = ProtocolParser::frameToRawBytes(frame, m_meterModel->getIncludePrefixFE());
 
     if (sendTransportData(frameData))
     {
-        emit frameSent(frame);
+        emit frameSent(frame, frameData);
         LOG_INFO(QString("Sent read request for DI: %1").arg(diCode));
     }
 }
@@ -253,19 +322,11 @@ void ProtocolController::sendWriteRequest(const QString &diCode, const QVariant 
 
     QByteArray address = ProtocolParser::addressToBytes(m_meterModel->getMeterAddress());
     ProtocolFrame frame = m_protocolParser->buildWriteRequest(address, diCode, value, m_meterModel->getIncludePrefixFE());
-
-    QByteArray frameData = frame.toByteArray();
-    if (m_meterModel->getIncludePrefixFE())
-    {
-        frameData.prepend(0xFE);
-        frameData.prepend(0xFE);
-        frameData.prepend(0xFE);
-        frameData.prepend(0xFE);
-    }
+    const QByteArray frameData = ProtocolParser::frameToRawBytes(frame, m_meterModel->getIncludePrefixFE());
 
     if (sendTransportData(frameData))
     {
-        emit frameSent(frame);
+        emit frameSent(frame, frameData);
         LOG_INFO(QString("Sent write request for DI: %1, value: %2").arg(diCode).arg(value.toString()));
     }
 }
@@ -294,7 +355,7 @@ void ProtocolController::setKnownMeterAddresses(const QStringList &addresses)
 
 void ProtocolController::onSerialDataReceived(const QByteArray &data)
 {
-    LOG_DEBUG(QString("Serial data received: %1 bytes").arg(data.size()));
+    // LOG_DEBUG(QString("Serial data received: %1 bytes").arg(data.size()));
     processReceivedData(data);
 }
 
@@ -454,18 +515,13 @@ void ProtocolController::sendResponse(const ProtocolFrame &response, MeterModel 
     }
 
     MeterModel *responseMeterModel = meterModel ? meterModel : m_meterModel;
-    QByteArray responseData = response.toByteArray();
-    if (responseMeterModel && responseMeterModel->getIncludePrefixFE())
-    {
-        responseData.prepend(0xFE);
-        responseData.prepend(0xFE);
-        responseData.prepend(0xFE);
-        responseData.prepend(0xFE);
-    }
+    const QByteArray responseData =
+        ProtocolParser::frameToRawBytes(response,
+                                        responseMeterModel && responseMeterModel->getIncludePrefixFE());
 
     if (sendTransportData(responseData))
     {
-        emit frameSent(response);
+        emit frameSent(response, responseData);
     }
 }
 

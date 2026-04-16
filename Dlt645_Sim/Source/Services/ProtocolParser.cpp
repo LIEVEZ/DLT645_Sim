@@ -140,10 +140,11 @@ ProtocolFrame ProtocolParser::parseFrame(const QByteArray &data)
 
 ProtocolFrame ProtocolParser::buildReadRequest(const QByteArray &address, const QString &diCode, bool includePrefixFE)
 {
+    Q_UNUSED(includePrefixFE);
     ProtocolFrame frame;
 
     frame.startFlag = 0x68;
-    frame.address = addressToBytes(address);
+    frame.address = address;
     frame.startFlag2 = 0x68;
     frame.controlCode = static_cast<quint8>(ControlCode::ReadData);
 
@@ -162,10 +163,11 @@ ProtocolFrame ProtocolParser::buildReadRequest(const QByteArray &address, const 
 
 ProtocolFrame ProtocolParser::buildWriteRequest(const QByteArray &address, const QString &diCode, const QVariant &value, bool includePrefixFE)
 {
+    Q_UNUSED(includePrefixFE);
     ProtocolFrame frame;
 
     frame.startFlag = 0x68;
-    frame.address = addressToBytes(address);
+    frame.address = address;
     frame.startFlag2 = 0x68;
     frame.controlCode = static_cast<quint8>(ControlCode::WriteData);
 
@@ -469,6 +471,20 @@ QString ProtocolParser::bytesToAddress(const QByteArray &bytes)
     }
 
     return address;
+}
+
+QByteArray ProtocolParser::frameToRawBytes(const ProtocolFrame &frame, bool includePrefixFE)
+{
+    QByteArray rawBytes = frame.toByteArray();
+    if (includePrefixFE)
+    {
+        rawBytes.prepend(static_cast<char>(0xFE));
+        rawBytes.prepend(static_cast<char>(0xFE));
+        rawBytes.prepend(static_cast<char>(0xFE));
+        rawBytes.prepend(static_cast<char>(0xFE));
+    }
+
+    return rawBytes;
 }
 
 bool ProtocolFrame::isValid() const

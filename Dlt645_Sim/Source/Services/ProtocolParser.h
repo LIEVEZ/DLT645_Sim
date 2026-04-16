@@ -185,6 +185,14 @@ public:
      */
     static QString bytesToAddress(const QByteArray &bytes);
 
+    /**
+     * @brief 将协议帧转换为实际收发使用的原始字节流
+     * @param frame 协议帧
+     * @param includePrefixFE 是否包含4个前导FE
+     * @return 原始字节流
+     */
+    static QByteArray frameToRawBytes(const ProtocolFrame &frame, bool includePrefixFE);
+
 signals:
     /**
      * @brief 帧解析完成信号
