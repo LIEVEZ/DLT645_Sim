@@ -255,6 +255,72 @@ void DataTableWidget::populateCategory(const QString &category)
         return;
     }
 
+    const QString filterText = m_searchEdit ? m_searchEdit->text().trimmed() : QString();
+    const bool searchAllDataItems = !filterText.isEmpty();
+    const QList<QString> codes = searchAllDataItems
+                                     ? allSearchableDataCodes()
+                                     : dataCodesForCategory(category);
+
+    for (const QString &diCode : codes)
+    {
+        // 从MeterModel中获取完整的DataItem信息
+        DataItem dataItem = m_meterModel->getDataItem(diCode);
+        QString name = dataItem.description;
+        dataItem.value = m_meterModel->getDataValue(diCode);
+        QString unit = dataItem.unit;
+        QString dataFormat = dataItem.format;
+        QString formattedValue = dataItem.getFormattedValue();
+
+        if (searchAllDataItems)
+        {
+            const QString haystack = QStringLiteral("%1 %2 %3 %4 %5")
+                                         .arg(diCode, name, formattedValue, unit, dataFormat);
+            if (!haystack.contains(filterText, Qt::CaseInsensitive))
+            {
+                continue;
+            }
+        }
+
+        int row = m_tableWidget->rowCount();
+        m_tableWidget->insertRow(row);
+
+        // 数据标识
+        QTableWidgetItem *diItem = new QTableWidgetItem(diCode);
+        diItem->setFlags(diItem->flags() & ~Qt::ItemIsEditable);
+        diItem->setData(Qt::UserRole, diCode);
+        m_tableWidget->setItem(row, 0, diItem);
+
+        QTableWidgetItem *valueItem = new QTableWidgetItem(formattedValue);
+        valueItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        valueItem->setData(Qt::UserRole, dataItem.value);
+        m_tableWidget->setItem(row, 1, valueItem);
+
+        // 单位
+        QTableWidgetItem *unitItem = new QTableWidgetItem(unit);
+        unitItem->setFlags(unitItem->flags() & ~Qt::ItemIsEditable);
+        unitItem->setTextAlignment(Qt::AlignCenter);
+        m_tableWidget->setItem(row, 2, unitItem);
+
+        // 数据格式
+        QTableWidgetItem *formatItem = new QTableWidgetItem(dataFormat);
+        formatItem->setFlags(formatItem->flags() & ~Qt::ItemIsEditable);
+        formatItem->setTextAlignment(Qt::AlignCenter);
+        m_tableWidget->setItem(row, 3, formatItem);
+
+        // 数据项描述
+        QTableWidgetItem *descItem = new QTableWidgetItem(name);
+        descItem->setFlags(descItem->flags() & ~Qt::ItemIsEditable);
+        m_tableWidget->setItem(row, 4, descItem);
+    }
+}
+
+QList<QString> DataTableWidget::dataCodesForCategory(const QString &category) const
+{
+    if (!m_meterModel)
+    {
+        return {};
+    }
+
     QList<QString> codes;
 
     if (category == "当前")
@@ -287,49 +353,44 @@ void DataTableWidget::populateCategory(const QString &category)
         codes.append(m_meterModel->getLoadRecordDataCodes());
     }
 
-    for (const QString &diCode : codes)
+    return codes;
+}
+
+QList<QString> DataTableWidget::allSearchableDataCodes() const
+{
+    if (!m_meterModel)
     {
-        // 从MeterModel中获取完整的DataItem信息
-        DataItem dataItem = m_meterModel->getDataItem(diCode);
-        QString name = dataItem.description;
-        dataItem.value = m_meterModel->getDataValue(diCode);
-        QString unit = dataItem.unit;
-        QString dataFormat = dataItem.format;
-
-        int row = m_tableWidget->rowCount();
-        m_tableWidget->insertRow(row);
-
-        // 数据标识
-        QTableWidgetItem *diItem = new QTableWidgetItem(diCode);
-        diItem->setFlags(diItem->flags() & ~Qt::ItemIsEditable);
-        diItem->setData(Qt::UserRole, diCode);
-        m_tableWidget->setItem(row, 0, diItem);
-
-        // 数据值 - 使用DataItem的格式化方法
-        QString formattedValue = dataItem.getFormattedValue();
-
-        QTableWidgetItem *valueItem = new QTableWidgetItem(formattedValue);
-        valueItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        valueItem->setData(Qt::UserRole, dataItem.value);
-        m_tableWidget->setItem(row, 1, valueItem);
-
-        // 单位
-        QTableWidgetItem *unitItem = new QTableWidgetItem(unit);
-        unitItem->setFlags(unitItem->flags() & ~Qt::ItemIsEditable);
-        unitItem->setTextAlignment(Qt::AlignCenter);
-        m_tableWidget->setItem(row, 2, unitItem);
-
-        // 数据格式
-        QTableWidgetItem *formatItem = new QTableWidgetItem(dataFormat);
-        formatItem->setFlags(formatItem->flags() & ~Qt::ItemIsEditable);
-        formatItem->setTextAlignment(Qt::AlignCenter);
-        m_tableWidget->setItem(row, 3, formatItem);
-
-        // 数据项描述
-        QTableWidgetItem *descItem = new QTableWidgetItem(name);
-        descItem->setFlags(descItem->flags() & ~Qt::ItemIsEditable);
-        m_tableWidget->setItem(row, 4, descItem);
+        return {};
     }
+
+    QList<QString> codes;
+    QSet<QString> seenCodes;
+
+    const QList<QList<QString>> groups = {
+        m_meterModel->getEnergyDataCodes(),
+        m_meterModel->getDemandDataCodes(),
+        m_meterModel->getMaxDemandDataCodes(),
+        m_meterModel->getVariableDataCodes(),
+        m_meterModel->getEventDataCodes(),
+        m_meterModel->getParameterDataCodes(),
+        m_meterModel->getFreezeDataCodes(),
+        m_meterModel->getLoadRecordDataCodes()};
+
+    for (const QList<QString> &group : groups)
+    {
+        for (const QString &diCode : group)
+        {
+            if (seenCodes.contains(diCode))
+            {
+                continue;
+            }
+
+            seenCodes.insert(diCode);
+            codes.append(diCode);
+        }
+    }
+
+    return codes;
 }
 
 void DataTableWidget::refreshTable()
@@ -524,13 +585,14 @@ void DataTableWidget::onItemChanged(QTableWidgetItem *item)
 
 void DataTableWidget::onSearchTextChanged(const QString &text)
 {
-    filterTable(text);
+    Q_UNUSED(text);
+    refreshTable();
 }
 
 void DataTableWidget::onSearchReturnPressed()
 {
     // 回车键触发搜索（与textChanged相同）
-    filterTable(m_searchEdit->text());
+    refreshTable();
 }
 
 void DataTableWidget::onRefreshClicked()

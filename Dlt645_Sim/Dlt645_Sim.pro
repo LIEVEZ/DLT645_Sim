@@ -1,4 +1,4 @@
-QT       += core gui serialport network sql
+QT       += core gui serialport network sql concurrent
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -34,6 +34,7 @@ SOURCES += \
     Source/Services/MeterDataStore.cpp \
     Source/Controllers/SerialController.cpp \
     Source/Controllers/TcpController.cpp \
+    Source/Controllers/MasterQueryController.cpp \
     Source/Controllers/ProtocolController.cpp \
     Source/Views/OperationLog/OperationLogWidget.cpp \
     Source/Views/DeviceTree/DeviceTreeWidget.cpp \
@@ -43,6 +44,7 @@ SOURCES += \
     Source/Views/Dialogs/NewConnectionDialog.cpp \
     Source/Views/Dialogs/NewMeterDialog.cpp \
     Source/Views/Dialogs/CommunicationDialog.cpp \
+    Source/Views/Dialogs/MasterQueryDialog.cpp \
     Source/Views/Dialogs/FrameParseDialog.cpp \
     Source/Views/Dialogs/QueryFrameDialog.cpp
 
@@ -63,6 +65,7 @@ HEADERS += \
     Source/Services/MeterDataStore.h \
     Source/Controllers/SerialController.h \
     Source/Controllers/TcpController.h \
+    Source/Controllers/MasterQueryController.h \
     Source/Controllers/ProtocolController.h \
     Source/Views/OperationLog/OperationLogWidget.h \
     Source/Views/DeviceTree/DeviceTreeWidget.h \
@@ -72,6 +75,7 @@ HEADERS += \
     Source/Views/Dialogs/NewConnectionDialog.h \
     Source/Views/Dialogs/NewMeterDialog.h \
     Source/Views/Dialogs/CommunicationDialog.h \
+    Source/Views/Dialogs/MasterQueryDialog.h \
     Source/Views/Dialogs/FrameParseDialog.h \
     Source/Views/Dialogs/QueryFrameDialog.h
 

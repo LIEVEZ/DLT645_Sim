@@ -19,6 +19,7 @@
 #include "Views/DataTable/DataTableWidget.h"
 #include "Views/DeviceTree/DeviceTreeWidget.h"
 #include "Views/Dialogs/CommunicationDialog.h"
+#include "Views/Dialogs/MasterQueryDialog.h"
 #include "Views/Dialogs/NewConnectionDialog.h"
 #include "Views/Dialogs/QueryFrameDialog.h"
 #include "Views/OperationLog/OperationLogWidget.h"
@@ -56,7 +57,9 @@ private slots:
     void onRawDataReceived(const QByteArray &data);
     void onRawDataSent(const QByteArray &data);
     void onCommunicationInteraction();
+    void onMasterQueryWindow();
     void onCommunicationDialogClosed();
+    void onMasterQueryDialogClosed();
     void onQueryFrameGenerator();
     void onQueryFrameDialogClosed();
     void onFrameParseDialog();
@@ -87,6 +90,7 @@ private:
     void updateConnectionStatus(bool connected);
     void updateToolBarButtons();
     void updateCommunicationDialogState();
+    void updateMasterQueryDialogState();
     void updateQueryFrameDialogState();
     void updateFrameParseDialogState();
     DeviceTreeWidget *deviceTreeWidget() const;
@@ -130,12 +134,14 @@ private:
     QAction *m_closeConnectionAction;
     QAction *m_closeConnectionSeparatorAction;
     QAction *m_commInteractionAction;
+    QAction *m_masterQueryAction;
     QAction *m_queryFrameAction;
     QAction *m_frameParseAction;
     QAction *m_darkThemeAction;
     QAction *m_lightThemeAction;
 
     CommunicationDialog *m_communicationDialog;
+    MasterQueryDialog *m_masterQueryDialog;
     QueryFrameDialog *m_queryFrameDialog;
     FrameParseDialog *m_frameParseDialog;
     class MeterDataStore *m_meterDataStore;

@@ -36,7 +36,7 @@ void NewMeterDialog::setupUI()
     // 通讯地址
     QHBoxLayout *addressLayout = new QHBoxLayout();
     addressLayout->addWidget(new QLabel("通讯地址:"));
-    m_addressEdit->setPlaceholderText("202008060056");
+    m_addressEdit->setPlaceholderText("000000000000");
     m_addressEdit->setMaxLength(12);
     m_addressEdit->setEchoMode(QLineEdit::Normal);
     // 仅允许数字输入

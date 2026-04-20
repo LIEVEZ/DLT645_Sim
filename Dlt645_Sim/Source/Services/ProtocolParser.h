@@ -109,6 +109,14 @@ public:
     ProtocolFrame buildReadRequest(const QByteArray &address, const QString &diCode, bool includePrefixFE = true);
 
     /**
+     * @brief 构建读取通信地址请求帧
+     * @param address 电表地址
+     * @param includePrefixFE 是否包含前导FE
+     * @return 协议帧
+     */
+    ProtocolFrame buildReadAddressRequest(const QByteArray &address, bool includePrefixFE = true);
+
+    /**
      * @brief 构建写数据请求帧
      * @param address 电表地址
      * @param diCode 数据标识

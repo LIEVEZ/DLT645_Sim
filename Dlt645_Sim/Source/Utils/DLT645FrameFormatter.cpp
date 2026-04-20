@@ -508,6 +508,34 @@ FrameParseSection buildDataSection(const QByteArray &frame, const MeterModel *me
         return section;
     }
 
+    if (baseControlCode == 0x13)
+    {
+        QString dataText;
+        if (isResponse)
+        {
+            const QByteArray decodedAddressBytes = DLT645DataHelper::decodeReversedPayload(dataField);
+            dataText += lineWithValue(QString::fromUtf8("载荷类型："), QString::fromUtf8("地址响应"));
+            dataText += lineWithValue(QString::fromUtf8("解码字节："), DLT645FrameFormatter::formatHex(decodedAddressBytes));
+
+            if (decodedAddressBytes.size() == 6)
+            {
+                dataText += lineWithValue(QString::fromUtf8("解析值："), ProtocolParser::bytesToAddress(decodedAddressBytes));
+            }
+            else
+            {
+                dataText += lineWithValue(QString::fromUtf8("解析说明："), QString::fromUtf8("地址响应长度异常，未能解析为 6 字节地址。"));
+            }
+        }
+        else
+        {
+            dataText += lineWithValue(QString::fromUtf8("载荷类型："), QString::fromUtf8("读地址请求"));
+            dataText += lineWithValue(QString::fromUtf8("解析说明："), QString::fromUtf8("该请求帧不携带数据域，用于读取目标电表通信地址。"));
+        }
+
+        appendCard(section, section.title, dataText.trimmed());
+        return section;
+    }
+
     if (baseControlCode != 0x11 && baseControlCode != 0x14)
     {
         const QString value = QString::fromUtf8("解析说明：当前控制码暂无细分展示。\n控制码：%1 (%2)\n原始数据：%3")

@@ -7,6 +7,7 @@
 #include "Views/Dialogs/NewConnectionDialog.h"
 #include "Views/Dialogs/NewMeterDialog.h"
 #include "Views/Dialogs/CommunicationDialog.h"
+#include "Views/Dialogs/MasterQueryDialog.h"
 #include "Views/Dialogs/FrameParseDialog.h"
 #include "Views/Dialogs/QueryFrameDialog.h"
 #include "Views/CommunicationBar/CommunicationBarWidget.h"
@@ -32,7 +33,7 @@
 #include <QTreeWidgetItem>
 #include <QDebug>
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow), m_serialController(new SerialController(this)), m_tcpController(new TcpController(this)), m_protocolController(new ProtocolController(this)), m_dataGenerator(new DataGenerator(this)), m_viewModel(new MainWindowViewModel(this)), m_operationLogWidget(nullptr), m_dataTableWidget(nullptr), m_mainSplitter(nullptr), m_bottomSplitter(nullptr), m_connectionButtonStack(nullptr), m_connectionStatusLabel(nullptr), m_meterAddressLabel(nullptr), m_realTimeBarWidget(nullptr), m_realTimeDataLabel(nullptr), m_realTimeDataTimer(nullptr), m_realTimePhaseIndex(0), m_newConnectionAction(nullptr), m_newMeterAction(nullptr), m_openConnectionAction(nullptr), m_openConnectionSeparatorAction(nullptr), m_closeConnectionAction(nullptr), m_closeConnectionSeparatorAction(nullptr), m_commInteractionAction(nullptr), m_queryFrameAction(nullptr), m_frameParseAction(nullptr), m_darkThemeAction(nullptr), m_lightThemeAction(nullptr), m_communicationDialog(nullptr), m_queryFrameDialog(nullptr), m_frameParseDialog(nullptr), m_meterDataStore(new MeterDataStore(this)), m_currentMeterModel(nullptr)
+    : QMainWindow(parent), ui(new Ui::MainWindow), m_serialController(new SerialController(this)), m_tcpController(new TcpController(this)), m_protocolController(new ProtocolController(this)), m_dataGenerator(new DataGenerator(this)), m_viewModel(new MainWindowViewModel(this)), m_operationLogWidget(nullptr), m_dataTableWidget(nullptr), m_mainSplitter(nullptr), m_bottomSplitter(nullptr), m_connectionButtonStack(nullptr), m_connectionStatusLabel(nullptr), m_meterAddressLabel(nullptr), m_realTimeBarWidget(nullptr), m_realTimeDataLabel(nullptr), m_realTimeDataTimer(nullptr), m_realTimePhaseIndex(0), m_newConnectionAction(nullptr), m_newMeterAction(nullptr), m_openConnectionAction(nullptr), m_openConnectionSeparatorAction(nullptr), m_closeConnectionAction(nullptr), m_closeConnectionSeparatorAction(nullptr), m_commInteractionAction(nullptr), m_masterQueryAction(nullptr), m_queryFrameAction(nullptr), m_frameParseAction(nullptr), m_darkThemeAction(nullptr), m_lightThemeAction(nullptr), m_communicationDialog(nullptr), m_masterQueryDialog(nullptr), m_queryFrameDialog(nullptr), m_frameParseDialog(nullptr), m_meterDataStore(new MeterDataStore(this)), m_currentMeterModel(nullptr)
 {
     ui->setupUi(this);
     setupUI();
@@ -191,7 +192,8 @@ void MainWindow::setupConnections()
     connect(m_viewModel, &MainWindowViewModel::stateChanged, this, [this]()
             {
                 updateConnectionStatus(m_viewModel->isConnected());
-                updateCommunicationDialogState(); });
+                updateCommunicationDialogState();
+                updateMasterQueryDialogState(); });
     connect(m_viewModel, &MainWindowViewModel::hasMeterChanged,
             m_protocolController, &ProtocolController::setHasMeter);
 
@@ -344,6 +346,14 @@ void MainWindow::setupToolBar()
     m_commInteractionAction->setIcon(style()->standardIcon(QStyle::SP_MessageBoxInformation));
     connect(m_commInteractionAction, &QAction::triggered, this, &MainWindow::onCommunicationInteraction);
     toolBar->addAction(m_commInteractionAction);
+    toolBar->addSeparator();
+
+    m_masterQueryAction = new QAction(QStringLiteral("主站查询"), this);
+    m_masterQueryAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+I")));
+    m_masterQueryAction->setToolTip(QStringLiteral("打开独立主站查询窗口"));
+    m_masterQueryAction->setIcon(style()->standardIcon(QStyle::SP_ArrowRight));
+    connect(m_masterQueryAction, &QAction::triggered, this, &MainWindow::onMasterQueryWindow);
+    toolBar->addAction(m_masterQueryAction);
     toolBar->addSeparator();
 
     m_queryFrameAction = new QAction(QStringLiteral("查询帧生成"), this);
@@ -987,6 +997,10 @@ void MainWindow::onToggleDarkTheme(bool enabled)
         {
             m_queryFrameDialog->applyDarkTheme();
         }
+        if (m_masterQueryDialog)
+        {
+            m_masterQueryDialog->applyDarkTheme();
+        }
         if (m_frameParseDialog)
         {
             m_frameParseDialog->applyDarkTheme();
@@ -1011,6 +1025,10 @@ void MainWindow::onToggleLightTheme(bool enabled)
         if (m_queryFrameDialog)
         {
             m_queryFrameDialog->applyLightTheme();
+        }
+        if (m_masterQueryDialog)
+        {
+            m_masterQueryDialog->applyLightTheme();
         }
         if (m_frameParseDialog)
         {
@@ -1322,6 +1340,26 @@ void MainWindow::updateCommunicationDialogState()
     }
 
     m_communicationDialog->setConnectionStatus(m_viewModel->isConnected());
+}
+
+void MainWindow::updateMasterQueryDialogState()
+{
+    if (!m_masterQueryDialog)
+    {
+        return;
+    }
+
+    QStringList unavailablePorts;
+    if (m_serialController && m_serialController->isOpen())
+    {
+        const QString portName = m_serialController->getConfig().portName;
+        if (!portName.isEmpty())
+        {
+            unavailablePorts.append(portName);
+        }
+    }
+
+    m_masterQueryDialog->setUnavailablePorts(unavailablePorts);
 }
 
 void MainWindow::updateQueryFrameDialogState()
@@ -1850,6 +1888,50 @@ void MainWindow::onCommunicationDialogClosed()
     {
         m_communicationDialog->deleteLater();
         m_communicationDialog = nullptr;
+    }
+}
+
+void MainWindow::onMasterQueryWindow()
+{
+    if (m_masterQueryDialog)
+    {
+        updateMasterQueryDialogState();
+        m_masterQueryDialog->show();
+        m_masterQueryDialog->raise();
+        m_masterQueryDialog->activateWindow();
+        return;
+    }
+
+    m_masterQueryDialog = new MasterQueryDialog(this);
+    updateMasterQueryDialogState();
+
+    if (m_currentMeterModel)
+    {
+        m_masterQueryDialog->setDefaultMeterAddress(m_currentMeterModel->getMeterAddress());
+        m_masterQueryDialog->setDefaultIncludePrefixFE(m_currentMeterModel->getIncludePrefixFE());
+    }
+
+    if (m_viewModel->isDarkTheme())
+    {
+        m_masterQueryDialog->applyDarkTheme();
+    }
+    else
+    {
+        m_masterQueryDialog->applyLightTheme();
+    }
+
+    connect(m_masterQueryDialog, &MasterQueryDialog::dialogClosed,
+            this, &MainWindow::onMasterQueryDialogClosed);
+
+    m_masterQueryDialog->show();
+}
+
+void MainWindow::onMasterQueryDialogClosed()
+{
+    if (m_masterQueryDialog)
+    {
+        m_masterQueryDialog->deleteLater();
+        m_masterQueryDialog = nullptr;
     }
 }
 

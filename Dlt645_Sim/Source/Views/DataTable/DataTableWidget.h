@@ -10,6 +10,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QComboBox>
+#include <QSet>
 #include <QTimer>
 #include <QStyledItemDelegate>
 #include "../../Models/MeterModel.h"
@@ -155,6 +156,8 @@ private:
     void setupUI();
     void setupTable();
     void populateCategory(const QString &category);
+    QList<QString> dataCodesForCategory(const QString &category) const;
+    QList<QString> allSearchableDataCodes() const;
     void filterTable(const QString &filterText);
     void updateExportButtonState();
     QString selectedMeterAddress() const;

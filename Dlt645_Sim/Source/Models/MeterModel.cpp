@@ -443,7 +443,7 @@ namespace
     }
 }
 MeterModel::MeterModel(QObject *parent)
-    : QObject(parent), m_meterAddress("202008060056"), m_operatorCode("00000000"), m_password("00000000"), m_includePrefixFE(true)
+    : QObject(parent), m_meterAddress("202101190552"), m_operatorCode("00000000"), m_password("00000000"), m_includePrefixFE(true)
 {
     initializeDefaultDataItems();
 }

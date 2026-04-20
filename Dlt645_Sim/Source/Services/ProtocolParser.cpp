@@ -161,6 +161,26 @@ ProtocolFrame ProtocolParser::buildReadRequest(const QByteArray &address, const 
     return frame;
 }
 
+ProtocolFrame ProtocolParser::buildReadAddressRequest(const QByteArray &address, bool includePrefixFE)
+{
+    Q_UNUSED(includePrefixFE);
+    ProtocolFrame frame;
+
+    frame.startFlag = 0x68;
+    frame.address = address;
+    frame.startFlag2 = 0x68;
+    frame.controlCode = static_cast<quint8>(ControlCode::ReadAddress);
+    frame.dataField.clear();
+    frame.dataLength = 0x00;
+
+    frame.checksum = 0;
+    QByteArray frameData = frame.toByteArray();
+    frame.checksum = ChecksumHelper::calculateChecksum(frameData.left(frameData.size() - 2));
+    frame.endFlag = 0x16;
+
+    return frame;
+}
+
 ProtocolFrame ProtocolParser::buildWriteRequest(const QByteArray &address, const QString &diCode, const QVariant &value, bool includePrefixFE)
 {
     Q_UNUSED(includePrefixFE);

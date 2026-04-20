@@ -23,7 +23,7 @@ struct MeterConfig
     bool includePrefixFE; // 是否包含前导FE
 
     MeterConfig()
-        : alias("电表别名"), address("202008060056"), operatorCode("00000000"), password("00000002"), includePrefixFE(true)
+        : alias("电表别名"), address("202101190552"), operatorCode("00000000"), password("00000002"), includePrefixFE(true)
     {
     }
 };
