@@ -9,21 +9,24 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QRegExpValidator>
+#include "Models/MeterPhaseType.h"
 
 /**
  * @brief 电表配置结构
  */
 struct MeterConfig
 {
-    QString alias;        // 电表别名
-    QString address;      // 通讯地址（12位BCD码）
-    QString operatorCode; // 操作者代码（8位数字）
-    QString password;     // 电能表密码（8位数字）
-    bool includePrefixFE; // 是否包含前导FE
+    QString alias;         // 电表别名
+    QString address;       // 通讯地址（12位BCD码）
+    QString operatorCode;  // 操作者代码（8位数字）
+    QString password;      // 电能表密码（8位数字）
+    bool includePrefixFE;  // 是否包含前导FE
+    MeterPhaseType phaseType;
 
     MeterConfig()
-        : alias("电表别名"), address("202101190552"), operatorCode("00000000"), password("00000002"), includePrefixFE(true)
+        : alias("电表别名"), address("202101190552"), operatorCode("00000000"), password("00000002"), includePrefixFE(true), phaseType(MeterPhaseType::ThreePhase)
     {
     }
 };
@@ -81,6 +84,7 @@ private:
 
     // 包含前导FE
     QCheckBox *m_includePrefixFECheckBox;
+    QComboBox *m_phaseTypeComboBox;
 
     // 按钮
     QPushButton *m_okButton;

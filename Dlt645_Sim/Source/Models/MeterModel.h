@@ -6,6 +6,7 @@
 #include <QMap>
 #include <QMutex>
 #include "DataItem.h"
+#include "MeterPhaseType.h"
 
 /**
  * @brief 数据分类枚举
@@ -81,6 +82,9 @@ public:
      * @return 是否包含
      */
     bool getIncludePrefixFE() const;
+    void setMeterPhaseType(MeterPhaseType meterPhaseType);
+    MeterPhaseType getMeterPhaseType() const;
+    bool isSinglePhase() const;
 
     /**
      * @brief 获取数据项
@@ -95,6 +99,7 @@ public:
      * @return 数据值
      */
     QVariant getDataValue(const QString &diCode) const;
+    bool isDataItemSupported(const QString &diCode) const;
 
     /**
      * @brief 设置数据值
@@ -123,6 +128,7 @@ public:
      * @return 数据标识列表
      */
     QList<QString> getEnergyDataCodes() const;
+    QList<QString> getSettlementDayEnergyDataCodes(int settlementDay) const;
 
     /**
      * @brief 获取需量计量数据标识列表
@@ -218,6 +224,7 @@ signals:
     void addressChanged(const QString &newAddress);
 
 private:
+    bool isDataItemSupportedUnlocked(const QString &diCode) const;
     void initializeEnergyData();
     void initializeDemandData();
     void initializeVariableData();
@@ -231,6 +238,7 @@ private:
     QString m_operatorCode;
     QString m_password;
     bool m_includePrefixFE;
+    MeterPhaseType m_meterPhaseType;
     QMap<QString, DataItem> m_dataItems;
 };
 

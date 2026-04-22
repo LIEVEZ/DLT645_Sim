@@ -1100,6 +1100,7 @@ void MainWindow::onNewMeterDialog()
         meterInfo.operatorCode = config.operatorCode;
         meterInfo.password = config.password;
         meterInfo.includeLeadingFE = config.includePrefixFE;
+        meterInfo.phaseType = config.phaseType;
 
         // 添加电表节点到设备树（第 2 层级）
         deviceTree->addMeter(connectionAlias, meterInfo);
@@ -1633,6 +1634,7 @@ MeterInfo MainWindow::findMeterInfo(const QString &connectionAlias, const QStrin
             meterInfo.operatorCode = meterItem->data(0, Qt::UserRole + 3).toString();
             meterInfo.password = meterItem->data(0, Qt::UserRole + 4).toString();
             meterInfo.includeLeadingFE = meterItem->data(0, Qt::UserRole + 5).toBool();
+            meterInfo.phaseType = static_cast<MeterPhaseType>(meterItem->data(0, Qt::UserRole + 6).toInt());
             return meterInfo;
         }
     }
@@ -1681,6 +1683,7 @@ MeterModel *MainWindow::createMeterModel(const MeterInfo &meterInfo)
     if (!meterModel)
     {
         meterModel = new MeterModel(this);
+        meterModel->setMeterPhaseType(meterInfo.phaseType);
         meterModel->setMeterAddress(meterInfo.address);
         meterModel->setOperatorCode(meterInfo.operatorCode);
         meterModel->setPassword(meterInfo.password);
@@ -1698,6 +1701,7 @@ MeterModel *MainWindow::createMeterModel(const MeterInfo &meterInfo)
         m_meterModelsByAddress.insert(meterInfo.address, meterModel);
     }
 
+    meterModel->setMeterPhaseType(meterInfo.phaseType);
     meterModel->setMeterAddress(meterInfo.address);
     meterModel->setOperatorCode(meterInfo.operatorCode);
     meterModel->setPassword(meterInfo.password);
@@ -1803,7 +1807,9 @@ void MainWindow::updateRealTimeDataDisplay(bool advancePhase)
         {"B相", "0x02010200", "0x02020200", "0x02070200"},
         {"C相", "0x02010300", "0x02020300", "0x02070300"}};
 
-    constexpr int phaseCount = static_cast<int>(sizeof(phaseInfos) / sizeof(phaseInfos[0]));
+    const int phaseCount = (m_currentMeterModel && m_currentMeterModel->isSinglePhase())
+                               ? 1
+                               : static_cast<int>(sizeof(phaseInfos) / sizeof(phaseInfos[0]));
     if (advancePhase)
     {
         m_realTimePhaseIndex = (m_realTimePhaseIndex + 1) % phaseCount;
@@ -2279,6 +2285,7 @@ void MainWindow::onNewMeterRequested(const QString &connectionAlias)
     currentConfig.operatorCode = "00000000";
     currentConfig.password = "00000000";
     currentConfig.includePrefixFE = false;
+    currentConfig.phaseType = MeterPhaseType::ThreePhase;
     dialog.setMeterConfig(currentConfig);
 
     if (dialog.exec() == QDialog::Accepted)
@@ -2299,6 +2306,7 @@ void MainWindow::onNewMeterRequested(const QString &connectionAlias)
         meterInfo.operatorCode = config.operatorCode;
         meterInfo.password = config.password;
         meterInfo.includeLeadingFE = config.includePrefixFE;
+        meterInfo.phaseType = config.phaseType;
 
         // 添加电表节点到设备树
         if (deviceTree)

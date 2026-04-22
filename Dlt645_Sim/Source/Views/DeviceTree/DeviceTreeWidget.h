@@ -11,6 +11,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QMenu>
+#include "Models/MeterPhaseType.h"
 
 /**
  * @brief 设备树节点类型枚举
@@ -55,6 +56,7 @@ struct MeterInfo
     QString operatorCode;  // 操作者代码
     QString password;      // 电能表密码
     bool includeLeadingFE; // 是否包含前导FE
+    MeterPhaseType phaseType = MeterPhaseType::ThreePhase;
 };
 
 /**

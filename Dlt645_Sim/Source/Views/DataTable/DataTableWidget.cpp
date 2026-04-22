@@ -18,6 +18,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QSignalBlocker>
+#include <QRegularExpression>
 
 namespace
 {
@@ -327,7 +328,18 @@ QList<QString> DataTableWidget::dataCodesForCategory(const QString &category) co
     {
         codes.append(m_meterModel->getEnergyDataCodes());
     }
-    else if (category == "最大需量及发生时间")
+    else
+    {
+        static const QRegularExpression settlementDayPattern(QStringLiteral("^上(\\d+)结算日$"));
+        const QRegularExpressionMatch match = settlementDayPattern.match(category);
+        if (match.hasMatch())
+        {
+            codes.append(m_meterModel->getSettlementDayEnergyDataCodes(match.captured(1).toInt()));
+            return codes;
+        }
+    }
+
+    if (category == "最大需量及发生时间")
     {
         codes.append(m_meterModel->getDemandDataCodes());
         codes.append(m_meterModel->getMaxDemandDataCodes());
@@ -353,7 +365,21 @@ QList<QString> DataTableWidget::dataCodesForCategory(const QString &category) co
         codes.append(m_meterModel->getLoadRecordDataCodes());
     }
 
-    return codes;
+    QList<QString> uniqueCodes;
+    QSet<QString> seenCodes;
+    uniqueCodes.reserve(codes.size());
+    for (const QString &diCode : codes)
+    {
+        if (seenCodes.contains(diCode))
+        {
+            continue;
+        }
+
+        seenCodes.insert(diCode);
+        uniqueCodes.append(diCode);
+    }
+
+    return uniqueCodes;
 }
 
 QList<QString> DataTableWidget::allSearchableDataCodes() const
@@ -366,7 +392,7 @@ QList<QString> DataTableWidget::allSearchableDataCodes() const
     QList<QString> codes;
     QSet<QString> seenCodes;
 
-    const QList<QList<QString>> groups = {
+    QList<QList<QString>> groups = {
         m_meterModel->getEnergyDataCodes(),
         m_meterModel->getDemandDataCodes(),
         m_meterModel->getMaxDemandDataCodes(),
@@ -375,6 +401,11 @@ QList<QString> DataTableWidget::allSearchableDataCodes() const
         m_meterModel->getParameterDataCodes(),
         m_meterModel->getFreezeDataCodes(),
         m_meterModel->getLoadRecordDataCodes()};
+
+    for (int settlementDay = 1; settlementDay <= 12; ++settlementDay)
+    {
+        groups.append(m_meterModel->getSettlementDayEnergyDataCodes(settlementDay));
+    }
 
     for (const QList<QString> &group : groups)
     {

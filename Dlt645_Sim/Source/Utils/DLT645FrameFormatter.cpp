@@ -13,9 +13,54 @@
 
 namespace
 {
+constexpr int kDefaultRateCount = 5;
+constexpr int kMaxRateCount = 63;
+constexpr int kHarmonicOrderCount = 21;
+
 QString formatByteHex(quint8 value)
 {
     return QStringLiteral("0x%1").arg(value, 2, 16, QChar('0')).toUpper();
+}
+
+QString upperHexByte(int value)
+{
+    return QStringLiteral("%1").arg(value, 2, 16, QChar('0')).toUpper();
+}
+
+bool isHarmonicBlockCode(const QString &diCode, const QString &familyPrefix)
+{
+    if (diCode.size() != 10 || !diCode.startsWith(familyPrefix) || !diCode.endsWith(QStringLiteral("FF")))
+    {
+        return false;
+    }
+
+    bool ok = false;
+    const int phaseIndex = diCode.mid(6, 2).toInt(&ok, 16);
+    return ok && phaseIndex >= 1 && phaseIndex <= 3;
+}
+
+QStringList harmonicPayloadOrderCodes(const QString &blockCode)
+{
+    const QString prefix = blockCode.left(8);
+    QStringList codes;
+    codes.reserve(kHarmonicOrderCount);
+    for (int harmonicOrder = kHarmonicOrderCount; harmonicOrder >= 1; --harmonicOrder)
+    {
+        codes.append(prefix + upperHexByte(harmonicOrder));
+    }
+    return codes;
+}
+
+QStringList harmonicDisplayOrderCodes(const QString &blockCode)
+{
+    const QString prefix = blockCode.left(8);
+    QStringList codes;
+    codes.reserve(kHarmonicOrderCount);
+    for (int harmonicOrder = 1; harmonicOrder <= kHarmonicOrderCount; ++harmonicOrder)
+    {
+        codes.append(prefix + upperHexByte(harmonicOrder));
+    }
+    return codes;
 }
 
 QString lineWithValue(const QString &label, const QString &value)
@@ -83,37 +128,170 @@ void appendCard(FrameParseSection &section,
     section.cards.append(makeCard(title, value, detail, valueMonospace, detailMonospace));
 }
 
-QStringList payloadOrderCodesForBlock(const QString &diCode)
+bool hasModelItem(const MeterModel *meterModel, const QString &diCode)
 {
-    if (diCode.startsWith(QStringLiteral("0x00")) && diCode.endsWith(QStringLiteral("FF00")))
+    return meterModel && !meterModel->getDataItem(diCode).diCode.isEmpty();
+}
+
+int currentRateCount(const MeterModel *meterModel)
+{
+    if (!meterModel)
     {
-        const QString prefix = diCode.left(6);
-        return {
-            prefix + QStringLiteral("0400"),
-            prefix + QStringLiteral("0300"),
-            prefix + QStringLiteral("0200"),
-            prefix + QStringLiteral("0100"),
-            prefix + QStringLiteral("0000")};
+        return kDefaultRateCount;
     }
 
-    if (diCode == QStringLiteral("0x0101FF00"))
+    bool ok = false;
+    int rateCount = meterModel->getDataValue(QStringLiteral("0x04000204")).toInt(&ok);
+    if (!ok)
     {
-        return {
-            QStringLiteral("0x01010401"), QStringLiteral("0x01010400"),
-            QStringLiteral("0x01010301"), QStringLiteral("0x01010300"),
-            QStringLiteral("0x01010201"), QStringLiteral("0x01010200"),
-            QStringLiteral("0x01010101"), QStringLiteral("0x01010100"),
-            QStringLiteral("0x01010001"), QStringLiteral("0x01010000")};
+        rateCount = meterModel->getDataItem(QStringLiteral("0x04000204")).value.toInt(&ok);
     }
 
-    if (diCode == QStringLiteral("0x0102FF00"))
+    return qBound(1, ok ? rateCount : kDefaultRateCount, kMaxRateCount);
+}
+
+bool isDynamicDemandBlock(const MeterModel *meterModel, const QString &diCode)
+{
+    if (!meterModel || !diCode.endsWith(QStringLiteral("FF00")))
     {
-        return {
-            QStringLiteral("0x01020401"), QStringLiteral("0x01020400"),
-            QStringLiteral("0x01020301"), QStringLiteral("0x01020300"),
-            QStringLiteral("0x01020201"), QStringLiteral("0x01020200"),
-            QStringLiteral("0x01020101"), QStringLiteral("0x01020100"),
-            QStringLiteral("0x01020001"), QStringLiteral("0x01020000")};
+        return false;
+    }
+
+    const QString prefix = diCode.left(6);
+    const DataItem totalItem = meterModel->getDataItem(prefix + QStringLiteral("0000"));
+    return !totalItem.diCode.isEmpty() &&
+           hasModelItem(meterModel, prefix + QStringLiteral("0001")) &&
+           hasModelItem(meterModel, prefix + QStringLiteral("0100")) &&
+           hasModelItem(meterModel, prefix + QStringLiteral("0101"));
+}
+
+bool isDynamicEnergyBlock(const MeterModel *meterModel, const QString &diCode)
+{
+    if (!meterModel || !diCode.endsWith(QStringLiteral("FF00")))
+    {
+        return false;
+    }
+
+    const QString prefix = diCode.left(6);
+    const DataItem totalItem = meterModel->getDataItem(prefix + QStringLiteral("0000"));
+    return !totalItem.diCode.isEmpty() &&
+           totalItem.unit.contains(QChar('h'), Qt::CaseInsensitive) &&
+           hasModelItem(meterModel, prefix + QStringLiteral("0100")) &&
+           !hasModelItem(meterModel, prefix + QStringLiteral("0001"));
+}
+
+QStringList dynamicEnergyPayloadOrderCodes(const MeterModel *meterModel, const QString &diCode)
+{
+    const QString prefix = diCode.left(6);
+    const int rateCount = currentRateCount(meterModel);
+
+    QStringList codes;
+    codes.reserve(rateCount + 1);
+    for (int rateIndex = rateCount; rateIndex >= 1; --rateIndex)
+    {
+        codes.append(prefix + upperHexByte(rateIndex) + QStringLiteral("00"));
+    }
+    codes.append(prefix + QStringLiteral("0000"));
+    return codes;
+}
+
+QStringList dynamicEnergyDisplayOrderCodes(const MeterModel *meterModel, const QString &diCode)
+{
+    const QString prefix = diCode.left(6);
+    const int rateCount = currentRateCount(meterModel);
+
+    QStringList codes;
+    codes.reserve(rateCount + 1);
+    codes.append(prefix + QStringLiteral("0000"));
+    for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
+    {
+        codes.append(prefix + upperHexByte(rateIndex) + QStringLiteral("00"));
+    }
+    return codes;
+}
+
+QStringList dynamicDemandPayloadOrderCodes(const MeterModel *meterModel, const QString &diCode)
+{
+    const QString prefix = diCode.left(6);
+    const int rateCount = currentRateCount(meterModel);
+
+    QStringList codes;
+    codes.reserve((rateCount + 1) * 2);
+    for (int rateIndex = rateCount; rateIndex >= 1; --rateIndex)
+    {
+        const QString rateHex = upperHexByte(rateIndex);
+        codes.append(prefix + rateHex + QStringLiteral("01"));
+        codes.append(prefix + rateHex + QStringLiteral("00"));
+    }
+    codes.append(prefix + QStringLiteral("0001"));
+    codes.append(prefix + QStringLiteral("0000"));
+    return codes;
+}
+
+QStringList dynamicDemandDisplayOrderCodes(const MeterModel *meterModel, const QString &diCode)
+{
+    const QString prefix = diCode.left(6);
+    const int rateCount = currentRateCount(meterModel);
+
+    QStringList codes;
+    codes.reserve((rateCount + 1) * 2);
+    codes.append(prefix + QStringLiteral("0000"));
+    codes.append(prefix + QStringLiteral("0001"));
+    for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
+    {
+        const QString rateHex = upperHexByte(rateIndex);
+        codes.append(prefix + rateHex + QStringLiteral("00"));
+        codes.append(prefix + rateHex + QStringLiteral("01"));
+    }
+    return codes;
+}
+
+QStringList dynamicDailyFreezePayloadOrderCodes(const MeterModel *meterModel, const QString &diCode)
+{
+    const QString prefix = diCode.left(8);
+    const int rateCount = currentRateCount(meterModel);
+
+    QStringList codes;
+    codes.reserve(rateCount + 1);
+    for (int rateIndex = rateCount; rateIndex >= 1; --rateIndex)
+    {
+        codes.append(prefix + upperHexByte(rateIndex + 1));
+    }
+    codes.append(prefix + QStringLiteral("00"));
+    return codes;
+}
+
+QStringList dynamicDailyFreezeDisplayOrderCodes(const MeterModel *meterModel, const QString &diCode)
+{
+    const QString prefix = diCode.left(8);
+    const int rateCount = currentRateCount(meterModel);
+
+    QStringList codes;
+    codes.reserve(rateCount + 1);
+    codes.append(prefix + QStringLiteral("00"));
+    for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
+    {
+        codes.append(prefix + upperHexByte(rateIndex + 1));
+    }
+    return codes;
+}
+
+QStringList payloadOrderCodesForBlock(const MeterModel *meterModel, const QString &diCode)
+{
+    if (isDynamicEnergyBlock(meterModel, diCode))
+    {
+        return dynamicEnergyPayloadOrderCodes(meterModel, diCode);
+    }
+
+    if (isDynamicDemandBlock(meterModel, diCode))
+    {
+        return dynamicDemandPayloadOrderCodes(meterModel, diCode);
+    }
+
+    if (isHarmonicBlockCode(diCode, QStringLiteral("0x020A")) ||
+        isHarmonicBlockCode(diCode, QStringLiteral("0x020B")))
+    {
+        return harmonicPayloadOrderCodes(diCode);
     }
 
     if (diCode == QStringLiteral("0x0201FF00"))
@@ -151,54 +329,79 @@ QStringList payloadOrderCodesForBlock(const QString &diCode)
         return {QStringLiteral("0x02070300"), QStringLiteral("0x02070200"), QStringLiteral("0x02070100")};
     }
 
+    if (diCode == QStringLiteral("0x0208FF00"))
+    {
+        return {QStringLiteral("0x02080300"), QStringLiteral("0x02080200"), QStringLiteral("0x02080100")};
+    }
+
+    if (diCode == QStringLiteral("0x0209FF00"))
+    {
+        return {QStringLiteral("0x02090300"), QStringLiteral("0x02090200"), QStringLiteral("0x02090100")};
+    }
+
+    if (diCode == QStringLiteral("0x0290FF00"))
+    {
+        return {QStringLiteral("0x02900200"), QStringLiteral("0x02900100"), QStringLiteral("0x02900000")};
+    }
+
+    if (diCode == QStringLiteral("0x0291FF00"))
+    {
+        return {QStringLiteral("0x02910200"), QStringLiteral("0x02910100")};
+    }
+
+    if (diCode == QStringLiteral("0x230100FF"))
+    {
+        return {
+            QStringLiteral("0x23010008"),
+            QStringLiteral("0x23010007"),
+            QStringLiteral("0x23010006"),
+            QStringLiteral("0x23010005"),
+            QStringLiteral("0x23010004"),
+            QStringLiteral("0x23010003"),
+            QStringLiteral("0x23010002"),
+            QStringLiteral("0x23010001")};
+    }
+
+    if (diCode == QStringLiteral("0x038100FF"))
+    {
+        return {
+            QStringLiteral("0x03810007"),
+            QStringLiteral("0x03810006"),
+            QStringLiteral("0x03810005"),
+            QStringLiteral("0x03810004"),
+            QStringLiteral("0x03810003"),
+            QStringLiteral("0x03810002"),
+            QStringLiteral("0x03810001"),
+            QStringLiteral("0x03810000")};
+    }
+
     if (diCode == QStringLiteral("0x05060101") ||
         diCode == QStringLiteral("0x05060201") ||
         diCode == QStringLiteral("0x05060301") ||
         diCode == QStringLiteral("0x05060401"))
     {
-        const QString basePrefix = diCode.left(8);
-        return {
-            basePrefix + QStringLiteral("05"),
-            basePrefix + QStringLiteral("04"),
-            basePrefix + QStringLiteral("03"),
-            basePrefix + QStringLiteral("02"),
-            basePrefix + QStringLiteral("00")};
+        return dynamicDailyFreezePayloadOrderCodes(meterModel, diCode);
     }
 
     return {};
 }
 
-QStringList displayOrderCodesForBlock(const QString &diCode)
+QStringList displayOrderCodesForBlock(const MeterModel *meterModel, const QString &diCode)
 {
-    if (diCode.startsWith(QStringLiteral("0x00")) && diCode.endsWith(QStringLiteral("FF00")))
+    if (isDynamicEnergyBlock(meterModel, diCode))
     {
-        const QString prefix = diCode.left(6);
-        return {
-            prefix + QStringLiteral("0000"),
-            prefix + QStringLiteral("0100"),
-            prefix + QStringLiteral("0200"),
-            prefix + QStringLiteral("0300"),
-            prefix + QStringLiteral("0400")};
+        return dynamicEnergyDisplayOrderCodes(meterModel, diCode);
     }
 
-    if (diCode == QStringLiteral("0x0101FF00"))
+    if (isDynamicDemandBlock(meterModel, diCode))
     {
-        return {
-            QStringLiteral("0x01010000"), QStringLiteral("0x01010001"),
-            QStringLiteral("0x01010100"), QStringLiteral("0x01010101"),
-            QStringLiteral("0x01010200"), QStringLiteral("0x01010201"),
-            QStringLiteral("0x01010300"), QStringLiteral("0x01010301"),
-            QStringLiteral("0x01010400"), QStringLiteral("0x01010401")};
+        return dynamicDemandDisplayOrderCodes(meterModel, diCode);
     }
 
-    if (diCode == QStringLiteral("0x0102FF00"))
+    if (isHarmonicBlockCode(diCode, QStringLiteral("0x020A")) ||
+        isHarmonicBlockCode(diCode, QStringLiteral("0x020B")))
     {
-        return {
-            QStringLiteral("0x01020000"), QStringLiteral("0x01020001"),
-            QStringLiteral("0x01020100"), QStringLiteral("0x01020101"),
-            QStringLiteral("0x01020200"), QStringLiteral("0x01020201"),
-            QStringLiteral("0x01020300"), QStringLiteral("0x01020301"),
-            QStringLiteral("0x01020400"), QStringLiteral("0x01020401")};
+        return harmonicDisplayOrderCodes(diCode);
     }
 
     if (diCode == QStringLiteral("0x0201FF00"))
@@ -236,18 +439,58 @@ QStringList displayOrderCodesForBlock(const QString &diCode)
         return {QStringLiteral("0x02070100"), QStringLiteral("0x02070200"), QStringLiteral("0x02070300")};
     }
 
+    if (diCode == QStringLiteral("0x0208FF00"))
+    {
+        return {QStringLiteral("0x02080100"), QStringLiteral("0x02080200"), QStringLiteral("0x02080300")};
+    }
+
+    if (diCode == QStringLiteral("0x0209FF00"))
+    {
+        return {QStringLiteral("0x02090100"), QStringLiteral("0x02090200"), QStringLiteral("0x02090300")};
+    }
+
+    if (diCode == QStringLiteral("0x0290FF00"))
+    {
+        return {QStringLiteral("0x02900000"), QStringLiteral("0x02900100"), QStringLiteral("0x02900200")};
+    }
+
+    if (diCode == QStringLiteral("0x0291FF00"))
+    {
+        return {QStringLiteral("0x02910100"), QStringLiteral("0x02910200")};
+    }
+
+    if (diCode == QStringLiteral("0x230100FF"))
+    {
+        return {
+            QStringLiteral("0x23010001"),
+            QStringLiteral("0x23010002"),
+            QStringLiteral("0x23010003"),
+            QStringLiteral("0x23010004"),
+            QStringLiteral("0x23010005"),
+            QStringLiteral("0x23010006"),
+            QStringLiteral("0x23010007"),
+            QStringLiteral("0x23010008")};
+    }
+
+    if (diCode == QStringLiteral("0x038100FF"))
+    {
+        return {
+            QStringLiteral("0x03810000"),
+            QStringLiteral("0x03810001"),
+            QStringLiteral("0x03810002"),
+            QStringLiteral("0x03810003"),
+            QStringLiteral("0x03810004"),
+            QStringLiteral("0x03810005"),
+            QStringLiteral("0x03810006"),
+            QStringLiteral("0x03810007")};
+    }
+
     if (diCode == QStringLiteral("0x05060101") ||
         diCode == QStringLiteral("0x05060201") ||
         diCode == QStringLiteral("0x05060301") ||
         diCode == QStringLiteral("0x05060401"))
     {
-        const QString basePrefix = diCode.left(8);
-        return {
-            basePrefix + QStringLiteral("00"),
-            basePrefix + QStringLiteral("02"),
-            basePrefix + QStringLiteral("03"),
-            basePrefix + QStringLiteral("04"),
-            basePrefix + QStringLiteral("05")};
+        return dynamicDailyFreezeDisplayOrderCodes(meterModel, diCode);
     }
 
     return {};
@@ -311,7 +554,7 @@ QList<FrameParseCard> buildBlockDecodeCards(const MeterModel *meterModel, const 
         return {};
     }
 
-    const QStringList payloadCodes = payloadOrderCodesForBlock(blockDiCode);
+    const QStringList payloadCodes = payloadOrderCodesForBlock(meterModel, blockDiCode);
     if (payloadCodes.isEmpty())
     {
         return {};
@@ -357,7 +600,7 @@ QList<FrameParseCard> buildBlockDecodeCards(const MeterModel *meterModel, const 
         return {};
     }
 
-    const QStringList displayCodes = displayOrderCodesForBlock(blockDiCode);
+    const QStringList displayCodes = displayOrderCodesForBlock(meterModel, blockDiCode);
     QList<FrameParseCard> cards;
     for (const QString &code : displayCodes)
     {

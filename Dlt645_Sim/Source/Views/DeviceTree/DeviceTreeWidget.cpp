@@ -346,6 +346,7 @@ MeterInfo DeviceTreeWidget::getSelectedMeterInfo() const
         info.operatorCode = selectedItem->data(0, Qt::UserRole + 3).toString();
         info.password = selectedItem->data(0, Qt::UserRole + 4).toString();
         info.includeLeadingFE = selectedItem->data(0, Qt::UserRole + 5).toBool();
+        info.phaseType = static_cast<MeterPhaseType>(selectedItem->data(0, Qt::UserRole + 6).toInt());
     }
 
     return info;
@@ -423,10 +424,10 @@ void DeviceTreeWidget::createDataCategoryNodes(QTreeWidgetItem *meterItem)
     // 添加子节点：当前、上1-12结算日（Level 3分类节点，不可展开）
 
     createSettlementDayNodes(energyItem, "当前", 0);
-    // for (int i = 1; i <= 12; ++i)
-    // {
-    //     createSettlementDayNodes(energyItem, QString("上 %1 结算日").arg(i), i);
-    // }
+    for (int i = 1; i <= 12; ++i)
+    {
+        createSettlementDayNodes(energyItem, QString("上%1结算日").arg(i), i);
+    }
 
     // 最大需量及发生时间（叶子节点，不可展开）
     QTreeWidgetItem *demandItem = createCategoryItem("最大需量及发生时间", ItemType::Category, false);
@@ -466,6 +467,7 @@ void DeviceTreeWidget::createSettlementDayNodes(QTreeWidgetItem *parentItem, con
 {
     // 只创建Level 3的子分类节点，不创建Level 4的数据项节点
     QTreeWidgetItem *subItem = createCategoryItem(name, ItemType::Category, false);
+    subItem->setData(0, Qt::UserRole + 7, settlementDay);
     parentItem->addChild(subItem);
 }
 
@@ -495,9 +497,11 @@ QTreeWidgetItem *DeviceTreeWidget::createMeterNode(const MeterInfo &info)
     item->setData(0, Qt::UserRole + 3, info.operatorCode);     // 存储操作者代码
     item->setData(0, Qt::UserRole + 4, info.password);         // 存储密码
     item->setData(0, Qt::UserRole + 5, info.includeLeadingFE); // 存储是否包含前导FE
+    item->setData(0, Qt::UserRole + 6, static_cast<int>(info.phaseType));
 
     // 设置电表图标
-    item->setText(0, QString("📊 %1 [%2]").arg(info.alias, info.address));
+    item->setText(0, QString("📊 %1 [%2] (%3)")
+                         .arg(info.alias, info.address, meterPhaseTypeToDisplayName(info.phaseType)));
 
     return item;
 }
@@ -561,6 +565,7 @@ void DeviceTreeWidget::onItemClicked(QTreeWidgetItem *item, int column)
         meterInfo.operatorCode = item->data(0, Qt::UserRole + 3).toString();
         meterInfo.password = item->data(0, Qt::UserRole + 4).toString();
         meterInfo.includeLeadingFE = item->data(0, Qt::UserRole + 5).toBool();
+        meterInfo.phaseType = static_cast<MeterPhaseType>(item->data(0, Qt::UserRole + 6).toInt());
         emit meterInfoSelected(meterInfo);
         return;
     }
@@ -595,6 +600,7 @@ void DeviceTreeWidget::onItemClicked(QTreeWidgetItem *item, int column)
             meterInfo.operatorCode = parentItem->data(0, Qt::UserRole + 3).toString();
             meterInfo.password = parentItem->data(0, Qt::UserRole + 4).toString();
             meterInfo.includeLeadingFE = parentItem->data(0, Qt::UserRole + 5).toBool();
+            meterInfo.phaseType = static_cast<MeterPhaseType>(parentItem->data(0, Qt::UserRole + 6).toInt());
             emit meterInfoSelected(meterInfo);
         }
         return;

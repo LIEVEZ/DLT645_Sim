@@ -6,7 +6,7 @@
 #include <QStyle>
 
 NewMeterDialog::NewMeterDialog(QWidget *parent)
-    : QDialog(parent), m_aliasEdit(new QLineEdit(this)), m_addressEdit(new QLineEdit(this)), m_addressHintLabel(new QLabel("(0/12位)", this)), m_operatorCodeEdit(new QLineEdit(this)), m_operatorCodeHintLabel(new QLabel("(0/8位)", this)), m_passwordEdit(new QLineEdit(this)), m_passwordHintLabel(new QLabel("(0/8位)", this)), m_includePrefixFECheckBox(new QCheckBox("包含前导FE", this)), m_okButton(new QPushButton("确定", this)), m_cancelButton(new QPushButton("取消", this))
+    : QDialog(parent), m_aliasEdit(new QLineEdit(this)), m_addressEdit(new QLineEdit(this)), m_addressHintLabel(new QLabel("(0/12位)", this)), m_operatorCodeEdit(new QLineEdit(this)), m_operatorCodeHintLabel(new QLabel("(0/8位)", this)), m_passwordEdit(new QLineEdit(this)), m_passwordHintLabel(new QLabel("(0/8位)", this)), m_includePrefixFECheckBox(new QCheckBox("包含前导FE", this)), m_phaseTypeComboBox(new QComboBox(this)), m_okButton(new QPushButton("确定", this)), m_cancelButton(new QPushButton("取消", this))
 {
     setupUI();
 }
@@ -69,6 +69,13 @@ void NewMeterDialog::setupUI()
     passwordLayout->addWidget(m_passwordHintLabel);
     mainLayout->addLayout(passwordLayout);
 
+    QHBoxLayout *phaseTypeLayout = new QHBoxLayout();
+    phaseTypeLayout->addWidget(new QLabel("电表类型:"));
+    m_phaseTypeComboBox->addItem(meterPhaseTypeToDisplayName(MeterPhaseType::ThreePhase), static_cast<int>(MeterPhaseType::ThreePhase));
+    m_phaseTypeComboBox->addItem(meterPhaseTypeToDisplayName(MeterPhaseType::SinglePhase), static_cast<int>(MeterPhaseType::SinglePhase));
+    phaseTypeLayout->addWidget(m_phaseTypeComboBox);
+    mainLayout->addLayout(phaseTypeLayout);
+
     // 包含前导FE
     m_includePrefixFECheckBox->setChecked(true);
     mainLayout->addWidget(m_includePrefixFECheckBox);
@@ -107,6 +114,8 @@ void NewMeterDialog::setMeterConfig(const MeterConfig &config)
     m_operatorCodeEdit->setText(config.operatorCode);
     m_passwordEdit->setText(config.password);
     m_includePrefixFECheckBox->setChecked(config.includePrefixFE);
+    const int phaseTypeIndex = m_phaseTypeComboBox->findData(static_cast<int>(config.phaseType));
+    m_phaseTypeComboBox->setCurrentIndex(phaseTypeIndex >= 0 ? phaseTypeIndex : 0);
 }
 
 void NewMeterDialog::onOkClicked()
@@ -123,6 +132,7 @@ void NewMeterDialog::onOkClicked()
     m_config.operatorCode = m_operatorCodeEdit->text();
     m_config.password = m_passwordEdit->text();
     m_config.includePrefixFE = m_includePrefixFECheckBox->isChecked();
+    m_config.phaseType = static_cast<MeterPhaseType>(m_phaseTypeComboBox->currentData().toInt());
 
     accept();
 }

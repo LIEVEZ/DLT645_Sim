@@ -419,6 +419,14 @@ void ProtocolController::onResponseTimerTimeout()
 
     if ((m_lastRequestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::ReadData))
     {
+        if (!m_lastRequestMeterModel->isDataItemSupported(diCode))
+        {
+            ProtocolFrame response = m_protocolParser->buildErrorResponse(m_lastRequestFrame, 0x01);
+            sendResponse(response, m_lastRequestMeterModel);
+            emit protocolError(0x01, QStringLiteral("当前电表不支持数据项: %1").arg(diCode));
+            return;
+        }
+
         QVariant value = m_lastRequestMeterModel->getDataValue(diCode);
         qDebug() << "===value:" << value;
         ProtocolFrame response = m_protocolParser->buildReadResponse(m_lastRequestFrame, value, diCode);
