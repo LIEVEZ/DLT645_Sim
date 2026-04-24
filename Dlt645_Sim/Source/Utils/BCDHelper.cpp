@@ -3,6 +3,104 @@
 #include <QDebug>
 #include <cmath>
 #include <QtMath>
+
+namespace
+{
+bool isSignedF9Format(const QStringList &tokens)
+{
+    return !tokens.isEmpty() && tokens.first().trimmed() == QStringLiteral("F9");
+}
+
+int countFormatDataBytes(const QStringList &tokens)
+{
+    int count = 0;
+    for (const QString &token : tokens)
+    {
+        if (token.trimmed() != QStringLiteral("."))
+        {
+            ++count;
+        }
+    }
+    return count;
+}
+
+int countFormatDecimalDigits(const QStringList &tokens)
+{
+    const int decimalIndex = tokens.indexOf(QStringLiteral("."));
+    if (decimalIndex < 0)
+    {
+        return 0;
+    }
+
+    int digits = 0;
+    for (int i = decimalIndex + 1; i < tokens.size(); ++i)
+    {
+        if (tokens[i].trimmed() != QStringLiteral("."))
+        {
+            digits += 2;
+        }
+    }
+    return digits;
+}
+
+QString encodeSignedF9Value(double numericValue, const QStringList &tokens)
+{
+    const bool negative = numericValue < 0.0;
+    const double absoluteValue = std::fabs(numericValue);
+    const int totalDigits = countFormatDataBytes(tokens) * 2;
+    const int decimalDigits = countFormatDecimalDigits(tokens);
+    const qint64 scaledValue = qRound64(absoluteValue * std::pow(10.0, decimalDigits));
+
+    QString digits = QString::number(scaledValue).rightJustified(totalDigits, QChar('0'));
+    if (digits.length() > totalDigits)
+    {
+        digits = digits.right(totalDigits);
+    }
+
+    QString result;
+    int digitIndex = 0;
+
+    for (const QString &rawToken : tokens)
+    {
+        const QString token = rawToken.trimmed();
+        if (token == QStringLiteral("."))
+        {
+            result += QChar('.');
+            continue;
+        }
+
+        QString digitPair = digits.mid(digitIndex, 2);
+        if (digitPair.length() < 2)
+        {
+            digitPair = digitPair.leftJustified(2, QChar('0'));
+        }
+
+        if (token == QStringLiteral("F9"))
+        {
+            bool ok = false;
+            quint8 encodedByte = static_cast<quint8>(digitPair.toUInt(&ok, 16));
+            if (!ok)
+            {
+                encodedByte = 0x00;
+            }
+            if (negative)
+            {
+                encodedByte = static_cast<quint8>(encodedByte | 0x80);
+            }
+            result += QStringLiteral("%1").arg(encodedByte, 2, 16, QChar('0')).toUpper();
+        }
+        else
+        {
+            result += digitPair;
+        }
+
+        digitIndex += 2;
+    }
+
+    return result;
+}
+}
+
 qreal BCDHelper::bcdToDecimal(const QByteArray &bcdData, int decimalPlaces)
 {
     if (bcdData.isEmpty())
@@ -237,6 +335,11 @@ QString BCDHelper::formatValueToString(const QVariant &value, const QString &for
 
     double numValue = value.toDouble();
     QStringList originalFormatList = format.split(",");
+
+    if (isSignedF9Format(originalFormatList))
+    {
+        return encodeSignedF9Value(numValue, originalFormatList);
+    }
 
     QString result;
 
@@ -526,4 +629,61 @@ QByteArray BCDHelper::stringToByteArray(const QString &str)
     }
 
     return result;
+}
+
+QString BCDHelper::decodeValueFromFormat(const QByteArray &data, const QString &format)
+{
+    const QStringList tokens = format.split(",", Qt::SkipEmptyParts);
+    if (data.isEmpty() || tokens.isEmpty() || !isSignedF9Format(tokens))
+    {
+        return QString();
+    }
+
+    const int expectedBytes = countFormatDataBytes(tokens);
+    if (data.size() != expectedBytes)
+    {
+        return QString();
+    }
+
+    QByteArray normalized = data;
+    bool negative = false;
+    quint8 signByte = static_cast<quint8>(normalized[0]);
+    if (signByte >= 0x80)
+    {
+        negative = true;
+        signByte = static_cast<quint8>(signByte - 0x80);
+        normalized[0] = static_cast<char>(signByte);
+    }
+
+    if (!isValidBCD(normalized))
+    {
+        return QString();
+    }
+
+    QString digits;
+    digits.reserve(normalized.size() * 2);
+    for (int i = 0; i < normalized.size(); ++i)
+    {
+        digits += QStringLiteral("%1").arg(static_cast<quint8>(normalized[i]), 2, 16, QChar('0')).toUpper();
+    }
+
+    const int decimalDigits = countFormatDecimalDigits(tokens);
+    if (decimalDigits > 0)
+    {
+        if (digits.length() <= decimalDigits)
+        {
+            digits = digits.rightJustified(decimalDigits + 1, QChar('0'));
+        }
+        digits.insert(digits.length() - decimalDigits, QChar('.'));
+    }
+
+    bool ok = false;
+    const double value = digits.toDouble(&ok);
+    if (!ok)
+    {
+        return QString();
+    }
+
+    const double signedValue = negative ? -value : value;
+    return QString::number(signedValue, 'f', decimalDigits);
 }

@@ -71,7 +71,7 @@ void DataGenerator::updateVariableData()
     }
 
     // 更新电流数据
-    QStringList currentCodes = {"0x02020100", "0x02020200", "0x02020300"};
+    QStringList currentCodes = {"0x02020100", "0x02020200", "0x02020300", "0x02800001"};
     for (const QString &code : currentCodes)
     {
         double currentValue = m_meterModel->getDataValue(code).toDouble();

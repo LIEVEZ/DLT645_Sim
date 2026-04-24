@@ -16,12 +16,18 @@
 #include <QDoubleValidator>
 #include <QRandomGenerator>
 #include <QDateTime>
-#include <QDebug>
 #include <QSignalBlocker>
 #include <QRegularExpression>
 
 namespace
 {
+    struct NumericEditSpec
+    {
+        double minValue = -999999.99;
+        double maxValue = 999999.99;
+        int decimals = 2;
+    };
+
     QString escapeCsvField(const QString &value)
     {
         QString escaped = value;
@@ -33,6 +39,63 @@ namespace
         }
 
         return escaped;
+    }
+
+    QString formatDisplayValue(const DataItem &dataItem)
+    {
+        DataItem displayItem = dataItem;
+        return displayItem.getFormattedValue();
+    }
+
+    NumericEditSpec editSpecForFormat(const QString &format)
+    {
+        NumericEditSpec spec;
+        const QStringList tokens = format.split(',', Qt::SkipEmptyParts);
+        if (tokens.isEmpty())
+        {
+            return spec;
+        }
+
+        int decimalIndex = -1;
+        for (int i = 0; i < tokens.size(); ++i)
+        {
+            if (tokens[i].trimmed() == QStringLiteral("."))
+            {
+                decimalIndex = i;
+                break;
+            }
+        }
+
+        if (decimalIndex >= 0)
+        {
+            int decimalDigits = 0;
+            for (int i = decimalIndex + 1; i < tokens.size(); ++i)
+            {
+                if (tokens[i].trimmed() != QStringLiteral("."))
+                {
+                    decimalDigits += 2;
+                }
+            }
+            spec.decimals = qMax(0, decimalDigits);
+        }
+        else
+        {
+            const int xxIndex = tokens.indexOf(QStringLiteral("xx"));
+            if (xxIndex >= 0)
+            {
+                int digitsAfterXx = 0;
+                for (int i = xxIndex + 1; i < tokens.size(); ++i)
+                {
+                    if (tokens[i].trimmed() != QStringLiteral("."))
+                    {
+                        digitsAfterXx += 2;
+                    }
+                }
+                spec.decimals = digitsAfterXx + 1;
+            }
+        }
+
+        return spec;
     }
 }
 // ==================== NumericDelegate ====================
@@ -46,9 +109,17 @@ QWidget *NumericDelegate::createEditor(QWidget *parent, const QStyleOptionViewIt
                                        const QModelIndex &index) const
 {
     Q_UNUSED(option);
-    Q_UNUSED(index);
     QLineEdit *editor = new QLineEdit(parent);
-    editor->setValidator(new QDoubleValidator(m_minValue, m_maxValue, m_decimals, editor));
+    NumericEditSpec spec;
+    const QModelIndex formatIndex = index.sibling(index.row(), 3);
+    if (formatIndex.isValid())
+    {
+        spec = editSpecForFormat(formatIndex.data(Qt::DisplayRole).toString());
+    }
+
+    QDoubleValidator *validator = new QDoubleValidator(spec.minValue, spec.maxValue, spec.decimals, editor);
+    validator->setNotation(QDoubleValidator::StandardNotation);
+    editor->setValidator(validator);
     return editor;
 }
 
@@ -65,7 +136,7 @@ void NumericDelegate::setModelData(QWidget *editor, QAbstractItemModel *model,
     QLineEdit *lineEdit = static_cast<QLineEdit *>(editor);
     QString value = lineEdit->text();
 
-    if (!validateNumericValue(value))
+    if (!lineEdit->hasAcceptableInput())
     {
         return;
     }
@@ -257,10 +328,8 @@ void DataTableWidget::populateCategory(const QString &category)
     }
 
     const QString filterText = m_searchEdit ? m_searchEdit->text().trimmed() : QString();
-    const bool searchAllDataItems = !filterText.isEmpty();
-    const QList<QString> codes = searchAllDataItems
-                                     ? allSearchableDataCodes()
-                                     : dataCodesForCategory(category);
+    const bool hasSearchFilter = !filterText.isEmpty();
+    const QList<QString> codes = dataCodesForCategory(category);
 
     for (const QString &diCode : codes)
     {
@@ -270,9 +339,9 @@ void DataTableWidget::populateCategory(const QString &category)
         dataItem.value = m_meterModel->getDataValue(diCode);
         QString unit = dataItem.unit;
         QString dataFormat = dataItem.format;
-        QString formattedValue = dataItem.getFormattedValue();
+        QString formattedValue = formatDisplayValue(dataItem);
 
-        if (searchAllDataItems)
+        if (hasSearchFilter)
         {
             const QString haystack = QStringLiteral("%1 %2 %3 %4 %5")
                                          .arg(diCode, name, formattedValue, unit, dataFormat);
@@ -382,51 +451,8 @@ QList<QString> DataTableWidget::dataCodesForCategory(const QString &category) co
     return uniqueCodes;
 }
 
-QList<QString> DataTableWidget::allSearchableDataCodes() const
-{
-    if (!m_meterModel)
-    {
-        return {};
-    }
-
-    QList<QString> codes;
-    QSet<QString> seenCodes;
-
-    QList<QList<QString>> groups = {
-        m_meterModel->getEnergyDataCodes(),
-        m_meterModel->getDemandDataCodes(),
-        m_meterModel->getMaxDemandDataCodes(),
-        m_meterModel->getVariableDataCodes(),
-        m_meterModel->getEventDataCodes(),
-        m_meterModel->getParameterDataCodes(),
-        m_meterModel->getFreezeDataCodes(),
-        m_meterModel->getLoadRecordDataCodes()};
-
-    for (int settlementDay = 1; settlementDay <= 12; ++settlementDay)
-    {
-        groups.append(m_meterModel->getSettlementDayEnergyDataCodes(settlementDay));
-    }
-
-    for (const QList<QString> &group : groups)
-    {
-        for (const QString &diCode : group)
-        {
-            if (seenCodes.contains(diCode))
-            {
-                continue;
-            }
-
-            seenCodes.insert(diCode);
-            codes.append(diCode);
-        }
-    }
-
-    return codes;
-}
-
 void DataTableWidget::refreshTable()
 {
-    qDebug() << "DataTableWidget::refreshTable()" << m_currentCategory;
     populateCategory(m_currentCategory);
     updateDataCount();
     updateExportButtonState();
@@ -466,7 +492,7 @@ void DataTableWidget::setMeterInfo(const QString &alias, const QString &address)
     }
 }
 
-void DataTableWidget::updateDataItem(const QString &diCode, const QVariant &value)
+bool DataTableWidget::updateDataItem(const QString &diCode, const QVariant &value)
 {
     for (int i = 0; i < m_tableWidget->rowCount(); ++i)
     {
@@ -476,12 +502,25 @@ void DataTableWidget::updateDataItem(const QString &diCode, const QVariant &valu
             QTableWidgetItem *valueItem = m_tableWidget->item(i, 1);
             if (valueItem)
             {
-                valueItem->setText(value.toString());
+                QString formattedValue = value.toString();
+                if (m_meterModel)
+                {
+                    DataItem dataItem = m_meterModel->getDataItem(diCode);
+                    if (!dataItem.diCode.isEmpty())
+                    {
+                        dataItem.value = value;
+                        formattedValue = formatDisplayValue(dataItem);
+                    }
+                }
+
+                valueItem->setText(formattedValue);
                 valueItem->setData(Qt::UserRole, value);
             }
-            break;
+            return true;
         }
     }
+
+    return false;
 }
 
 void DataTableWidget::clearTable()
@@ -759,9 +798,15 @@ void DataTableWidget::onValidationFailed(const QString &message)
 
 void DataTableWidget::onMeterDataChanged(const QString &diCode, const QVariant &newValue)
 {
-    Q_UNUSED(diCode);
-    Q_UNUSED(newValue);
-    refreshTable();
+    const bool hasSearchFilter = m_searchEdit && !m_searchEdit->text().trimmed().isEmpty();
+    if (hasSearchFilter)
+    {
+        refreshTable();
+        updateExportButtonState();
+        return;
+    }
+
+    updateDataItem(diCode, newValue);
     updateExportButtonState();
 }
 

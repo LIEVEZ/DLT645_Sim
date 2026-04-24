@@ -98,6 +98,7 @@ public:
     static QString formatValueToString(const QVariant &value, const QString &format);
     // 将字符串转为字节数组
     static QByteArray stringToByteArray(const QString &str);
+    static QString decodeValueFromFormat(const QByteArray &data, const QString &format);
 
 private:
     BCDHelper() = default;

@@ -14,7 +14,7 @@
 namespace
 {
 constexpr int kDefaultRateCount = 5;
-constexpr int kMaxRateCount = 63;
+constexpr int kMaxRateCount = kDefaultRateCount;
 constexpr int kHarmonicOrderCount = 21;
 
 QString formatByteHex(quint8 value)

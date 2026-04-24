@@ -111,6 +111,12 @@ QString DLT645DataHelper::decodePayloadByFormat(const QByteArray &payload, const
         return decodedParts.join(" : ");
     }
 
+    const QString signedDecoded = BCDHelper::decodeValueFromFormat(payload, format);
+    if (!signedDecoded.isEmpty())
+    {
+        return signedDecoded;
+    }
+
     return formatDecimalValue(payload, decimalPlaces);
 }
 

@@ -98,7 +98,7 @@ public:
      * @param diCode 数据标识
      * @param value 新值
      */
-    void updateDataItem(const QString &diCode, const QVariant &value);
+    bool updateDataItem(const QString &diCode, const QVariant &value);
 
     /**
      * @brief 清空数据表格
@@ -157,7 +157,6 @@ private:
     void setupTable();
     void populateCategory(const QString &category);
     QList<QString> dataCodesForCategory(const QString &category) const;
-    QList<QString> allSearchableDataCodes() const;
     void filterTable(const QString &filterText);
     void updateExportButtonState();
     QString selectedMeterAddress() const;

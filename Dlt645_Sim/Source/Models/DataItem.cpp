@@ -3,6 +3,7 @@
 #include <QLocale>
 #include <QRegularExpression>
 #include <QDebug>
+
 QString DataItem::getFormattedValue() const
 {
     if (value.isNull())

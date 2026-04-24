@@ -8,7 +8,8 @@
 namespace
 {
     constexpr int kDefaultRateCount = 5;
-    constexpr int kMaxRateCount = 63;
+    // 当前产品固定按 5 个费率处理，避免大费率数导致读取链路膨胀卡顿
+    constexpr int kMaxRateCount = kDefaultRateCount;
     constexpr int kMaxSettlementDayCount = 12;
     constexpr int kHarmonicOrderCount = 21;
 
@@ -1593,7 +1594,7 @@ namespace
             const NumericFormatSpec formatSpec = parseNumericFormatSpec(item.format);
             bool variableValueHandled = false;
 
-            if (item.diCode.startsWith("0x0202") || item.diCode == "0x02080001")
+            if (item.diCode.startsWith("0x0202") || item.diCode == "0x02800001")
             {
                 item.value = rng->bounded(0, 10000) / 1000.0;
                 variableValueHandled = true;
@@ -2144,7 +2145,14 @@ void MeterModel::applyPersistedData(const QMap<QString, QVariant> &dataSnapshot)
         {
             if (m_dataItems.contains(it.key()))
             {
-                m_dataItems[it.key()].value = it.value();
+                if (it.key() == QStringLiteral("0x04000204"))
+                {
+                    m_dataItems[it.key()].value = normalizedRateCount(it.value().toInt());
+                }
+                else
+                {
+                    m_dataItems[it.key()].value = it.value();
+                }
             }
         }
 
@@ -2483,11 +2491,11 @@ void MeterModel::initializeVariableData()
     m_dataItems["0x0202FF00"] = DataItem("0x0202FF00", "电流数据块", QVariantList(), "-", "AA,xx,AA:AA,xx,AA:AA,xx,AA", false, 3);
 
     // 功率
-    m_dataItems["0x02030000"] = DataItem("0x02030000", "瞬时总有功功率", 0.0, "kW", "AA,.,AA,AA", false, 4);
-    m_dataItems["0x02030100"] = DataItem("0x02030100", "瞬时A相有功功率", 0.0, "kW", "AA,.,AA,AA", false, 4);
-    m_dataItems["0x02030200"] = DataItem("0x02030200", "瞬时B相有功功率", 0.0, "kW", "AA,.,AA,AA", false, 4);
-    m_dataItems["0x02030300"] = DataItem("0x02030300", "瞬时C相有功功率", 0.0, "kW", "AA,.,AA,AA", false, 4);
-    m_dataItems["0x0203FF00"] = DataItem("0x0203FF00", "瞬时有功功率数据块", QVariantList(), "-", "AA,.,AA,AA:AA,.,AA,AA:AA,.,AA,AA:AA,.,AA,AA", false, 4);
+    m_dataItems["0x02030000"] = DataItem("0x02030000", "瞬时总有功功率", 0.0, "kW", "F9,.,AA,AA", false, 4);
+    m_dataItems["0x02030100"] = DataItem("0x02030100", "瞬时A相有功功率", 0.0, "kW", "F9,.,AA,AA", false, 4);
+    m_dataItems["0x02030200"] = DataItem("0x02030200", "瞬时B相有功功率", 0.0, "kW", "F9,.,AA,AA", false, 4);
+    m_dataItems["0x02030300"] = DataItem("0x02030300", "瞬时C相有功功率", 0.0, "kW", "F9,.,AA,AA", false, 4);
+    m_dataItems["0x0203FF00"] = DataItem("0x0203FF00", "瞬时有功功率数据块", QVariantList(), "-", "F9,.,AA,AA:F9,.,AA,AA:F9,.,AA,AA:F9,.,AA,AA", false, 4);
 
     m_dataItems["0x02040000"] = DataItem("0x02040000", "瞬时总无功功率", 0.0, "kvar", "F9,.,AA,AA", false, 4);
     m_dataItems["0x02040100"] = DataItem("0x02040100", "瞬时A相无功功率", 0.0, "kvar", "F9,.,AA,AA", false, 4);
@@ -2532,7 +2540,7 @@ void MeterModel::initializeVariableData()
     }
 
     // 零相电流
-    m_dataItems["0x02080001"] = DataItem("0x02080001", "零相电流", 0.0, "A", "AA,xx,AA", false, 3);
+    m_dataItems["0x02800001"] = DataItem("0x02800001", "零相电流", 0.0, "A", "AA,xx,AA", false, 3);
     // 频率
     m_dataItems["0x02800002"] = DataItem("0x02800002", "电网频率", 50.0, "Hz", "AA,.,AA", false, 2);
     m_dataItems["0x02800003"] = DataItem("0x02800003", "一分钟有功总平均功率", 12.3456, "kW", "AA,.,AA,AA", false, 4);
