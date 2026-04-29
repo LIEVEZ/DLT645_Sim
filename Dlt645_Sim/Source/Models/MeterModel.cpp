@@ -10,6 +10,10 @@ namespace
     constexpr int kDefaultRateCount = 5;
     // 当前产品固定按 5 个费率处理，避免大费率数导致读取链路膨胀卡顿
     constexpr int kMaxRateCount = kDefaultRateCount;
+    constexpr int kMaxYearZoneCount = 14;
+    constexpr int kMaxDayScheduleTableCount = 8;
+    constexpr int kMaxDayScheduleCount = 14;
+    constexpr int kMaxHolidayCount = 254;
     constexpr int kMaxSettlementDayCount = 12;
     constexpr int kHarmonicOrderCount = 21;
 
@@ -239,6 +243,43 @@ namespace
     int normalizedRateCount(int rawRateCount)
     {
         return qBound(1, rawRateCount, kMaxRateCount);
+    }
+
+    QVariant normalizedParameterSettingValue(const QString &diCode, const QVariant &value)
+    {
+        bool ok = false;
+        const int rawValue = value.toInt(&ok);
+        if (!ok)
+        {
+            return value;
+        }
+
+        if (diCode == QStringLiteral("0x04000201"))
+        {
+            return qBound(1, rawValue, kMaxYearZoneCount);
+        }
+
+        if (diCode == QStringLiteral("0x04000202"))
+        {
+            return qBound(1, rawValue, kMaxDayScheduleTableCount);
+        }
+
+        if (diCode == QStringLiteral("0x04000203"))
+        {
+            return qBound(1, rawValue, kMaxDayScheduleCount);
+        }
+
+        if (diCode == QStringLiteral("0x04000204"))
+        {
+            return normalizedRateCount(rawValue);
+        }
+
+        if (diCode == QStringLiteral("0x04000205"))
+        {
+            return qBound(0, rawValue, kMaxHolidayCount);
+        }
+
+        return value;
     }
 
     int currentRateCount(const QMap<QString, DataItem> &items)
@@ -630,14 +671,345 @@ namespace
         }
     }
 
-    const QStringList &dailyFreezePrefixes()
+    QString repeatedFormat(const QString &formatPart, int repeatCount);
+    bool parseHexByteValue(const QString &hex, int *value);
+
+    struct FreezeEnergyFamilyDefinition
     {
-        static const QStringList prefixes = {
-            QStringLiteral("0x050601"),
-            QStringLiteral("0x050602"),
-            QStringLiteral("0x050603"),
-            QStringLiteral("0x050604")};
-        return prefixes;
+        QString familyCode;
+        QString description;
+        QString unit;
+        double baseValue;
+    };
+
+    struct FreezeCategoryDefinition
+    {
+        QString prefix;
+        QString description;
+        int freezeOffsetDays;
+        int freezeOffsetHours;
+        double valueBias;
+    };
+
+    struct FreezeDemandFamilyDefinition
+    {
+        QString familyCode;
+        QString description;
+        QString unit;
+        double baseValue;
+    };
+
+    const QList<FreezeEnergyFamilyDefinition> &multiRateFreezeEnergyFamilies()
+    {
+        static const QList<FreezeEnergyFamilyDefinition> families = {
+            {QStringLiteral("01"), QStringLiteral("正向有功"), QStringLiteral("kWh"), 123.45},
+            {QStringLiteral("02"), QStringLiteral("反向有功"), QStringLiteral("kWh"), 80.15},
+            {QStringLiteral("03"), QStringLiteral("组合无功1"), QStringLiteral("kvarh"), 61.28},
+            {QStringLiteral("04"), QStringLiteral("组合无功2"), QStringLiteral("kvarh"), 55.67},
+            {QStringLiteral("05"), QStringLiteral("第一象限无功"), QStringLiteral("kvarh"), 42.18},
+            {QStringLiteral("06"), QStringLiteral("第二象限无功"), QStringLiteral("kvarh"), 39.76},
+            {QStringLiteral("07"), QStringLiteral("第三象限无功"), QStringLiteral("kvarh"), 37.54},
+            {QStringLiteral("08"), QStringLiteral("第四象限无功"), QStringLiteral("kvarh"), 35.32}};
+        return families;
+    }
+
+    const QList<FreezeCategoryDefinition> &latestFreezeCategoryDefinitions()
+    {
+        static const QList<FreezeCategoryDefinition> definitions = {
+            {QStringLiteral("0x0500"), QStringLiteral("定时冻结"), 7, 0, 12.0},
+            {QStringLiteral("0x0501"), QStringLiteral("瞬时冻结"), 0, 6, 8.0},
+            {QStringLiteral("0x0502"), QStringLiteral("两套时区表切换"), 30, 0, 6.0},
+            {QStringLiteral("0x0503"), QStringLiteral("两套日时段表切换"), 15, 0, 4.0},
+            {QStringLiteral("0x0505"), QStringLiteral("分时费率切换冻结"), 10, 0, 3.0},
+            {QStringLiteral("0x0506"), QStringLiteral("日冻结"), 1, 0, 0.0},
+            {QStringLiteral("0x0507"), QStringLiteral("两套阶梯切换"), 45, 0, 5.0}};
+        return definitions;
+    }
+
+    bool usesCurrentDayMidnightFreezeTime(const FreezeCategoryDefinition &category)
+    {
+        return category.prefix == QStringLiteral("0x0506");
+    }
+
+    QDateTime defaultLatestFreezeSnapshotTime(const FreezeCategoryDefinition &category, const QDateTime &referenceTime)
+    {
+        if (usesCurrentDayMidnightFreezeTime(category))
+        {
+            return QDateTime(referenceTime.date(), QTime(0, 0));
+        }
+
+        return referenceTime.addDays(-category.freezeOffsetDays).addSecs(-category.freezeOffsetHours * 60 * 60);
+    }
+
+    const QList<FreezeDemandFamilyDefinition> &freezeDemandFamilies()
+    {
+        static const QList<FreezeDemandFamilyDefinition> families = {
+            {QStringLiteral("09"), QStringLiteral("正向有功"), QStringLiteral("kW"), 9.8765},
+            {QStringLiteral("0A"), QStringLiteral("反向有功"), QStringLiteral("kW"), 6.5432}};
+        return families;
+    }
+
+    QStringList freezeRateSuffixes(int rateCount)
+    {
+        QStringList suffixes;
+        suffixes.reserve(rateCount);
+        for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
+        {
+            suffixes.append(upperHexByte(rateIndex + 1));
+        }
+        return suffixes;
+    }
+
+    bool isFreezeEnergyFamilyCode(const QString &diCode)
+    {
+        if (diCode.size() != 10 || !diCode.startsWith(QStringLiteral("0x05")))
+        {
+            return false;
+        }
+
+        bool ok = false;
+        int familyValue = 0;
+        if (!parseHexByteValue(diCode.mid(6, 2), &familyValue))
+        {
+            return false;
+        }
+
+        return familyValue >= 1 && familyValue <= 8;
+    }
+
+    bool isFreezeEnergyBlockCode(const QString &diCode)
+    {
+        return isFreezeEnergyFamilyCode(diCode) && diCode.endsWith(QStringLiteral("01"));
+    }
+
+    bool isFreezeDemandBlockCode(const QString &diCode)
+    {
+        if (diCode.size() != 10 || !diCode.startsWith(QStringLiteral("0x05")) || !diCode.endsWith(QStringLiteral("01")))
+        {
+            return false;
+        }
+
+        const QString familyHex = diCode.mid(6, 2);
+        return familyHex == QStringLiteral("09") || familyHex == QStringLiteral("0A");
+    }
+
+    bool isFreezeVariableBlockCode(const QString &diCode)
+    {
+        return diCode.size() == 10 &&
+               diCode.startsWith(QStringLiteral("0x05")) &&
+               diCode.mid(6, 2) == QStringLiteral("10") &&
+               diCode.endsWith(QStringLiteral("01"));
+    }
+
+    QStringList currentFreezeEnergyBlockCodes(const QMap<QString, DataItem> &items, const QString &diPrefix)
+    {
+        const int rateCount = currentRateCount(items);
+        QStringList codes;
+        codes.reserve(rateCount + 1);
+        for (int rateIndex = rateCount; rateIndex >= 1; --rateIndex)
+        {
+            codes.append(diPrefix + upperHexByte(rateIndex + 1));
+        }
+        codes.append(diPrefix + QStringLiteral("00"));
+        return codes;
+    }
+
+    void initializeLatestFreezeEnergyCategory(QMap<QString, DataItem> &items,
+                                             const FreezeCategoryDefinition &category,
+                                             const QDateTime &freezeTime)
+    {
+        const QString timeCode = category.prefix + QStringLiteral("0001");
+        items[timeCode] = DataItem(timeCode,
+                                   QStringLiteral("上1次%1时间").arg(category.description),
+                                   compactDateTimeToMinutes(freezeTime),
+                                   QStringLiteral("-"),
+                                   QStringLiteral("AA,AA,AA,AA,AA"),
+                                   false,
+                                   0);
+
+        for (const FreezeEnergyFamilyDefinition &family : multiRateFreezeEnergyFamilies())
+        {
+            const QString prefix = category.prefix + family.familyCode;
+            const double totalValue = roundToDecimals(family.baseValue + category.valueBias, 2);
+            items[prefix + QStringLiteral("00")] = DataItem(prefix + QStringLiteral("00"),
+                                                            QStringLiteral("上1次%1%2总电能").arg(category.description, family.description),
+                                                            totalValue,
+                                                            family.unit,
+                                                            QStringLiteral("AA,AA,AA,.,AA"),
+                                                            false,
+                                                            2);
+            items[prefix + QStringLiteral("01")] = DataItem(prefix + QStringLiteral("01"),
+                                                            QStringLiteral("上1次%1%2电能数据块").arg(category.description, family.description),
+                                                            QVariantList(),
+                                                            QStringLiteral("-"),
+                                                            repeatedFormat(QStringLiteral("AA,AA,AA,.,AA"), kDefaultRateCount + 1),
+                                                            false,
+                                                            2);
+            const QList<double> weights = {0.28, 0.24, 0.20, 0.16, 0.12};
+            for (int rateIndex = 1; rateIndex <= kDefaultRateCount; ++rateIndex)
+            {
+                const QString rateCode = prefix + upperHexByte(rateIndex + 1);
+                items[rateCode] = DataItem(rateCode,
+                                           QStringLiteral("上1次%1%2费率%3电能").arg(category.description, family.description).arg(rateIndex),
+                                           roundToDecimals(totalValue * weights.at(rateIndex - 1), 2),
+                                           family.unit,
+                                           QStringLiteral("AA,AA,AA,.,AA"),
+                                           false,
+                                           2);
+            }
+        }
+    }
+
+    void initializeLatestHourlyFreezeCategory(QMap<QString, DataItem> &items, const QDateTime &freezeTime)
+    {
+        items[QStringLiteral("0x05040001")] = DataItem(QStringLiteral("0x05040001"),
+                                                       QStringLiteral("上1次整点冻结时间"),
+                                                       compactDateTimeToMinutes(freezeTime),
+                                                       QStringLiteral("-"),
+                                                       QStringLiteral("AA,AA,AA,AA,AA"),
+                                                       false,
+                                                       0);
+        items[QStringLiteral("0x05040100")] = DataItem(QStringLiteral("0x05040100"),
+                                                       QStringLiteral("上1次整点冻结正向有功总电能"),
+                                                       96.42,
+                                                       QStringLiteral("kWh"),
+                                                       QStringLiteral("AA,AA,AA,.,AA"),
+                                                       false,
+                                                       2);
+        items[QStringLiteral("0x05040200")] = DataItem(QStringLiteral("0x05040200"),
+                                                       QStringLiteral("上1次整点冻结反向有功总电能"),
+                                                       18.37,
+                                                       QStringLiteral("kWh"),
+                                                       QStringLiteral("AA,AA,AA,.,AA"),
+                                                       false,
+                                                       2);
+        items[QStringLiteral("0x0504FF01")] = DataItem(QStringLiteral("0x0504FF01"),
+                                                       QStringLiteral("上1次整点冻结数据块"),
+                                                       QVariantList(),
+                                                       QStringLiteral("-"),
+                                                       QStringLiteral("AA,AA,AA,AA,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA"),
+                                                       false,
+                                                       2);
+    }
+
+    QDateTime freezeSnapshotTime(const QMap<QString, DataItem> &items, const FreezeCategoryDefinition &category)
+    {
+        if (usesCurrentDayMidnightFreezeTime(category))
+        {
+            return defaultLatestFreezeSnapshotTime(category, QDateTime::currentDateTime());
+        }
+
+        const QString timeCode = category.prefix + QStringLiteral("0001");
+        if (items.contains(timeCode))
+        {
+            const QDateTime parsed = QDateTime::fromString(items.value(timeCode).value.toString(), QStringLiteral("yyMMddHHmm"));
+            if (parsed.isValid())
+            {
+                return parsed;
+            }
+        }
+
+        return defaultLatestFreezeSnapshotTime(category, QDateTime::currentDateTime());
+    }
+
+    QVariantList buildFreezeDemandBlockValue(const FreezeDemandFamilyDefinition &family,
+                                             const QDateTime &freezeTime,
+                                             double valueBias,
+                                             int rateCount)
+    {
+        const QList<double> weights = {0.94, 0.88, 0.81, 0.76, 0.70};
+        const double totalValue = roundToDecimals(family.baseValue + valueBias, 4);
+
+        QVariantList values;
+        values.reserve((rateCount + 1) * 2);
+        for (int rateIndex = rateCount; rateIndex >= 1; --rateIndex)
+        {
+            const int weightIndex = qMin(rateIndex - 1, weights.size() - 1);
+            const QDateTime eventTime = freezeTime.addSecs(-(rateIndex * 37 + 11) * 60);
+            values.append(compactDateTimeToMinutes(eventTime));
+            values.append(roundToDecimals(totalValue * weights.at(weightIndex), 4));
+        }
+
+        values.append(compactDateTimeToMinutes(freezeTime.addSecs(-7 * 60)));
+        values.append(totalValue);
+        return values;
+    }
+
+    QVariantList buildFreezeVariableBlockValue(double valueBias)
+    {
+        const double aActive = roundToDecimals(4.2800 + valueBias * 0.08, 4);
+        const double bActive = roundToDecimals(3.9100 + valueBias * 0.07, 4);
+        const double cActive = roundToDecimals(3.5800 + valueBias * 0.06, 4);
+        const double totalActive = roundToDecimals(aActive + bActive + cActive, 4);
+
+        const double aReactive = roundToDecimals(1.8200 + valueBias * 0.05, 4);
+        const double bReactive = roundToDecimals(1.6400 + valueBias * 0.04, 4);
+        const double cReactive = roundToDecimals(1.5300 + valueBias * 0.03, 4);
+        const double totalReactive = roundToDecimals(aReactive + bReactive + cReactive, 4);
+
+        return QVariantList{
+            totalActive,
+            aActive,
+            bActive,
+            cActive,
+            totalReactive,
+            aReactive,
+            bReactive,
+            cReactive};
+    }
+
+    void refreshLatestFreezeCompositeBlocks(QMap<QString, DataItem> &items)
+    {
+        const int rateCount = currentRateCount(items);
+        for (const FreezeCategoryDefinition &category : latestFreezeCategoryDefinitions())
+        {
+            const QDateTime freezeTime = freezeSnapshotTime(items, category);
+            const QString timeCode = category.prefix + QStringLiteral("0001");
+            if (usesCurrentDayMidnightFreezeTime(category) && items.contains(timeCode))
+            {
+                items[timeCode].value = compactDateTimeToMinutes(freezeTime);
+            }
+
+            for (const FreezeDemandFamilyDefinition &family : freezeDemandFamilies())
+            {
+                const QString blockCode = category.prefix + family.familyCode + QStringLiteral("01");
+                if (!items.contains(blockCode))
+                {
+                    items[blockCode] = DataItem(blockCode,
+                                                QStringLiteral("上1次%1%2最大需量及发生时间数据块").arg(category.description, family.description),
+                                                QVariantList(),
+                                                QStringLiteral("-"),
+                                                repeatedFormat(QStringLiteral("AA,AA,AA,AA,AA:AA,.,AA,AA"), rateCount + 1),
+                                                false,
+                                                0);
+                }
+
+                items[blockCode].format = repeatedFormat(QStringLiteral("AA,AA,AA,AA,AA:AA,.,AA,AA"), rateCount + 1);
+                items[blockCode].value = buildFreezeDemandBlockValue(family, freezeTime, category.valueBias, rateCount);
+            }
+
+            const QString variableBlockCode = category.prefix + QStringLiteral("1001");
+            if (!items.contains(variableBlockCode))
+            {
+                items[variableBlockCode] = DataItem(variableBlockCode,
+                                                    QStringLiteral("上1次%1变量数据块").arg(category.description),
+                                                    QVariantList(),
+                                                    QStringLiteral("-"),
+                                                    repeatedFormat(QStringLiteral("AA,.,AA,AA"), 8),
+                                                    false,
+                                                    4);
+            }
+
+            items[variableBlockCode].value = buildFreezeVariableBlockValue(category.valueBias);
+        }
+
+        if (items.contains(QStringLiteral("0x0504FF01")))
+        {
+            items[QStringLiteral("0x0504FF01")].value = QVariantList{
+                items.value(QStringLiteral("0x05040001")).value,
+                items.value(QStringLiteral("0x05040100")).value,
+                items.value(QStringLiteral("0x05040200")).value};
+        }
     }
 
     QStringList energyRateSuffixes(int rateCount)
@@ -647,17 +1019,6 @@ namespace
         for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
         {
             suffixes.append(upperHexByte(rateIndex) + QStringLiteral("00"));
-        }
-        return suffixes;
-    }
-
-    QStringList dailyFreezeRateSuffixes(int rateCount)
-    {
-        QStringList suffixes;
-        suffixes.reserve(rateCount);
-        for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
-        {
-            suffixes.append(upperHexByte(rateIndex + 1));
         }
         return suffixes;
     }
@@ -863,15 +1224,14 @@ namespace
         return true;
     }
 
-    bool isDailyFreezeRateCode(const QString &diCode, int *rateIndex = nullptr)
+    bool isFreezeRateCode(const QString &diCode, int *rateIndex = nullptr)
     {
         if (diCode.size() != 10)
         {
             return false;
         }
 
-        const QString prefix = diCode.left(8);
-        if (!dailyFreezePrefixes().contains(prefix))
+        if (!isFreezeEnergyFamilyCode(diCode))
         {
             return false;
         }
@@ -907,7 +1267,7 @@ namespace
         int rateIndex = 0;
         if (isCurrentEnergyRateCode(diCode, &rateIndex) ||
             isDemandRateCode(diCode, &rateIndex) ||
-            isDailyFreezeRateCode(diCode, &rateIndex))
+            isFreezeRateCode(diCode, &rateIndex))
         {
             return rateIndex <= supportedRateCount;
         }
@@ -1035,19 +1395,6 @@ namespace
                                                           0);
     }
 
-    QStringList currentDailyFreezeBlockCodes(const QMap<QString, DataItem> &items, const QString &diPrefix)
-    {
-        const int rateCount = currentRateCount(items);
-        QStringList codes;
-        codes.reserve(rateCount + 1);
-        for (int rateIndex = rateCount; rateIndex >= 1; --rateIndex)
-        {
-            codes.append(diPrefix + upperHexByte(rateIndex + 1));
-        }
-        codes.append(diPrefix + QStringLiteral("00"));
-        return codes;
-    }
-
     void ensureCurrentEnergyRateItems(QMap<QString, DataItem> &items)
     {
         const QList<QString> templateCodes = items.keys();
@@ -1130,12 +1477,12 @@ namespace
         }
     }
 
-    void ensureDailyFreezeRateItems(QMap<QString, DataItem> &items)
+    void ensureFreezeRateItems(QMap<QString, DataItem> &items)
     {
-        for (const QString &prefix : dailyFreezePrefixes())
+        const QList<QString> templateCodes = items.keys();
+        for (const QString &templateCode : templateCodes)
         {
-            const QString templateCode = prefix + QStringLiteral("02");
-            if (!items.contains(templateCode))
+            if (!templateCode.endsWith(QStringLiteral("02")) || !isFreezeEnergyFamilyCode(templateCode))
             {
                 continue;
             }
@@ -1143,7 +1490,7 @@ namespace
             const DataItem templateItem = items.value(templateCode);
             for (int rateIndex = 1; rateIndex <= kMaxRateCount; ++rateIndex)
             {
-                const QString code = prefix + upperHexByte(rateIndex + 1);
+                const QString code = templateCode.left(8) + upperHexByte(rateIndex + 1);
                 if (items.contains(code))
                 {
                     continue;
@@ -1180,6 +1527,21 @@ namespace
             }
         }
 
+        const QList<QString> freezeBlockCodes = items.keys();
+        for (const QString &blockCode : freezeBlockCodes)
+        {
+            if (!isFreezeEnergyBlockCode(blockCode))
+            {
+                continue;
+            }
+
+            const QString templateCode = blockCode.left(8) + QStringLiteral("02");
+            if (items.contains(blockCode) && items.contains(templateCode))
+            {
+                items[blockCode].format = repeatedFormat(items[templateCode].format, rateCount + 1);
+            }
+        }
+
         const QString demandSegmentFormat = QStringLiteral("AA,AA,AA,AA,AA:AA,.,AA,AA");
         for (const QString &blockCode : blockCodes)
         {
@@ -1195,15 +1557,6 @@ namespace
             }
         }
 
-        for (const QString &prefix : dailyFreezePrefixes())
-        {
-            const QString blockCode = prefix + QStringLiteral("01");
-            const QString templateCode = prefix + QStringLiteral("02");
-            if (items.contains(blockCode) && items.contains(templateCode))
-            {
-                items[blockCode].format = repeatedFormat(items[templateCode].format, rateCount + 1);
-            }
-        }
     }
 
     bool isSinglePhaseUnsupportedCode(const QString &diCode)
@@ -1348,13 +1701,24 @@ namespace
         }
     }
 
-    void synchronizeDailyFreezeTotals(QMap<QString, DataItem> &items)
+    void synchronizeFreezeTotals(QMap<QString, DataItem> &items)
     {
         const int rateCount = currentRateCount(items);
-        synchronizeGroupTotal(items, "0x05060100", prefixedCodes("0x050601", dailyFreezeRateSuffixes(rateCount)));
-        synchronizeGroupTotal(items, "0x05060200", prefixedCodes("0x050602", dailyFreezeRateSuffixes(rateCount)));
-        synchronizeGroupTotal(items, "0x05060300", prefixedCodes("0x050603", dailyFreezeRateSuffixes(rateCount)));
-        synchronizeGroupTotal(items, "0x05060400", prefixedCodes("0x050604", dailyFreezeRateSuffixes(rateCount)));
+        const QList<QString> codes = items.keys();
+        for (const QString &code : codes)
+        {
+            if (!code.endsWith(QStringLiteral("00")) || !isFreezeEnergyFamilyCode(code))
+            {
+                continue;
+            }
+
+            if (code.startsWith(QStringLiteral("0x0504")))
+            {
+                continue;
+            }
+
+            synchronizeGroupTotal(items, code, prefixedCodes(code.left(8), freezeRateSuffixes(rateCount)));
+        }
     }
 
     void synchronizeInstantaneousPowerTotals(QMap<QString, DataItem> &items)
@@ -1444,6 +1808,12 @@ namespace
             if (item.diCode == "0x04000102")
             {
                 item.value = QTime::currentTime().addSecs(rng->bounded(0, 24 * 60 * 60)).toString(QStringLiteral("HHmmss"));
+                continue;
+            }
+
+            if (item.diCode == "0x05060001")
+            {
+                item.value = compactDateTimeToMinutes(QDateTime(QDate::currentDate(), QTime(0, 0)));
                 continue;
             }
 
@@ -1747,6 +2117,7 @@ namespace
             if (formatSpec.valid)
             {
                 item.value = normalizeValueForFormat(item.value, formatSpec);
+                item.value = normalizedParameterSettingValue(item.diCode, item.value);
             }
             else
             {
@@ -1757,7 +2128,8 @@ namespace
         synchronizeDemandTotals(items);
         synchronizeInstantaneousPowerTotals(items);
         synchronizeCurrentEnergyTotals(items);
-        synchronizeDailyFreezeTotals(items);
+        synchronizeFreezeTotals(items);
+        refreshLatestFreezeCompositeBlocks(items);
     }
 }
 MeterModel::MeterModel(QObject *parent)
@@ -2054,10 +2426,10 @@ QVariant MeterModel::getDataValue(const QString &diCode) const
             {
                 appendValuesForCodes(m_dataItems, currentDemandBlockCodes(m_dataItems, diCode.left(6)), values);
             }
-            else if (diCode == "0x05060101" || diCode == "0x05060201" || diCode == "0x05060301" || diCode == "0x05060401")
+            else if (isFreezeEnergyBlockCode(diCode))
             {
                 const QString basePrefix = diCode.left(8);
-                appendValuesForCodes(m_dataItems, currentDailyFreezeBlockCodes(m_dataItems, basePrefix), values);
+                appendValuesForCodes(m_dataItems, currentFreezeEnergyBlockCodes(m_dataItems, basePrefix), values);
             }
 
             if (!values.isEmpty())
@@ -2085,10 +2457,7 @@ bool MeterModel::setDataValue(const QString &diCode, const QVariant &value)
         QMutexLocker locker(&m_mutex);
         if (isDataItemSupportedUnlocked(diCode))
         {
-            if (diCode == "0x04000204")
-            {
-                emittedValue = normalizedRateCount(value.toInt());
-            }
+            emittedValue = normalizedParameterSettingValue(diCode, value);
 
             m_dataItems[diCode].value = emittedValue;
             if (isMultiRateEnergyCode(diCode))
@@ -2103,9 +2472,13 @@ bool MeterModel::setDataValue(const QString &diCode, const QVariant &value)
             {
                 synchronizeInstantaneousPowerTotals(m_dataItems);
             }
-            if (diCode.startsWith("0x050601") || diCode.startsWith("0x050602") || diCode.startsWith("0x050603") || diCode.startsWith("0x050604"))
+            if (isFreezeEnergyFamilyCode(diCode))
             {
-                synchronizeDailyFreezeTotals(m_dataItems);
+                synchronizeFreezeTotals(m_dataItems);
+            }
+            if (diCode.startsWith(QStringLiteral("0x05")))
+            {
+                refreshLatestFreezeCompositeBlocks(m_dataItems);
             }
             if (diCode == "0x04000204")
             {
@@ -2113,7 +2486,8 @@ bool MeterModel::setDataValue(const QString &diCode, const QVariant &value)
                 synchronizeDemandTotals(m_dataItems);
                 synchronizeInstantaneousPowerTotals(m_dataItems);
                 synchronizeCurrentEnergyTotals(m_dataItems);
-                synchronizeDailyFreezeTotals(m_dataItems);
+                synchronizeFreezeTotals(m_dataItems);
+                refreshLatestFreezeCompositeBlocks(m_dataItems);
                 requiresBatchRefresh = true;
             }
             updated = true;
@@ -2145,14 +2519,7 @@ void MeterModel::applyPersistedData(const QMap<QString, QVariant> &dataSnapshot)
         {
             if (m_dataItems.contains(it.key()))
             {
-                if (it.key() == QStringLiteral("0x04000204"))
-                {
-                    m_dataItems[it.key()].value = normalizedRateCount(it.value().toInt());
-                }
-                else
-                {
-                    m_dataItems[it.key()].value = it.value();
-                }
+                m_dataItems[it.key()].value = normalizedParameterSettingValue(it.key(), it.value());
             }
         }
 
@@ -2169,7 +2536,8 @@ void MeterModel::applyPersistedData(const QMap<QString, QVariant> &dataSnapshot)
         synchronizeDemandTotals(m_dataItems);
         synchronizeInstantaneousPowerTotals(m_dataItems);
         synchronizeCurrentEnergyTotals(m_dataItems);
-        synchronizeDailyFreezeTotals(m_dataItems);
+        synchronizeFreezeTotals(m_dataItems);
+        refreshLatestFreezeCompositeBlocks(m_dataItems);
     }
 
     emit dataBatchChanged();
@@ -2278,12 +2646,12 @@ void MeterModel::initializeDefaultDataItems()
     initializeLoadRecordData();
     ensureCurrentEnergyRateItems(m_dataItems);
     ensureDemandRateItems(m_dataItems);
-    ensureDailyFreezeRateItems(m_dataItems);
+    ensureFreezeRateItems(m_dataItems);
     refreshRateDependentBlockFormats(m_dataItems);
     synchronizeDemandTotals(m_dataItems);
     synchronizeInstantaneousPowerTotals(m_dataItems);
     synchronizeCurrentEnergyTotals(m_dataItems);
-    synchronizeDailyFreezeTotals(m_dataItems);
+    synchronizeFreezeTotals(m_dataItems);
 }
 
 void MeterModel::initializeEnergyData()
@@ -2784,43 +3152,16 @@ void MeterModel::initializeParameterData()
 void MeterModel::initializeFreezeData()
 {
     // 冻结数据 (0x05xxxxxx)
-    const QDateTime lastFreeze = QDateTime::currentDateTime().addDays(-1);
+    const QDateTime now = QDateTime::currentDateTime();
+    for (const FreezeCategoryDefinition &category : latestFreezeCategoryDefinitions())
+    {
+        const QDateTime freezeTime = defaultLatestFreezeSnapshotTime(category, now);
+        initializeLatestFreezeEnergyCategory(m_dataItems, category, freezeTime);
+    }
 
-    m_dataItems["0x05060001"] = DataItem("0x05060001", "上1次日冻结时间", compactDateTimeToMinutes(lastFreeze), "-", "AA,AA,AA,AA,AA", false, 0);
-
-    m_dataItems["0x05060100"] = DataItem("0x05060100", "上1次日冻结正向有功总电能", 123.45, "kWh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060102"] = DataItem("0x05060102", "上1次日冻结正向有功费率1电能", 25.11, "kWh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060103"] = DataItem("0x05060103", "上1次日冻结正向有功费率2电能", 24.22, "kWh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060104"] = DataItem("0x05060104", "上1次日冻结正向有功费率3电能", 36.33, "kWh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060105"] = DataItem("0x05060105", "上1次日冻结正向有功费率4电能", 37.79, "kWh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060106"] = DataItem("0x05060106", "上1次日冻结正向有功费率5电能", 0.0, "kWh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060101"] = DataItem("0x05060101", "上1次日冻结正向有功电能数据块", QVariantList(), "-", "AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA", false, 2);
-
-    m_dataItems["0x05060200"] = DataItem("0x05060200", "上1次日冻结反向有功总电能", 80.15, "kWh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060202"] = DataItem("0x05060202", "上1次日冻结反向有功费率1电能", 15.01, "kWh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060203"] = DataItem("0x05060203", "上1次日冻结反向有功费率2电能", 18.22, "kWh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060204"] = DataItem("0x05060204", "上1次日冻结反向有功费率3电能", 20.33, "kWh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060205"] = DataItem("0x05060205", "上1次日冻结反向有功费率4电能", 26.59, "kWh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060206"] = DataItem("0x05060206", "上1次日冻结反向有功费率5电能", 0.0, "kWh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060201"] = DataItem("0x05060201", "上1次日冻结反向有功电能数据块", QVariantList(), "-", "AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA", false, 2);
-
-    m_dataItems["0x05060300"] = DataItem("0x05060300", "上1次日冻结组合无功1总电能", 61.28, "kvarh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060302"] = DataItem("0x05060302", "上1次日冻结组合无功1费率1电能", 12.12, "kvarh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060303"] = DataItem("0x05060303", "上1次日冻结组合无功1费率2电能", 13.13, "kvarh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060304"] = DataItem("0x05060304", "上1次日冻结组合无功1费率3电能", 14.14, "kvarh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060305"] = DataItem("0x05060305", "上1次日冻结组合无功1费率4电能", 21.89, "kvarh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060306"] = DataItem("0x05060306", "上1次日冻结组合无功1费率5电能", 0.0, "kvarh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060301"] = DataItem("0x05060301", "上1次日冻结组合无功1电能数据块", QVariantList(), "-", "AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA", false, 2);
-
-    m_dataItems["0x05060400"] = DataItem("0x05060400", "上1次日冻结组合无功2总电能", 55.67, "kvarh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060402"] = DataItem("0x05060402", "上1次日冻结组合无功2费率1电能", 10.1, "kvarh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060403"] = DataItem("0x05060403", "上1次日冻结组合无功2费率2电能", 11.2, "kvarh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060404"] = DataItem("0x05060404", "上1次日冻结组合无功2费率3电能", 12.3, "kvarh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060405"] = DataItem("0x05060405", "上1次日冻结组合无功2费率4电能", 22.07, "kvarh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060406"] = DataItem("0x05060406", "上1次日冻结组合无功2费率5电能", 0.0, "kvarh", "AA,AA,AA,.,AA", false, 2);
-    m_dataItems["0x05060401"] = DataItem("0x05060401", "上1次日冻结组合无功2电能数据块", QVariantList(), "-", "AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA:AA,AA,AA,.,AA", false, 2);
-
-    synchronizeDailyFreezeTotals(m_dataItems);
+    initializeLatestHourlyFreezeCategory(m_dataItems, now.addSecs(-60 * 60));
+    synchronizeFreezeTotals(m_dataItems);
+    refreshLatestFreezeCompositeBlocks(m_dataItems);
 }
 
 void MeterModel::initializeLoadRecordData()
@@ -2952,6 +3293,63 @@ QList<QString> MeterModel::getFreezeDataCodes() const
             codes.append(it.key());
         }
     }
+    return codes;
+}
+
+QList<QString> MeterModel::getFreezeDataCodes(const QString &freezeCategory) const
+{
+    QMutexLocker locker(&m_mutex);
+
+    QString prefix;
+    if (freezeCategory == QStringLiteral("定时冻结"))
+    {
+        prefix = QStringLiteral("0x0500");
+    }
+    else if (freezeCategory == QStringLiteral("瞬时冻结"))
+    {
+        prefix = QStringLiteral("0x0501");
+    }
+    else if (freezeCategory == QStringLiteral("时区切换冻结"))
+    {
+        prefix = QStringLiteral("0x0502");
+    }
+    else if (freezeCategory == QStringLiteral("日时段切换冻结"))
+    {
+        prefix = QStringLiteral("0x0503");
+    }
+    else if (freezeCategory == QStringLiteral("整点冻结"))
+    {
+        prefix = QStringLiteral("0x0504");
+    }
+    else if (freezeCategory == QStringLiteral("分时费率切换冻结"))
+    {
+        prefix = QStringLiteral("0x0505");
+    }
+    else if (freezeCategory == QStringLiteral("日冻结"))
+    {
+        prefix = QStringLiteral("0x0506");
+    }
+    else if (freezeCategory == QStringLiteral("阶梯切换冻结"))
+    {
+        prefix = QStringLiteral("0x0507");
+    }
+
+    QList<QString> codes;
+    for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
+    {
+        if (!it.key().startsWith(QStringLiteral("0x05")) || !isDataItemSupportedUnlocked(it.key()))
+        {
+            continue;
+        }
+
+        if (!prefix.isEmpty() && !it.key().startsWith(prefix))
+        {
+            continue;
+        }
+
+        codes.append(it.key());
+    }
+
     return codes;
 }
 

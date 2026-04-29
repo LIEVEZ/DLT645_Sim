@@ -1141,7 +1141,14 @@ QList<QString> MasterQueryDialog::allCategories() const
         QString::fromUtf8("变量"),
         QString::fromUtf8("事件记录"),
         QString::fromUtf8("参变量"),
+        QString::fromUtf8("定时冻结"),
+        QString::fromUtf8("瞬时冻结"),
+        QString::fromUtf8("时区切换冻结"),
+        QString::fromUtf8("日时段切换冻结"),
+        QString::fromUtf8("整点冻结"),
+        QString::fromUtf8("分时费率切换冻结"),
         QString::fromUtf8("日冻结"),
+        QString::fromUtf8("阶梯切换冻结"),
         QString::fromUtf8("负荷记录")};
 }
 
@@ -1176,9 +1183,16 @@ QList<QString> MasterQueryDialog::dataCodesForCategory(const QString &category) 
     {
         return m_catalogMeterModel->getParameterDataCodes();
     }
-    if (category == QString::fromUtf8("日冻结"))
+    if (category == QString::fromUtf8("定时冻结") ||
+        category == QString::fromUtf8("瞬时冻结") ||
+        category == QString::fromUtf8("时区切换冻结") ||
+        category == QString::fromUtf8("日时段切换冻结") ||
+        category == QString::fromUtf8("整点冻结") ||
+        category == QString::fromUtf8("分时费率切换冻结") ||
+        category == QString::fromUtf8("日冻结") ||
+        category == QString::fromUtf8("阶梯切换冻结"))
     {
-        return m_catalogMeterModel->getFreezeDataCodes();
+        return m_catalogMeterModel->getFreezeDataCodes(category);
     }
     if (category == QString::fromUtf8("负荷记录"))
     {

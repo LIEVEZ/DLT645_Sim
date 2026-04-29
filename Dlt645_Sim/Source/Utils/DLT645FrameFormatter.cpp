@@ -180,6 +180,30 @@ bool isDynamicEnergyBlock(const MeterModel *meterModel, const QString &diCode)
            !hasModelItem(meterModel, prefix + QStringLiteral("0001"));
 }
 
+bool isDynamicFreezeEnergyBlock(const MeterModel *meterModel, const QString &diCode)
+{
+    if (!meterModel || diCode.size() != 10 || !diCode.startsWith(QStringLiteral("0x05")) || !diCode.endsWith(QStringLiteral("01")))
+    {
+        return false;
+    }
+
+    bool ok = false;
+    const int familyValue = diCode.mid(6, 2).toInt(&ok, 16);
+    if (!ok || familyValue < 0x01 || familyValue > 0x08)
+    {
+        return false;
+    }
+
+    const QString totalCode = diCode.left(8) + QStringLiteral("00");
+    const DataItem totalItem = meterModel->getDataItem(totalCode);
+    return !totalItem.diCode.isEmpty() && totalItem.unit.contains(QChar('h'), Qt::CaseInsensitive);
+}
+
+bool isLatestHourlyFreezeCompositeBlock(const QString &diCode)
+{
+    return diCode == QStringLiteral("0x0504FF01");
+}
+
 QStringList dynamicEnergyPayloadOrderCodes(const MeterModel *meterModel, const QString &diCode)
 {
     const QString prefix = diCode.left(6);
@@ -246,7 +270,7 @@ QStringList dynamicDemandDisplayOrderCodes(const MeterModel *meterModel, const Q
     return codes;
 }
 
-QStringList dynamicDailyFreezePayloadOrderCodes(const MeterModel *meterModel, const QString &diCode)
+QStringList dynamicFreezeEnergyPayloadOrderCodes(const MeterModel *meterModel, const QString &diCode)
 {
     const QString prefix = diCode.left(8);
     const int rateCount = currentRateCount(meterModel);
@@ -261,7 +285,7 @@ QStringList dynamicDailyFreezePayloadOrderCodes(const MeterModel *meterModel, co
     return codes;
 }
 
-QStringList dynamicDailyFreezeDisplayOrderCodes(const MeterModel *meterModel, const QString &diCode)
+QStringList dynamicFreezeEnergyDisplayOrderCodes(const MeterModel *meterModel, const QString &diCode)
 {
     const QString prefix = diCode.left(8);
     const int rateCount = currentRateCount(meterModel);
@@ -276,11 +300,24 @@ QStringList dynamicDailyFreezeDisplayOrderCodes(const MeterModel *meterModel, co
     return codes;
 }
 
+QStringList latestHourlyFreezeCompositeCodes()
+{
+    return {
+        QStringLiteral("0x05040001"),
+        QStringLiteral("0x05040100"),
+        QStringLiteral("0x05040200")};
+}
+
 QStringList payloadOrderCodesForBlock(const MeterModel *meterModel, const QString &diCode)
 {
     if (isDynamicEnergyBlock(meterModel, diCode))
     {
         return dynamicEnergyPayloadOrderCodes(meterModel, diCode);
+    }
+
+    if (isDynamicFreezeEnergyBlock(meterModel, diCode))
+    {
+        return dynamicFreezeEnergyPayloadOrderCodes(meterModel, diCode);
     }
 
     if (isDynamicDemandBlock(meterModel, diCode))
@@ -375,12 +412,9 @@ QStringList payloadOrderCodesForBlock(const MeterModel *meterModel, const QStrin
             QStringLiteral("0x03810000")};
     }
 
-    if (diCode == QStringLiteral("0x05060101") ||
-        diCode == QStringLiteral("0x05060201") ||
-        diCode == QStringLiteral("0x05060301") ||
-        diCode == QStringLiteral("0x05060401"))
+    if (isLatestHourlyFreezeCompositeBlock(diCode))
     {
-        return dynamicDailyFreezePayloadOrderCodes(meterModel, diCode);
+        return latestHourlyFreezeCompositeCodes();
     }
 
     return {};
@@ -391,6 +425,11 @@ QStringList displayOrderCodesForBlock(const MeterModel *meterModel, const QStrin
     if (isDynamicEnergyBlock(meterModel, diCode))
     {
         return dynamicEnergyDisplayOrderCodes(meterModel, diCode);
+    }
+
+    if (isDynamicFreezeEnergyBlock(meterModel, diCode))
+    {
+        return dynamicFreezeEnergyDisplayOrderCodes(meterModel, diCode);
     }
 
     if (isDynamicDemandBlock(meterModel, diCode))
@@ -485,12 +524,9 @@ QStringList displayOrderCodesForBlock(const MeterModel *meterModel, const QStrin
             QStringLiteral("0x03810007")};
     }
 
-    if (diCode == QStringLiteral("0x05060101") ||
-        diCode == QStringLiteral("0x05060201") ||
-        diCode == QStringLiteral("0x05060301") ||
-        diCode == QStringLiteral("0x05060401"))
+    if (isLatestHourlyFreezeCompositeBlock(diCode))
     {
-        return dynamicDailyFreezeDisplayOrderCodes(meterModel, diCode);
+        return latestHourlyFreezeCompositeCodes();
     }
 
     return {};

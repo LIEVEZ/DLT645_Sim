@@ -14,6 +14,7 @@ class QListWidgetItem;
 class MeterModel;
 class QPushButton;
 class FrameParseDialog;
+struct DataItem;
 
 class QueryFrameDialog : public QDialog
 {
@@ -33,6 +34,7 @@ signals:
     void dialogClosed();
 
 private slots:
+    void onModeChanged(int index);
     void onCategoryChanged(int index);
     void onSearchTextChanged(const QString &text);
     void onCurrentItemChanged(QListWidgetItem *current, QListWidgetItem *previous);
@@ -45,16 +47,27 @@ protected:
     void closeEvent(QCloseEvent *event) override;
 
 private:
+    enum class FrameOperationMode
+    {
+        ReadData,
+        WriteData
+    };
+
     void setupUI();
     void populateCategories();
     void populateDataItems();
     void refreshGeneratedFrame();
+    void refreshWriteValueState();
     void updateActionButtons();
     QList<QString> allCategories() const;
     QList<QString> dataCodesForCategory(const QString &category) const;
     const MeterModel *dataSourceModel() const;
+    FrameOperationMode currentOperationMode() const;
+    bool isWriteMode() const;
+    bool supportsCurrentMode(const DataItem &item) const;
     QString selectedDiCode() const;
     QString selectedDiDescription() const;
+    QString selectedDiDefaultValue() const;
     void showFrameParseDialog(const QString &frameHex);
 
     MeterModel *m_meterModel;
@@ -64,10 +77,14 @@ private:
 
     QLineEdit *m_addressEdit;
     QCheckBox *m_includePrefixCheckBox;
+    QComboBox *m_modeComboBox;
     QComboBox *m_categoryComboBox;
     QLineEdit *m_searchEdit;
     QListWidget *m_dataItemList;
     QLabel *m_selectedDiLabel;
+    QLabel *m_writeValueLabel;
+    QLineEdit *m_writeValueEdit;
+    QLabel *m_writeHintLabel;
     QLineEdit *m_spacedHexEdit;
     QLineEdit *m_compactHexEdit;
     QPushButton *m_copySpacedButton;

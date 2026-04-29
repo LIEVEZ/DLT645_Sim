@@ -165,6 +165,7 @@ public:
      * @return 数据标识列表
      */
     QList<QString> getFreezeDataCodes() const;
+    QList<QString> getFreezeDataCodes(const QString &freezeCategory) const;
 
     /**
      * @brief 获取负荷记录数据标识列表

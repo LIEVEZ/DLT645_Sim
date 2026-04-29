@@ -450,7 +450,14 @@ void DeviceTreeWidget::createDataCategoryNodes(QTreeWidgetItem *meterItem)
     meterItem->addChild(freezeItem);
 
     QStringList freezeSubCategories;
-    freezeSubCategories << "日冻结";
+    freezeSubCategories << "定时冻结"
+                        << "瞬时冻结"
+                        << "时区切换冻结"
+                        << "日时段切换冻结"
+                        << "整点冻结"
+                        << "分时费率切换冻结"
+                        << "日冻结"
+                        << "阶梯切换冻结";
 
     for (const QString &subCat : freezeSubCategories)
     {

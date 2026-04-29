@@ -427,7 +427,17 @@ QList<QString> DataTableWidget::dataCodesForCategory(const QString &category) co
     }
     else if (category == "日冻结")
     {
-        codes.append(m_meterModel->getFreezeDataCodes());
+        codes.append(m_meterModel->getFreezeDataCodes(category));
+    }
+    else if (category == "定时冻结" ||
+             category == "瞬时冻结" ||
+             category == "时区切换冻结" ||
+             category == "日时段切换冻结" ||
+             category == "整点冻结" ||
+             category == "分时费率切换冻结" ||
+             category == "阶梯切换冻结")
+    {
+        codes.append(m_meterModel->getFreezeDataCodes(category));
     }
     else if (category == "负荷记录")
     {
