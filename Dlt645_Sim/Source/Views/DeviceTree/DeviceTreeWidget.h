@@ -314,7 +314,7 @@ private:
     void showEmptyState();
     void hideEmptyState();
     void createDataCategoryNodes(QTreeWidgetItem *meterItem);
-    void createSettlementDayNodes(QTreeWidgetItem *parentItem, const QString &name, int settlementDay);
+    void createSettlementDayNodes(QTreeWidgetItem *parentItem, const QString &rootCategoryName, const QString &name, int settlementDay);
     QTreeWidgetItem *createConnectionNode(const ConnectionInfo &info);
     QTreeWidgetItem *createMeterNode(const MeterInfo &info);
     QTreeWidgetItem *createCategoryItem(const QString &name, ItemType type, bool expandable = true);

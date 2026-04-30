@@ -135,6 +135,7 @@ public:
      * @return 数据标识列表
      */
     QList<QString> getDemandDataCodes() const;
+    QList<QString> getSettlementDayDemandDataCodes(int settlementDay) const;
 
     /**
      * @brief 获取最大需量数据标识列表

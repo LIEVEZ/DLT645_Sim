@@ -158,7 +158,7 @@ QString DLT645DataHelper::decodePayloadForItem(const MeterModel *meterModel,
         }
     }
 
-    if (diCode == "0x04000000" && payload.size() == 6)
+    if (diCode == "0x04000401" && payload.size() == 6)
     {
         return ProtocolParser::bytesToAddress(payload);
     }

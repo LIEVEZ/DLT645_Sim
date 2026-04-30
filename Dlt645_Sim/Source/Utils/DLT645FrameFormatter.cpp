@@ -376,16 +376,6 @@ QStringList payloadOrderCodesForBlock(const MeterModel *meterModel, const QStrin
         return {QStringLiteral("0x02090300"), QStringLiteral("0x02090200"), QStringLiteral("0x02090100")};
     }
 
-    if (diCode == QStringLiteral("0x0290FF00"))
-    {
-        return {QStringLiteral("0x02900200"), QStringLiteral("0x02900100"), QStringLiteral("0x02900000")};
-    }
-
-    if (diCode == QStringLiteral("0x0291FF00"))
-    {
-        return {QStringLiteral("0x02910200"), QStringLiteral("0x02910100")};
-    }
-
     if (diCode == QStringLiteral("0x230100FF"))
     {
         return {
@@ -397,19 +387,6 @@ QStringList payloadOrderCodesForBlock(const MeterModel *meterModel, const QStrin
             QStringLiteral("0x23010003"),
             QStringLiteral("0x23010002"),
             QStringLiteral("0x23010001")};
-    }
-
-    if (diCode == QStringLiteral("0x038100FF"))
-    {
-        return {
-            QStringLiteral("0x03810007"),
-            QStringLiteral("0x03810006"),
-            QStringLiteral("0x03810005"),
-            QStringLiteral("0x03810004"),
-            QStringLiteral("0x03810003"),
-            QStringLiteral("0x03810002"),
-            QStringLiteral("0x03810001"),
-            QStringLiteral("0x03810000")};
     }
 
     if (isLatestHourlyFreezeCompositeBlock(diCode))
@@ -488,16 +465,6 @@ QStringList displayOrderCodesForBlock(const MeterModel *meterModel, const QStrin
         return {QStringLiteral("0x02090100"), QStringLiteral("0x02090200"), QStringLiteral("0x02090300")};
     }
 
-    if (diCode == QStringLiteral("0x0290FF00"))
-    {
-        return {QStringLiteral("0x02900000"), QStringLiteral("0x02900100"), QStringLiteral("0x02900200")};
-    }
-
-    if (diCode == QStringLiteral("0x0291FF00"))
-    {
-        return {QStringLiteral("0x02910100"), QStringLiteral("0x02910200")};
-    }
-
     if (diCode == QStringLiteral("0x230100FF"))
     {
         return {
@@ -509,19 +476,6 @@ QStringList displayOrderCodesForBlock(const MeterModel *meterModel, const QStrin
             QStringLiteral("0x23010006"),
             QStringLiteral("0x23010007"),
             QStringLiteral("0x23010008")};
-    }
-
-    if (diCode == QStringLiteral("0x038100FF"))
-    {
-        return {
-            QStringLiteral("0x03810000"),
-            QStringLiteral("0x03810001"),
-            QStringLiteral("0x03810002"),
-            QStringLiteral("0x03810003"),
-            QStringLiteral("0x03810004"),
-            QStringLiteral("0x03810005"),
-            QStringLiteral("0x03810006"),
-            QStringLiteral("0x03810007")};
     }
 
     if (isLatestHourlyFreezeCompositeBlock(diCode))

@@ -161,6 +161,7 @@ private:
     void updateExportButtonState();
     QString selectedMeterAddress() const;
     void updateItemValue(const QString &diCode, const QVariant &value);
+    void showValueDetailDialog(QTableWidgetItem *item);
     void updateDataCount();
     QList<QString> currentTableDiCodes() const;
     bool isVariableData(const QString &diCode) const;

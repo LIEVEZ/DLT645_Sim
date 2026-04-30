@@ -12,6 +12,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QLineEdit>
 #include <QDoubleValidator>
 #include <QRandomGenerator>
@@ -21,11 +23,29 @@
 
 namespace
 {
+    struct CategorySelection
+    {
+        QString rootCategory;
+        QString leafCategory;
+    };
+
     struct NumericEditSpec
     {
         double minValue = -999999.99;
         double maxValue = 999999.99;
         int decimals = 2;
+    };
+
+    struct EventCategoryDefinition
+    {
+        QString name;
+        QStringList prefixes;
+    };
+
+    struct ParameterCategoryDefinition
+    {
+        QString name;
+        QStringList prefixes;
     };
 
     QString escapeCsvField(const QString &value)
@@ -45,6 +65,174 @@ namespace
     {
         DataItem displayItem = dataItem;
         return displayItem.getFormattedValue();
+    }
+
+    CategorySelection parseCategorySelection(const QString &category)
+    {
+        const int separatorIndex = category.indexOf('/');
+        if (separatorIndex < 0)
+        {
+            return {category, QString()};
+        }
+
+        return {category.left(separatorIndex), category.mid(separatorIndex + 1)};
+    }
+
+    int settlementDayFromCategoryName(const QString &categoryName)
+    {
+        if (categoryName == QStringLiteral("当前"))
+        {
+            return 0;
+        }
+
+        static const QRegularExpression settlementDayPattern(QStringLiteral("^上(\\d+)结算日$"));
+        const QRegularExpressionMatch match = settlementDayPattern.match(categoryName);
+        if (match.hasMatch())
+        {
+            return match.captured(1).toInt();
+        }
+
+        return -1;
+    }
+
+    QString displayCategoryName(const QString &category)
+    {
+        const CategorySelection selection = parseCategorySelection(category);
+        if (selection.leafCategory.isEmpty())
+        {
+            return selection.rootCategory;
+        }
+
+        return QStringLiteral("%1 / %2").arg(selection.rootCategory, selection.leafCategory);
+    }
+
+    QList<EventCategoryDefinition> eventCategoryDefinitions()
+    {
+        return {
+            {QStringLiteral("失压"), {QStringLiteral("0x0301")}},
+            {QStringLiteral("欠压"), {QStringLiteral("0x0302")}},
+            {QStringLiteral("过压"), {QStringLiteral("0x0303")}},
+            {QStringLiteral("断相"), {QStringLiteral("0x0304")}},
+            {QStringLiteral("全失压"), {QStringLiteral("0x0305")}},
+            {QStringLiteral("辅助电源失电"), {QStringLiteral("0x0306")}},
+            {QStringLiteral("电压逆相序"), {QStringLiteral("0x0307")}},
+            {QStringLiteral("电流逆相序"), {QStringLiteral("0x0308")}},
+            {QStringLiteral("电压不平衡"), {QStringLiteral("0x0309")}},
+            {QStringLiteral("电压合格率"), {QStringLiteral("0x0310")}},
+            {QStringLiteral("掉电"), {QStringLiteral("0x0311")}},
+            {QStringLiteral("需量超限"), {QStringLiteral("0x0312")}},
+            {QStringLiteral("编程记录"), {QStringLiteral("0x033000")}},
+            {QStringLiteral("电表清零"), {QStringLiteral("0x033001")}},
+            {QStringLiteral("需量清零"), {QStringLiteral("0x033002")}},
+            {QStringLiteral("事件清零"), {QStringLiteral("0x033003")}},
+            {QStringLiteral("校时"), {QStringLiteral("0x033004")}},
+            {QStringLiteral("时段表编程"), {QStringLiteral("0x033005")}},
+            {QStringLiteral("时区表编程"), {QStringLiteral("0x033006")}}};
+    }
+
+    QList<QString> filterEventCodesByCategory(const MeterModel *meterModel, const QList<QString> &allCodes, const QString &categoryName)
+    {
+        const QString normalizedCategoryName = categoryName.trimmed();
+        QStringList matchedPrefixes;
+        const QList<EventCategoryDefinition> definitions = eventCategoryDefinitions();
+        for (const EventCategoryDefinition &definition : definitions)
+        {
+            if (definition.name == normalizedCategoryName)
+            {
+                matchedPrefixes = definition.prefixes;
+                break;
+            }
+        }
+
+        if (matchedPrefixes.isEmpty())
+        {
+            return allCodes;
+        }
+
+        QList<QString> filteredCodes;
+        filteredCodes.reserve(allCodes.size());
+        for (const QString &diCode : allCodes)
+        {
+            for (const QString &prefix : matchedPrefixes)
+            {
+                if (diCode.startsWith(prefix))
+                {
+                    filteredCodes.append(diCode);
+                    break;
+                }
+            }
+        }
+
+        if (!filteredCodes.isEmpty())
+        {
+            return filteredCodes;
+        }
+
+        // 前缀映射未命中时，退回到按描述关键字过滤，避免树节点文案差异导致空结果。
+        if (!meterModel)
+        {
+            return {};
+        }
+
+        for (const QString &diCode : allCodes)
+        {
+            const DataItem dataItem = meterModel->getDataItem(diCode);
+            if (dataItem.description.contains(normalizedCategoryName, Qt::CaseInsensitive))
+            {
+                filteredCodes.append(diCode);
+            }
+        }
+
+        return filteredCodes;
+    }
+
+    QList<ParameterCategoryDefinition> parameterCategoryDefinitions()
+    {
+        return {
+            {QStringLiteral("基本参数"), {QStringLiteral("0x0400")}},
+            {QStringLiteral("第一套时区时段"), {QStringLiteral("0x0401")}},
+            {QStringLiteral("第二套时区时段"), {QStringLiteral("0x0402")}},
+            {QStringLiteral("公共假日"), {QStringLiteral("0x0403")}},
+            {QStringLiteral("显示参数"), {QStringLiteral("0x0404")}},
+            {QStringLiteral("费率电价"), {QStringLiteral("0x040501"), QStringLiteral("0x040502")}},
+            {QStringLiteral("阶梯电价"), {QStringLiteral("0x040600"), QStringLiteral("0x040601"), QStringLiteral("0x040602"), QStringLiteral("0x040603")}},
+            {QStringLiteral("事件参数"), {QStringLiteral("0x0409")}}};
+    }
+
+    QList<QString> filterParameterCodesByCategory(const QList<QString> &allCodes, const QString &categoryName)
+    {
+        const QString normalizedCategoryName = categoryName.trimmed();
+        QStringList matchedPrefixes;
+        const QList<ParameterCategoryDefinition> definitions = parameterCategoryDefinitions();
+        for (const ParameterCategoryDefinition &definition : definitions)
+        {
+            if (definition.name == normalizedCategoryName)
+            {
+                matchedPrefixes = definition.prefixes;
+                break;
+            }
+        }
+
+        if (matchedPrefixes.isEmpty())
+        {
+            return allCodes;
+        }
+
+        QList<QString> filteredCodes;
+        filteredCodes.reserve(allCodes.size());
+        for (const QString &diCode : allCodes)
+        {
+            for (const QString &prefix : matchedPrefixes)
+            {
+                if (diCode.startsWith(prefix))
+                {
+                    filteredCodes.append(diCode);
+                    break;
+                }
+            }
+        }
+
+        return filteredCodes;
     }
 
     NumericEditSpec editSpecForFormat(const QString &format)
@@ -296,7 +484,7 @@ void DataTableWidget::setupTable()
     // 设置表格属性
     m_tableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_tableWidget->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_tableWidget->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
+    m_tableWidget->setEditTriggers(QAbstractItemView::EditKeyPressed);
     m_tableWidget->setAlternatingRowColors(false);
     m_tableWidget->verticalHeader()->setVisible(false);
     m_tableWidget->horizontalHeader()->setStretchLastSection(true);
@@ -392,38 +580,78 @@ QList<QString> DataTableWidget::dataCodesForCategory(const QString &category) co
     }
 
     QList<QString> codes;
+    const CategorySelection selection = parseCategorySelection(category);
+    const QString rootCategory = selection.rootCategory;
+    const QString leafCategory = selection.leafCategory;
+    const bool hasRootCategory = !leafCategory.isEmpty();
 
-    if (category == "当前")
+    if ((hasRootCategory && rootCategory == "电能量") || category == "当前")
     {
-        codes.append(m_meterModel->getEnergyDataCodes());
+        const int settlementDay = hasRootCategory ? settlementDayFromCategoryName(leafCategory)
+                                                  : settlementDayFromCategoryName(category);
+        if (settlementDay == 0)
+        {
+            codes.append(m_meterModel->getEnergyDataCodes());
+        }
+        else if (settlementDay > 0)
+        {
+            codes.append(m_meterModel->getSettlementDayEnergyDataCodes(settlementDay));
+        }
     }
     else
     {
-        static const QRegularExpression settlementDayPattern(QStringLiteral("^上(\\d+)结算日$"));
-        const QRegularExpressionMatch match = settlementDayPattern.match(category);
-        if (match.hasMatch())
+        const int settlementDay = hasRootCategory ? settlementDayFromCategoryName(leafCategory)
+                                                  : settlementDayFromCategoryName(category);
+        if (!hasRootCategory && settlementDay > 0)
         {
-            codes.append(m_meterModel->getSettlementDayEnergyDataCodes(match.captured(1).toInt()));
+            codes.append(m_meterModel->getSettlementDayEnergyDataCodes(settlementDay));
             return codes;
         }
     }
 
-    if (category == "最大需量及发生时间")
+    if ((hasRootCategory && rootCategory == "最大需量及发生时间") || category == "最大需量及发生时间")
     {
-        codes.append(m_meterModel->getDemandDataCodes());
-        codes.append(m_meterModel->getMaxDemandDataCodes());
+        if (hasRootCategory)
+        {
+            const int settlementDay = settlementDayFromCategoryName(leafCategory);
+            if (settlementDay >= 0)
+            {
+                codes.append(m_meterModel->getSettlementDayDemandDataCodes(settlementDay));
+            }
+        }
+        else
+        {
+            codes.append(m_meterModel->getDemandDataCodes());
+            codes.append(m_meterModel->getMaxDemandDataCodes());
+        }
     }
     else if (category == "变量")
     {
         codes.append(m_meterModel->getVariableDataCodes());
     }
-    else if (category == "事件记录")
+    else if ((hasRootCategory && rootCategory == "事件记录") || category == "事件记录")
     {
-        codes.append(m_meterModel->getEventDataCodes());
+        const QList<QString> eventCodes = m_meterModel->getEventDataCodes();
+        if (hasRootCategory)
+        {
+            codes.append(filterEventCodesByCategory(m_meterModel, eventCodes, leafCategory));
+        }
+        else
+        {
+            codes.append(eventCodes);
+        }
     }
-    else if (category == "参变量")
+    else if ((hasRootCategory && rootCategory == "参变量") || category == "参变量")
     {
-        codes.append(m_meterModel->getParameterDataCodes());
+        const QList<QString> parameterCodes = m_meterModel->getParameterDataCodes();
+        if (hasRootCategory)
+        {
+            codes.append(filterParameterCodesByCategory(parameterCodes, leafCategory));
+        }
+        else
+        {
+            codes.append(parameterCodes);
+        }
     }
     else if (category == "日冻结")
     {
@@ -618,10 +846,69 @@ void DataTableWidget::onItemClicked(QTableWidgetItem *item)
     }
 }
 
+void DataTableWidget::showValueDetailDialog(QTableWidgetItem *item)
+{
+    if (!item || item->column() != 1)
+    {
+        return;
+    }
+
+    const int row = item->row();
+    const QString valueText = item->text();
+    const QStringList values = valueText.split(QRegularExpression(QStringLiteral("\\s*[:：]\\s*")), Qt::KeepEmptyParts);
+
+    QTableWidgetItem *diItem = m_tableWidget->item(row, 0);
+    QTableWidgetItem *descItem = m_tableWidget->item(row, 4);
+    const QString diCode = diItem ? diItem->data(Qt::UserRole).toString() : QString();
+    const QString description = descItem ? descItem->text() : QString();
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("数据值明细"));
+    dialog.resize(460, qMin(560, 190 + values.size() * 30));
+
+    QVBoxLayout *layout = new QVBoxLayout(&dialog);
+    QLabel *titleLabel = new QLabel(QStringLiteral("数据标识：%1\n数据项：%2").arg(diCode, description), &dialog);
+    titleLabel->setWordWrap(true);
+    layout->addWidget(titleLabel);
+
+    QTableWidget *detailTable = new QTableWidget(values.size(), 2, &dialog);
+    detailTable->setHorizontalHeaderLabels(QStringList() << QStringLiteral("序号") << QStringLiteral("数据值"));
+    detailTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    detailTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    detailTable->verticalHeader()->setVisible(false);
+    detailTable->horizontalHeader()->setStretchLastSection(true);
+    detailTable->setColumnWidth(0, 70);
+
+    for (int i = 0; i < values.size(); ++i)
+    {
+        QTableWidgetItem *indexItem = new QTableWidgetItem(QString::number(i + 1));
+        indexItem->setTextAlignment(Qt::AlignCenter);
+        detailTable->setItem(i, 0, indexItem);
+
+        QTableWidgetItem *valueItem = new QTableWidgetItem(values.at(i));
+        valueItem->setTextAlignment(Qt::AlignCenter);
+        detailTable->setItem(i, 1, valueItem);
+    }
+
+    layout->addWidget(detailTable);
+
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok, &dialog);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    layout->addWidget(buttonBox);
+
+    dialog.exec();
+}
+
 void DataTableWidget::onItemDoubleClicked(QTableWidgetItem *item)
 {
     if (!item)
         return;
+
+    if (item->column() == 1)
+    {
+        showValueDetailDialog(item);
+        return;
+    }
 
     int row = item->row();
     QTableWidgetItem *diItem = m_tableWidget->item(row, 0);
@@ -940,7 +1227,7 @@ void DataTableWidget::exportToCSV(const QString &fileName)
         const QString meterAddress = selectedMeterAddress();
         out << QString::fromUtf8("电表别名") << escapeCsvField(m_meterAlias) << "\n";
         out << QString::fromUtf8("电表地址") << escapeCsvField(meterAddress) << "\n";
-        out << QString::fromUtf8("当前分类") << escapeCsvField(m_currentCategory) << "\n";
+        out << QString::fromUtf8("当前分类") << escapeCsvField(displayCategoryName(m_currentCategory)) << "\n";
         out << QString::fromUtf8("导出时间") << escapeCsvField(QDateTime::currentDateTime().toString(Qt::ISODate)) << "\n";
         out << "\n";
         out << QString::fromUtf8("数据标识,数据值,单位,数据格式,数据项描述\n");
@@ -948,7 +1235,7 @@ void DataTableWidget::exportToCSV(const QString &fileName)
         for (int i = 0; i < m_tableWidget->rowCount(); ++i)
         {
             const QString diCode = m_tableWidget->item(i, 0)->text();
-            const QString value = (diCode == "0x04000000") ? meterAddress : m_tableWidget->item(i, 1)->text();
+            const QString value = (diCode == "0x04000401") ? meterAddress : m_tableWidget->item(i, 1)->text();
             const QString unit = m_tableWidget->item(i, 2)->text();
             const QString format = m_tableWidget->item(i, 3)->text();
             const QString desc = m_tableWidget->item(i, 4)->text();
@@ -1009,7 +1296,7 @@ void DataTableWidget::exportToJSON(const QString &fileName)
             QJsonObject dataObj;
             const QString diCode = m_tableWidget->item(i, 0)->text();
             dataObj["diCode"] = diCode;
-            dataObj["value"] = (diCode == "0x04000000") ? meterAddress : m_tableWidget->item(i, 1)->text();
+            dataObj["value"] = (diCode == "0x04000401") ? meterAddress : m_tableWidget->item(i, 1)->text();
             dataObj["unit"] = m_tableWidget->item(i, 2)->text();
             dataObj["format"] = m_tableWidget->item(i, 3)->text();
             dataObj["description"] = m_tableWidget->item(i, 4)->text();
@@ -1019,7 +1306,7 @@ void DataTableWidget::exportToJSON(const QString &fileName)
         QJsonObject exportObj;
         exportObj["meterAlias"] = m_meterAlias;
         exportObj["meterAddress"] = meterAddress;
-        exportObj["category"] = m_currentCategory;
+        exportObj["category"] = displayCategoryName(m_currentCategory);
         exportObj["exportedAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
         exportObj["data"] = dataArray;
 

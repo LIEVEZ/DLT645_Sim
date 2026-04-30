@@ -7,6 +7,29 @@
 #include <QMessageBox>
 #include <QApplication>
 #include <QClipboard>
+
+namespace
+{
+    constexpr int kCategoryRootNameRole = Qt::UserRole + 8;
+
+    QString itemDisplayName(QTreeWidgetItem *item)
+    {
+        if (!item)
+        {
+            return QString();
+        }
+
+        const QString text = item->text(0);
+        const int firstSpaceIndex = text.indexOf(QChar(' '));
+        if (firstSpaceIndex < 0)
+        {
+            return text.trimmed();
+        }
+
+        return text.mid(firstSpaceIndex + 1).trimmed();
+    }
+}
+
 DeviceTreeWidget::DeviceTreeWidget(QWidget *parent)
     : QWidget(parent), m_treeWidget(new QTreeWidget(this)),
       m_filterEdit(new QLineEdit(this)), m_refreshButton(new QPushButton("刷新", this)), m_expandAllButton(new QPushButton("展开", this)), m_collapseAllButton(new QPushButton("折叠", this)),
@@ -423,27 +446,73 @@ void DeviceTreeWidget::createDataCategoryNodes(QTreeWidgetItem *meterItem)
 
     // 添加子节点：当前、上1-12结算日（Level 3分类节点，不可展开）
 
-    createSettlementDayNodes(energyItem, "当前", 0);
+    createSettlementDayNodes(energyItem, "电能量", "当前", 0);
     for (int i = 1; i <= 12; ++i)
     {
-        createSettlementDayNodes(energyItem, QString("上%1结算日").arg(i), i);
+        createSettlementDayNodes(energyItem, "电能量", QString("上%1结算日").arg(i), i);
     }
 
-    // 最大需量及发生时间（叶子节点，不可展开）
-    QTreeWidgetItem *demandItem = createCategoryItem("最大需量及发生时间", ItemType::Category, false);
+    // 最大需量及发生时间（与电能量保持一致的结算日分层）
+    QTreeWidgetItem *demandItem = createCategoryItem("最大需量及发生时间", ItemType::Category, true);
     meterItem->addChild(demandItem);
+    createSettlementDayNodes(demandItem, "最大需量及发生时间", "当前", 0);
+    for (int i = 1; i <= 12; ++i)
+    {
+        createSettlementDayNodes(demandItem, "最大需量及发生时间", QString("上%1结算日").arg(i), i);
+    }
 
     // 变量（叶子节点，不可展开）
     QTreeWidgetItem *variableItem = createCategoryItem("变量", ItemType::Category, false);
     meterItem->addChild(variableItem);
 
-    // 事件记录（叶子节点，不可展开）
-    QTreeWidgetItem *eventItem = createCategoryItem("事件记录", ItemType::Category, false);
+    // 事件记录（按标准 A.4 家族展开）
+    QTreeWidgetItem *eventItem = createCategoryItem("事件记录", ItemType::Category, true);
     meterItem->addChild(eventItem);
+    const QStringList eventSubCategories = {
+        QStringLiteral("失压"),
+        QStringLiteral("欠压"),
+        QStringLiteral("过压"),
+        QStringLiteral("断相"),
+        QStringLiteral("全失压"),
+        QStringLiteral("辅助电源失电"),
+        QStringLiteral("电压逆相序"),
+        QStringLiteral("电流逆相序"),
+        QStringLiteral("电压不平衡"),
+        QStringLiteral("电压合格率"),
+        QStringLiteral("掉电"),
+        QStringLiteral("需量超限"),
+        QStringLiteral("编程记录"),
+        QStringLiteral("电表清零"),
+        QStringLiteral("需量清零"),
+        QStringLiteral("事件清零"),
+        QStringLiteral("校时"),
+        QStringLiteral("时段表编程"),
+        QStringLiteral("时区表编程")};
+    for (const QString &subCategory : eventSubCategories)
+    {
+        QTreeWidgetItem *subItem = createCategoryItem(subCategory, ItemType::Category, false);
+        subItem->setData(0, kCategoryRootNameRole, QStringLiteral("事件记录"));
+        eventItem->addChild(subItem);
+    }
 
-    // 参变量（叶子节点，不可展开）
-    QTreeWidgetItem *paramItem = createCategoryItem("参变量", ItemType::Category, false);
+    // 参变量（按标准 A.5 分类展开）
+    QTreeWidgetItem *paramItem = createCategoryItem("参变量", ItemType::Category, true);
     meterItem->addChild(paramItem);
+    const QStringList parameterSubCategories = {
+        QStringLiteral("基本参数"),
+        QStringLiteral("第一套时区时段"),
+        QStringLiteral("第二套时区时段"),
+        QStringLiteral("公共假日"),
+        QStringLiteral("显示参数"),
+        QStringLiteral("费率电价"),
+        QStringLiteral("阶梯电价"),
+        QStringLiteral("事件参数")};
+    for (const QString &subCategory : parameterSubCategories)
+    {
+        QTreeWidgetItem *subItem = createCategoryItem(subCategory, ItemType::Category, false);
+        subItem->setData(0, kCategoryRootNameRole, QStringLiteral("参变量"));
+        paramItem->addChild(subItem);
+    }
 
     // 冻结（可展开的文件夹）
     QTreeWidgetItem *freezeItem = createCategoryItem("冻结", ItemType::Category, true);
@@ -470,11 +539,12 @@ void DeviceTreeWidget::createDataCategoryNodes(QTreeWidgetItem *meterItem)
     meterItem->addChild(loadItem);
 }
 
-void DeviceTreeWidget::createSettlementDayNodes(QTreeWidgetItem *parentItem, const QString &name, int settlementDay)
+void DeviceTreeWidget::createSettlementDayNodes(QTreeWidgetItem *parentItem, const QString &rootCategoryName, const QString &name, int settlementDay)
 {
     // 只创建Level 3的子分类节点，不创建Level 4的数据项节点
     QTreeWidgetItem *subItem = createCategoryItem(name, ItemType::Category, false);
     subItem->setData(0, Qt::UserRole + 7, settlementDay);
+    subItem->setData(0, kCategoryRootNameRole, rootCategoryName);
     parentItem->addChild(subItem);
 }
 
@@ -580,7 +650,12 @@ void DeviceTreeWidget::onItemClicked(QTreeWidgetItem *item, int column)
     // 检查是否点击了数据分类节点（Level 3）
     if (itemType == ItemType::Category)
     {
-        QString categoryName = item->text(0).mid(3); // 移除"📁 "前缀（包括空格）
+        QString categoryName = itemDisplayName(item);
+        const QString rootCategoryName = item->data(0, kCategoryRootNameRole).toString();
+        if (!rootCategoryName.isEmpty())
+        {
+            categoryName = QString("%1/%2").arg(rootCategoryName, categoryName);
+        }
         QString meterAlias;
 
         // 获取父级电表节点

@@ -160,7 +160,7 @@ void ProtocolController::processReceivedData(const QByteArray &data)
             if (ProtocolParser::isValidAddress(newAddress))
             {
                 requestMeterModel->setMeterAddress(newAddress);
-                requestMeterModel->setDataValue("0x04000000", newAddress);
+                requestMeterModel->setDataValue("0x04000401", newAddress);
                 ProtocolFrame response = m_protocolParser->buildWriteResponse(frame, true);
                 sendResponse(response, requestMeterModel);
             }
@@ -457,7 +457,7 @@ void ProtocolController::processWriteRequest(const ProtocolFrame &frame, MeterMo
     LOG_INFO(QString("Processing write request: %1").arg(frame.toString()));
 
     QString diCode = ProtocolParser::extractDIFromDataField(frame.dataField);
-    if (diCode == "0x04000000" || diCode == "0x04000010" || diCode == "0x04000011")
+    if (diCode == "0x04000401" || diCode == "0x04000010" || diCode == "0x04000011")
     {
         verifyPassword(frame, meterModel);
         return;
@@ -474,11 +474,15 @@ void ProtocolController::processWriteRequest(const ProtocolFrame &frame, MeterMo
         valueBytes[i] = byte;
     }
 
-    if (diCode == "0x04000000")
+    if (diCode == "0x04000401")
     {
         value = ProtocolParser::bytesToAddress(valueBytes);
     }
-    else if (diCode == "0x04000001")
+    else if (diCode == "0x04000701" ||
+             diCode == "0x04000702" ||
+             diCode == "0x04000703" ||
+             diCode == "0x04000704" ||
+             diCode == "0x04000705")
     {
         if (valueBytes.size() >= 1)
         {
@@ -492,7 +496,7 @@ void ProtocolController::processWriteRequest(const ProtocolFrame &frame, MeterMo
 
     if (meterModel && meterModel->setDataValue(diCode, value))
     {
-        if (diCode == "0x04000000")
+        if (diCode == "0x04000401")
         {
             meterModel->setMeterAddress(value.toString());
         }

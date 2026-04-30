@@ -225,6 +225,71 @@ namespace
         return QStringLiteral("%1").arg(value, 2, 16, QChar('0')).toUpper();
     }
 
+    QString repeatedByteFormat(int byteCount)
+    {
+        QStringList tokens;
+        tokens.reserve(byteCount);
+        for (int i = 0; i < byteCount; ++i)
+        {
+            tokens.append(QStringLiteral("AA"));
+        }
+        return tokens.join(QStringLiteral(","));
+    }
+
+    QString repeatedFormatParts(const QString &part, int count)
+    {
+        QStringList parts;
+        parts.reserve(count);
+        for (int i = 0; i < count; ++i)
+        {
+            parts.append(part);
+        }
+        return parts.join(QStringLiteral(":"));
+    }
+
+    QString buildDayScheduleTableValue(int seed, int setIndex, int tableIndex)
+    {
+        QString value;
+        value.reserve(kMaxDayScheduleCount * 6);
+        for (int slotIndex = 0; slotIndex < kMaxDayScheduleCount; ++slotIndex)
+        {
+            const int hour = (seed + setIndex * 3 + tableIndex * 2 + slotIndex) % 24;
+            const int minute = ((slotIndex + tableIndex) % 4) * 15;
+            const int rateIndex = ((seed + setIndex + tableIndex + slotIndex) % kMaxRateCount) + 1;
+            value += QStringLiteral("%1%2%3")
+                         .arg(hour, 2, 10, QChar('0'))
+                         .arg(minute, 2, 10, QChar('0'))
+                         .arg(rateIndex, 2, 10, QChar('0'));
+        }
+        return value;
+    }
+
+    QString buildYearZoneEntryValue(int seed, int setIndex, int zoneIndex)
+    {
+        const int month = ((seed + setIndex + zoneIndex) % 12) + 1;
+        const int day = ((seed * 3 + zoneIndex * 2 + setIndex) % 28) + 1;
+        const int zoneNumber = ((seed + setIndex * 5 + zoneIndex) % kMaxYearZoneCount) + 1;
+        return QStringLiteral("%1%2%3")
+            .arg(month, 2, 10, QChar('0'))
+            .arg(day, 2, 10, QChar('0'))
+            .arg(zoneNumber, 2, 10, QChar('0'));
+    }
+
+    QString buildHolidayEntryValue(const QDate &date, int scheduleTableIndex)
+    {
+        return QStringLiteral("%1%2")
+            .arg(date.toString(QStringLiteral("yyMMdd")))
+            .arg(scheduleTableIndex, 2, 10, QChar('0'));
+    }
+
+    QString buildDisplayScreenEntryValue(const QString &targetDiCode, int splitScreenFlag)
+    {
+        QString diCode = targetDiCode;
+        diCode.remove(QStringLiteral("0x"));
+        diCode = diCode.toUpper().rightJustified(8, QChar('0'));
+        return diCode + QStringLiteral("%1").arg(splitScreenFlag, 2, 10, QChar('0'));
+    }
+
     QString phaseNameForIndex(int phaseIndex)
     {
         switch (phaseIndex)
@@ -292,6 +357,174 @@ namespace
         bool ok = false;
         const int rawRateCount = items.value(QStringLiteral("0x04000204")).value.toInt(&ok);
         return normalizedRateCount(ok ? rawRateCount : kDefaultRateCount);
+    }
+
+    int boundedParameterCount(const QMap<QString, DataItem> &items,
+                              const QString &diCode,
+                              int defaultValue,
+                              int minimumValue,
+                              int maximumValue)
+    {
+        if (!items.contains(diCode))
+        {
+            return defaultValue;
+        }
+
+        bool ok = false;
+        const int rawValue = items.value(diCode).value.toInt(&ok);
+        return qBound(minimumValue, ok ? rawValue : defaultValue, maximumValue);
+    }
+
+    int currentYearZoneCount(const QMap<QString, DataItem> &items)
+    {
+        return boundedParameterCount(items, QStringLiteral("0x04000201"), 2, 1, kMaxYearZoneCount);
+    }
+
+    int currentDayScheduleTableCount(const QMap<QString, DataItem> &items)
+    {
+        return boundedParameterCount(items, QStringLiteral("0x04000202"), 2, 1, kMaxDayScheduleTableCount);
+    }
+
+    int currentDayScheduleCount(const QMap<QString, DataItem> &items)
+    {
+        return boundedParameterCount(items, QStringLiteral("0x04000203"), 8, 1, kMaxDayScheduleCount);
+    }
+
+    int currentHolidayCount(const QMap<QString, DataItem> &items)
+    {
+        return boundedParameterCount(items, QStringLiteral("0x04000205"), 12, 0, kMaxHolidayCount);
+    }
+
+    QString normalizedYearZoneEntryValue(const QString &value, int supportedTableCount, int fallbackSeed, int setIndex, int zoneIndex)
+    {
+        QString normalized = value;
+        if (normalized.size() < 6)
+        {
+            normalized = buildYearZoneEntryValue(fallbackSeed, setIndex, zoneIndex);
+        }
+
+        bool ok = false;
+        const int tableIndex = normalized.mid(4, 2).toInt(&ok);
+        const int clampedTableIndex = qBound(1, ok ? tableIndex : 1, supportedTableCount);
+        normalized.replace(4, 2, QStringLiteral("%1").arg(clampedTableIndex, 2, 10, QChar('0')));
+        return normalized.left(6);
+    }
+
+    QString normalizedDayScheduleEntryValue(const QString &value, int supportedRateCount, int fallbackSeed, int setIndex, int tableIndex, int slotIndex)
+    {
+        QString normalized = value;
+        if (normalized.size() < 6)
+        {
+            const QString generated = buildDayScheduleTableValue(fallbackSeed, setIndex, tableIndex);
+            normalized = generated.mid(slotIndex * 6, 6);
+        }
+
+        bool ok = false;
+        const int rateIndex = normalized.mid(4, 2).toInt(&ok);
+        const int clampedRateIndex = qBound(1, ok ? rateIndex : 1, supportedRateCount);
+        normalized.replace(4, 2, QStringLiteral("%1").arg(clampedRateIndex, 2, 10, QChar('0')));
+        return normalized.left(6);
+    }
+
+    QString normalizedHolidayEntryValue(const QString &value, int supportedTableCount, const QDate &fallbackDate)
+    {
+        QString normalized = value;
+        if (normalized.size() < 8)
+        {
+            normalized = buildHolidayEntryValue(fallbackDate, 1);
+        }
+
+        bool ok = false;
+        const int tableIndex = normalized.mid(6, 2).toInt(&ok);
+        const int clampedTableIndex = qBound(1, ok ? tableIndex : 1, supportedTableCount);
+        normalized.replace(6, 2, QStringLiteral("%1").arg(clampedTableIndex, 2, 10, QChar('0')));
+        return normalized.left(8);
+    }
+
+    void refreshParameterScheduleData(QMap<QString, DataItem> &items)
+    {
+        const int supportedYearZoneCount = currentYearZoneCount(items);
+        const int supportedDayScheduleTableCount = currentDayScheduleTableCount(items);
+        const int supportedDayScheduleCount = currentDayScheduleCount(items);
+        const int supportedRateCount = currentRateCount(items);
+        const struct
+        {
+            QString blockCode;
+            int setIndex;
+            int seed;
+        } yearZoneBlocks[] = {
+            {QStringLiteral("0x04010000"), 0, 11},
+            {QStringLiteral("0x04020000"), 1, 37}};
+
+        for (const auto &block : yearZoneBlocks)
+        {
+            if (!items.contains(block.blockCode))
+            {
+                continue;
+            }
+
+            const QVariantList existingValues = items.value(block.blockCode).value.toList();
+            QVariantList normalizedValues;
+            normalizedValues.reserve(supportedYearZoneCount);
+            for (int zoneIndex = 0; zoneIndex < supportedYearZoneCount; ++zoneIndex)
+            {
+                const QString existingValue = zoneIndex < existingValues.size() ? existingValues.at(zoneIndex).toString() : QString();
+                normalizedValues.append(normalizedYearZoneEntryValue(existingValue,
+                                                                     supportedDayScheduleTableCount,
+                                                                     block.seed,
+                                                                     block.setIndex,
+                                                                     zoneIndex));
+            }
+
+            items[block.blockCode].value = normalizedValues;
+            items[block.blockCode].format = repeatedFormatParts(QStringLiteral("AA,AA,AA"), supportedYearZoneCount);
+        }
+
+        for (int setIndex = 0; setIndex < 2; ++setIndex)
+        {
+            const QString prefix = setIndex == 0 ? QStringLiteral("0x040100") : QStringLiteral("0x040200");
+            const int seed = setIndex == 0 ? 19 : 43;
+
+            for (int tableIndex = 0; tableIndex < kMaxDayScheduleTableCount; ++tableIndex)
+            {
+                const QString diCode = prefix + upperHexByte(tableIndex + 1);
+                if (!items.contains(diCode))
+                {
+                    continue;
+                }
+
+                const QVariantList existingValues = items.value(diCode).value.toList();
+                QVariantList normalizedValues;
+                normalizedValues.reserve(supportedDayScheduleCount);
+                for (int slotIndex = 0; slotIndex < supportedDayScheduleCount; ++slotIndex)
+                {
+                    const QString existingValue = slotIndex < existingValues.size() ? existingValues.at(slotIndex).toString() : QString();
+                    normalizedValues.append(normalizedDayScheduleEntryValue(existingValue,
+                                                                            supportedRateCount,
+                                                                            seed,
+                                                                            setIndex,
+                                                                            tableIndex,
+                                                                            slotIndex));
+                }
+
+                items[diCode].value = normalizedValues;
+                items[diCode].format = repeatedFormatParts(QStringLiteral("AA,AA,AA"), supportedDayScheduleCount);
+            }
+        }
+
+        for (int holidayIndex = 0; holidayIndex < kMaxHolidayCount; ++holidayIndex)
+        {
+            const QString diCode = QStringLiteral("0x0403%1").arg(holidayIndex + 1, 4, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
+            if (!items.contains(diCode))
+            {
+                continue;
+            }
+
+            const QDate fallbackDate(QDate::currentDate().year(), (holidayIndex % 12) + 1, qMin(holidayIndex + 1, 28));
+            items[diCode].value = normalizedHolidayEntryValue(items.value(diCode).value.toString(),
+                                                              supportedDayScheduleTableCount,
+                                                              fallbackDate);
+        }
     }
 
     const QStringList &currentEnergyPrefixes()
@@ -1275,6 +1508,35 @@ namespace
         return true;
     }
 
+    bool isParameterStructureCodeSupported(const QMap<QString, DataItem> &items, const QString &diCode)
+    {
+        if (diCode == QStringLiteral("0x04010000") || diCode == QStringLiteral("0x04020000"))
+        {
+            return true;
+        }
+
+        if (diCode.size() == 10 &&
+            (diCode.startsWith(QStringLiteral("0x040100")) || diCode.startsWith(QStringLiteral("0x040200"))))
+        {
+            int tableIndex = 0;
+            if (!parseHexByteValue(diCode.mid(8, 2), &tableIndex))
+            {
+                return false;
+            }
+
+            return tableIndex >= 1 && tableIndex <= currentDayScheduleTableCount(items);
+        }
+
+        if (diCode.size() == 10 && diCode.startsWith(QStringLiteral("0x0403")))
+        {
+            bool ok = false;
+            const int holidayIndex = diCode.mid(6, 4).toInt(&ok, 16);
+            return ok && holidayIndex >= 1 && holidayIndex <= currentHolidayCount(items);
+        }
+
+        return true;
+    }
+
     void appendValuesForCodes(const QMap<QString, DataItem> &items, const QStringList &codes, QVariantList &values)
     {
         for (const QString &code : codes)
@@ -1599,23 +1861,6 @@ namespace
             return true;
         }
 
-        static const QStringList singlePhaseUnsupportedPrefixes = {
-            QStringLiteral("0x038202"),
-            QStringLiteral("0x038203"),
-            QStringLiteral("0x038205"),
-            QStringLiteral("0x038206"),
-            QStringLiteral("0x038302"),
-            QStringLiteral("0x038303"),
-            QStringLiteral("0x038305"),
-            QStringLiteral("0x038306")};
-        for (const QString &prefix : singlePhaseUnsupportedPrefixes)
-        {
-            if (diCode.startsWith(prefix))
-            {
-                return true;
-            }
-        }
-
         int phaseIndex = 0;
         if ((isHarmonicFamilyCode(diCode, QStringLiteral("0x020A"), &phaseIndex) ||
              isHarmonicFamilyCode(diCode, QStringLiteral("0x020B"), &phaseIndex)) &&
@@ -1763,6 +2008,11 @@ namespace
         return date.toString(QStringLiteral("yyMMdd")) + QStringLiteral("%1").arg(weekCode, 2, 10, QChar('0'));
     }
 
+    QString eventHistoryCode(const QString &baseCode, int historyIndex)
+    {
+        return baseCode + upperHexByte(historyIndex);
+    }
+
     void randomizeDataItems(QMap<QString, DataItem> &items,
                             const QString &meterAddress,
                             MeterPhaseType meterPhaseType,
@@ -1793,7 +2043,7 @@ namespace
                 continue;
             }
 
-            if (item.diCode == "0x04000000" || item.diCode == "0x04000401")
+            if (item.diCode == "0x04000401")
             {
                 item.value = meterAddress;
                 continue;
@@ -1817,122 +2067,310 @@ namespace
                 continue;
             }
 
-            if (item.diCode.startsWith("0x0382") || item.diCode.startsWith("0x0383"))
+            if (item.diCode == "0x03010000" ||
+                item.diCode == "0x03010001" ||
+                item.diCode == "0x03010002" ||
+                item.diCode == "0x03020000" ||
+                item.diCode == "0x03020001" ||
+                item.diCode == "0x03020002" ||
+                item.diCode == "0x03030000" ||
+                item.diCode == "0x03030001" ||
+                item.diCode == "0x03030002" ||
+                item.diCode == "0x03040000" ||
+                item.diCode == "0x03040001" ||
+                item.diCode == "0x03040002")
             {
-                const QDateTime eventTime = QDateTime::currentDateTime().addSecs(-rng->bounded(0, 90 * 24 * 60 * 60));
-                bool subgroupOk = false;
-                const int subgroup = item.diCode.mid(6, 2).toInt(&subgroupOk, 16);
-                const bool isMinRecord = item.diCode.startsWith("0x0383");
+                item.value = QVariantList{
+                    rng->bounded(1, 30),
+                    rng->bounded(30, 24 * 60)};
+                continue;
+            }
 
-                if (!subgroupOk || subgroup == 0)
+            if (item.diCode.startsWith("0x030101") ||
+                item.diCode.startsWith("0x030102") ||
+                item.diCode.startsWith("0x030103") ||
+                item.diCode.startsWith("0x030201") ||
+                item.diCode.startsWith("0x030202") ||
+                item.diCode.startsWith("0x030203") ||
+                item.diCode.startsWith("0x030301") ||
+                item.diCode.startsWith("0x030302") ||
+                item.diCode.startsWith("0x030303") ||
+                item.diCode.startsWith("0x030401") ||
+                item.diCode.startsWith("0x030402") ||
+                item.diCode.startsWith("0x030403"))
+            {
+                const int phaseIndex = item.diCode.mid(6, 2).toInt(nullptr, 16) - 1;
+                const QDateTime endTime = QDateTime::currentDateTime().addSecs(-rng->bounded(2 * 60 * 60, 90 * 24 * 60 * 60));
+                const QDateTime startTime = endTime.addSecs(-rng->bounded(10 * 60, 8 * 60 * 60));
+                QVariantList values{
+                    compactDateTimeToSeconds(startTime),
+                    compactDateTimeToSeconds(endTime),
+                    roundToDecimals(rng->bounded(1000, 7000) / 100.0, 2),
+                    roundToDecimals(rng->bounded(100, 2500) / 100.0, 2),
+                    roundToDecimals(rng->bounded(200, 3500) / 100.0, 2),
+                    roundToDecimals(rng->bounded(150, 3200) / 100.0, 2)};
+
+                for (int dataPhase = 0; dataPhase < 3; ++dataPhase)
                 {
-                    const int phaseCode = (meterPhaseType == MeterPhaseType::SinglePhase) ? 1 : rng->bounded(1, 4);
-                    int currentValue = rng->bounded(50, 1201);
-                    if (isMinRecord)
+                    const double baseVoltage = (dataPhase == phaseIndex) ? rng->bounded(1200, 1900) / 10.0
+                                                                         : rng->bounded(2100, 2350) / 10.0;
+                    values.append(roundToDecimals(rng->bounded(200, 2000) / 100.0, 2));
+                    values.append(roundToDecimals(rng->bounded(50, 800) / 100.0, 2));
+                    values.append(roundToDecimals(rng->bounded(80, 1200) / 100.0, 2));
+                    values.append(roundToDecimals(rng->bounded(80, 1200) / 100.0, 2));
+                    values.append(roundToDecimals(baseVoltage, 1));
+                    values.append(roundToDecimals(rng->bounded(10, 800) / 100.0, 3));
+                    values.append(roundToDecimals(rng->bounded(10, 500) / 100.0, 4));
+                    values.append(roundToDecimals(rng->bounded(5, 300) / 100.0, 4));
+                    values.append(roundToDecimals(rng->bounded(850, 999) / 1000.0, 3));
+                }
+
+                item.value = values;
+                continue;
+            }
+
+            if (item.diCode == "0x03050000" ||
+                item.diCode == "0x03060000" ||
+                item.diCode == "0x03070000" ||
+                item.diCode == "0x03080000" ||
+                item.diCode == "0x03090000")
+            {
+                item.value = QVariantList{
+                    rng->bounded(1, 12),
+                    rng->bounded(20, 12 * 60)};
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x030500") && item.diCode != "0x03050000")
+            {
+                const QDateTime endTime = QDateTime::currentDateTime().addSecs(-rng->bounded(2 * 60 * 60, 120 * 24 * 60 * 60));
+                const QDateTime startTime = endTime.addSecs(-rng->bounded(10 * 60, 12 * 60 * 60));
+                item.value = QVariantList{
+                    compactDateTimeToSeconds(startTime),
+                    roundToDecimals(rng->bounded(5, 180) / 1000.0, 3),
+                    compactDateTimeToSeconds(endTime)};
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x030600") && item.diCode != "0x03060000")
+            {
+                const QDateTime endTime = QDateTime::currentDateTime().addSecs(-rng->bounded(2 * 60 * 60, 120 * 24 * 60 * 60));
+                const QDateTime startTime = endTime.addSecs(-rng->bounded(5 * 60, 24 * 60 * 60));
+                item.value = QVariantList{
+                    compactDateTimeToSeconds(startTime),
+                    compactDateTimeToSeconds(endTime)};
+                continue;
+            }
+
+            if ((item.diCode.startsWith("0x030700") && item.diCode != "0x03070000") ||
+                (item.diCode.startsWith("0x030800") && item.diCode != "0x03080000"))
+            {
+                QVariantList values;
+                const QDateTime endTime = QDateTime::currentDateTime().addSecs(-rng->bounded(2 * 60 * 60, 120 * 24 * 60 * 60));
+                const QDateTime startTime = endTime.addSecs(-rng->bounded(10 * 60, 18 * 60 * 60));
+                values.append(compactDateTimeToSeconds(startTime));
+                values.append(compactDateTimeToSeconds(endTime));
+                for (int index = 0; index < 16; ++index)
+                {
+                    values.append(roundToDecimals(rng->bounded(100, 12000) / 100.0, 2));
+                }
+                item.value = values;
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x030900") && item.diCode != "0x03090000")
+            {
+                QVariantList values;
+                const QDateTime endTime = QDateTime::currentDateTime().addSecs(-rng->bounded(2 * 60 * 60, 120 * 24 * 60 * 60));
+                const QDateTime startTime = endTime.addSecs(-rng->bounded(10 * 60, 18 * 60 * 60));
+                values.append(compactDateTimeToSeconds(startTime));
+                values.append(compactDateTimeToSeconds(endTime));
+                values.append(roundToDecimals(rng->bounded(50, 1200) / 100.0, 2));
+                for (int index = 0; index < 16; ++index)
+                {
+                    values.append(roundToDecimals(rng->bounded(100, 12000) / 100.0, 2));
+                }
+                item.value = values;
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x0310"))
+            {
+                const bool totalItem = item.diCode.startsWith("0x031000");
+                const int phaseOffset = totalItem ? 0 : qMax(0, item.diCode.mid(6, 2).toInt(nullptr, 16) - 1);
+                const int monthOffset = item.diCode.mid(8, 2).toInt(nullptr, 16);
+                item.value = QVariantList{
+                    43000 - monthOffset * 2200 - phaseOffset * 500,
+                    roundToDecimals((totalItem ? 97.5 : 98.1) - monthOffset * 0.2 - phaseOffset * 0.1, 2),
+                    roundToDecimals((totalItem ? 1.2 : 0.9) + monthOffset * 0.05 + phaseOffset * 0.03, 2),
+                    100 + monthOffset * 7 + phaseOffset * 5,
+                    80 + monthOffset * 6 + phaseOffset * 4,
+                    roundToDecimals(241.0 - monthOffset * 0.6 - phaseOffset * 0.4, 1),
+                    QDateTime(QDate::currentDate().addMonths(-monthOffset), QTime(9 + (monthOffset % 8), 15)).toString(QStringLiteral("MMddHHmm")),
+                    roundToDecimals(201.0 + monthOffset * 0.4 + phaseOffset * 0.3, 1),
+                    QDateTime(QDate::currentDate().addMonths(-monthOffset), QTime(18 - (monthOffset % 6), 25)).toString(QStringLiteral("MMddHHmm"))};
+                continue;
+            }
+
+            if (item.diCode == "0x03110000")
+            {
+                item.value = rng->bounded(1, 20);
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x031100") && item.diCode != "0x03110000")
+            {
+                const QDateTime endTime = QDateTime::currentDateTime().addSecs(-rng->bounded(2 * 60 * 60, 120 * 24 * 60 * 60));
+                const QDateTime startTime = endTime.addSecs(-rng->bounded(5 * 60, 72 * 60 * 60));
+                item.value = QVariantList{
+                    compactDateTimeToSeconds(startTime),
+                    compactDateTimeToSeconds(endTime)};
+                continue;
+            }
+
+            if (item.diCode == "0x03120000")
+            {
+                QVariantList totals;
+                for (int index = 0; index < 6; ++index)
+                {
+                    totals.append(rng->bounded(0, 12 - qMin(index, 5)));
+                }
+                item.value = totals;
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x0312") && item.diCode != "0x03120000")
+            {
+                bool demandTypeOk = false;
+                const int demandType = item.diCode.mid(6, 2).toInt(&demandTypeOk, 16);
+                if (demandTypeOk && demandType >= 1 && demandType <= 6)
+                {
+                    const QDateTime endTime = QDateTime::currentDateTime().addSecs(-rng->bounded(2 * 60 * 60, 120 * 24 * 60 * 60));
+                    const QDateTime startTime = endTime.addSecs(-rng->bounded(10 * 60, 12 * 60 * 60));
+                    const int demandDurationSecs = qMax(6 * 60, static_cast<int>(startTime.secsTo(endTime)));
+                    const QDateTime maxDemandTime = startTime.addSecs(rng->bounded(5 * 60, demandDurationSecs));
+                    item.value = QVariantList{
+                        compactDateTimeToSeconds(startTime),
+                        compactDateTimeToSeconds(endTime),
+                        roundToDecimals(2.5 + demandType * 0.4 + rng->bounded(0, 1200) / 10000.0, 4),
+                        compactDateTimeToMinutes(maxDemandTime)};
+                    continue;
+                }
+            }
+
+            if (item.diCode == "0x03300000" ||
+                item.diCode == "0x03300100" ||
+                item.diCode == "0x03300200" ||
+                item.diCode == "0x03300300" ||
+                item.diCode == "0x03300400" ||
+                item.diCode == "0x03300500" ||
+                item.diCode == "0x03300600")
+            {
+                item.value = rng->bounded(1, 12);
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x033000") && item.diCode != "0x03300000")
+            {
+                QVariantList values;
+                values.append(compactDateTimeToSeconds(QDateTime::currentDateTime().addSecs(-rng->bounded(60 * 60, 180 * 24 * 60 * 60))));
+                values.append(QStringLiteral("%1").arg(rng->bounded(0, 100000000), 8, 10, QChar('0')));
+
+                const QStringList programmedDiCodes = {
+                    QStringLiteral("03010000"), QStringLiteral("03010001"), QStringLiteral("03010002"),
+                    QStringLiteral("03110000"), QStringLiteral("03120000"), QStringLiteral("03300000"),
+                    QStringLiteral("03300100"), QStringLiteral("03300200"), QStringLiteral("03300300"),
+                    QStringLiteral("03300400"), QStringLiteral("03300500"), QStringLiteral("03300600")};
+                for (const QString &diCode : programmedDiCodes)
+                {
+                    values.append(diCode);
+                }
+
+                item.value = values;
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x033001") && item.diCode != "0x03300100")
+            {
+                QVariantList values;
+                values.append(compactDateTimeToSeconds(QDateTime::currentDateTime().addSecs(-rng->bounded(60 * 60, 180 * 24 * 60 * 60))));
+                values.append(QStringLiteral("%1").arg(rng->bounded(0, 100000000), 8, 10, QChar('0')));
+                for (int energyIndex = 0; energyIndex < 24; ++energyIndex)
+                {
+                    values.append(roundToDecimals(rng->bounded(10000, 9999999) / 100.0, 2));
+                }
+                item.value = values;
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x033002") && item.diCode != "0x03300200")
+            {
+                QVariantList values;
+                values.append(compactDateTimeToSeconds(QDateTime::currentDateTime().addSecs(-rng->bounded(60 * 60, 180 * 24 * 60 * 60))));
+                values.append(QStringLiteral("%1").arg(rng->bounded(0, 100000000), 8, 10, QChar('0')));
+                for (int demandIndex = 0; demandIndex < 24; ++demandIndex)
+                {
+                    values.append(roundToDecimals(rng->bounded(1000, 250000) / 10000.0, 4));
+                    values.append(compactDateTimeToMinutes(QDateTime::currentDateTime().addSecs(-rng->bounded(30 * 60, 180 * 24 * 60 * 60))));
+                }
+                item.value = values;
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x033003") && item.diCode != "0x03300300")
+            {
+                const QStringList targetDiCodes = {
+                    QStringLiteral("03010000"), QStringLiteral("03110000"), QStringLiteral("03120000"),
+                    QStringLiteral("03300000"), QStringLiteral("03300100"), QStringLiteral("03300200"),
+                    QStringLiteral("03300300"), QStringLiteral("03300400"), QStringLiteral("03300500"),
+                    QStringLiteral("03300600")};
+                item.value = QVariantList{
+                    compactDateTimeToSeconds(QDateTime::currentDateTime().addSecs(-rng->bounded(60 * 60, 180 * 24 * 60 * 60))),
+                    QStringLiteral("%1").arg(rng->bounded(0, 100000000), 8, 10, QChar('0')),
+                    targetDiCodes.at(rng->bounded(targetDiCodes.size()))};
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x033004") && item.diCode != "0x03300400")
+            {
+                const QDateTime afterTime = QDateTime::currentDateTime().addSecs(-rng->bounded(60 * 60, 60 * 24 * 60 * 60));
+                const QDateTime beforeTime = afterTime.addSecs(-rng->bounded(60, 6 * 60 * 60));
+                item.value = QVariantList{
+                    QStringLiteral("%1").arg(rng->bounded(0, 100000000), 8, 10, QChar('0')),
+                    compactDateTimeToSeconds(beforeTime),
+                    compactDateTimeToSeconds(afterTime)};
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x033005") && item.diCode != "0x03300500")
+            {
+                QVariantList values;
+                values.append(compactDateTimeToSeconds(QDateTime::currentDateTime().addSecs(-rng->bounded(60 * 60, 180 * 24 * 60 * 60))));
+                values.append(QStringLiteral("%1").arg(rng->bounded(0, 100000000), 8, 10, QChar('0')));
+                for (int setIndex = 0; setIndex < 2; ++setIndex)
+                {
+                    for (int tableIndex = 0; tableIndex < kMaxDayScheduleTableCount; ++tableIndex)
                     {
-                        currentValue = rng->bounded(1, 201);
+                        values.append(buildDayScheduleTableValue(rng->bounded(1, 200), setIndex, tableIndex));
                     }
-
-                    item.value = QVariantList{compactDateTimeToSeconds(eventTime), currentValue, phaseCode};
-                    continue;
                 }
+                item.value = values;
+                continue;
+            }
 
-                if (subgroup >= 0x01 && subgroup <= 0x03)
+            if (item.diCode.startsWith("0x033006") && item.diCode != "0x03300600")
+            {
+                QVariantList values;
+                values.append(compactDateTimeToSeconds(QDateTime::currentDateTime().addSecs(-rng->bounded(60 * 60, 180 * 24 * 60 * 60))));
+                values.append(QStringLiteral("%1").arg(rng->bounded(0, 100000000), 8, 10, QChar('0')));
+                for (int setIndex = 0; setIndex < 2; ++setIndex)
                 {
-                    const double voltageValue = isMinRecord
-                                                    ? rng->bounded(1600, 2201) / 10.0
-                                                    : rng->bounded(2200, 2651) / 10.0;
-                    item.value = QVariantList{compactDateTimeToSeconds(eventTime), voltageValue};
-                    continue;
+                    for (int zoneIndex = 0; zoneIndex < kMaxYearZoneCount; ++zoneIndex)
+                    {
+                        values.append(buildYearZoneEntryValue(rng->bounded(1, 200), setIndex, zoneIndex));
+                    }
                 }
-
-                const double currentValue = isMinRecord
-                                                ? rng->bounded(5, 301) / 10.0
-                                                : rng->bounded(150, 1201) / 10.0;
-                item.value = QVariantList{compactDateTimeToSeconds(eventTime), currentValue};
-                continue;
-            }
-
-            if (item.diCode.startsWith("0x039000") ||
-                item.diCode.startsWith("0x039001"))
-            {
-                const QDateTime eventTime = QDateTime::currentDateTime().addSecs(-rng->bounded(0, 90 * 24 * 60 * 60));
-                const int phaseCode = (meterPhaseType == MeterPhaseType::SinglePhase) ? 1 : rng->bounded(1, 4);
-                int currentValue = rng->bounded(10, 801);
-
-                item.value = QVariantList{compactDateTimeToSeconds(eventTime), currentValue, phaseCode};
-                continue;
-            }
-
-            if (item.diCode.startsWith("0x0388"))
-            {
-                const QDateTime endTime = QDateTime::currentDateTime().addSecs(-rng->bounded(0, 90 * 24 * 60 * 60));
-                const QDateTime startTime = endTime.addSecs(-rng->bounded(60, 48 * 60 * 60));
-                const int phaseCode = (meterPhaseType == MeterPhaseType::SinglePhase) ? 1 : rng->bounded(1, 4);
-                const int currentValue = rng->bounded(100, 1501);
-                item.value = QVariantList{compactDateTimeToSeconds(endTime),
-                                          compactDateTimeToSeconds(startTime),
-                                          currentValue,
-                                          phaseCode};
-                continue;
-            }
-
-            if (item.diCode.startsWith("0x038F"))
-            {
-                const QDateTime startTime = QDateTime::currentDateTime().addSecs(-rng->bounded(0, 90 * 24 * 60 * 60));
-                const QDateTime endTime = startTime.addSecs(rng->bounded(60, 48 * 60 * 60));
-                const int phaseCode = (meterPhaseType == MeterPhaseType::SinglePhase) ? 1 : rng->bounded(1, 4);
-                const int currentValue = rng->bounded(80, 1201);
-                item.value = QVariantList{currentValue,
-                                          phaseCode,
-                                          compactDateTimeToSeconds(startTime),
-                                          compactDateTimeToSeconds(endTime)};
-                continue;
-            }
-
-            if (item.diCode.startsWith("0x038D"))
-            {
-                const QDateTime eventTime = QDateTime::currentDateTime().addSecs(-rng->bounded(0, 90 * 24 * 60 * 60));
-                const bool singlePhase = (meterPhaseType == MeterPhaseType::SinglePhase);
-                const double currentA = rng->bounded(0, 8001) / 10.0;
-                const double currentB = singlePhase ? 0.0 : rng->bounded(0, 8001) / 10.0;
-                const double currentC = singlePhase ? 0.0 : rng->bounded(0, 8001) / 10.0;
-                const int phaseCode = singlePhase ? 1 : rng->bounded(1, 4);
-                const int selfCheckModeCode = rng->bounded(1, 256);
-                const int selfCheckResultCode = rng->bounded(1, 5);
-                item.value = QVariantList{currentC,
-                                          currentB,
-                                          currentA,
-                                          phaseCode,
-                                          selfCheckModeCode,
-                                          compactDateTimeToSeconds(eventTime),
-                                          selfCheckResultCode};
-                continue;
-            }
-
-            if (item.diCode.startsWith("0x038E"))
-            {
-                const QDateTime eventTime = QDateTime::currentDateTime().addSecs(-rng->bounded(0, 90 * 24 * 60 * 60));
-                const bool singlePhase = (meterPhaseType == MeterPhaseType::SinglePhase);
-                const double currentA = rng->bounded(0, 8001) / 10.0;
-                const double currentB = singlePhase ? 0.0 : rng->bounded(0, 8001) / 10.0;
-                const double currentC = singlePhase ? 0.0 : rng->bounded(0, 8001) / 10.0;
-                const double voltageA = 220.0 + (rng->bounded(-100, 101) / 10.0);
-                const double voltageB = singlePhase ? 0.0 : 220.0 + (rng->bounded(-100, 101) / 10.0);
-                const double voltageC = singlePhase ? 0.0 : 220.0 + (rng->bounded(-100, 101) / 10.0);
-                const int residualCurrent = rng->bounded(50, 1501);
-                const int phaseCode = singlePhase ? 1 : rng->bounded(1, 4);
-                const int faultReasonCode = rng->bounded(1, 256);
-                item.value = QVariantList{currentC,
-                                          currentB,
-                                          currentA,
-                                          voltageC,
-                                          voltageB,
-                                          voltageA,
-                                          residualCurrent,
-                                          compactDateTimeToSeconds(eventTime),
-                                          phaseCode,
-                                          faultReasonCode};
+                item.value = values;
                 continue;
             }
 
@@ -2041,31 +2479,6 @@ namespace
                 item.value = rng->bounded(3000, 15001) / 10000.0;
                 variableValueHandled = true;
             }
-            else if (item.diCode == "0x02900000")
-            {
-                item.value = rng->bounded(1, 4);
-                variableValueHandled = true;
-            }
-            else if (item.diCode == "0x02900100")
-            {
-                item.value = rng->bounded(0, 3001);
-                variableValueHandled = true;
-            }
-            else if (item.diCode == "0x02900200")
-            {
-                item.value = rng->bounded(30, 1001);
-                variableValueHandled = true;
-            }
-            else if (item.diCode == "0x02910100")
-            {
-                item.value = rng->bounded(30, 1001);
-                variableValueHandled = true;
-            }
-            else if (item.diCode == "0x02910200")
-            {
-                item.value = rng->bounded(50, 2001);
-                variableValueHandled = true;
-            }
             else if (item.diCode.startsWith("0x230100") && !item.diCode.endsWith("FF"))
             {
                 item.value = rng->bounded(2500, 8501) / 100.0;
@@ -2150,10 +2563,6 @@ void MeterModel::setMeterAddress(const QString &address)
         if (m_meterAddress != address)
         {
             m_meterAddress = address;
-            if (m_dataItems.contains("0x04000000"))
-            {
-                m_dataItems["0x04000000"].value = address;
-            }
             if (m_dataItems.contains("0x04000401"))
             {
                 m_dataItems["0x04000401"].value = address;
@@ -2248,6 +2657,11 @@ bool MeterModel::isDataItemSupported(const QString &diCode) const
 bool MeterModel::isDataItemSupportedUnlocked(const QString &diCode) const
 {
     if (!m_dataItems.contains(diCode))
+    {
+        return false;
+    }
+
+    if (!isParameterStructureCodeSupported(m_dataItems, diCode))
     {
         return false;
     }
@@ -2377,21 +2791,6 @@ QVariant MeterModel::getDataValue(const QString &diCode) const
             {
                 appendValuesForCodes(m_dataItems, harmonicPayloadCodes(diCode), values);
             }
-            else if (diCode == "0x0290FF00")
-            {
-                appendValuesForCodes(m_dataItems,
-                                     {QStringLiteral("0x02900200"),
-                                      QStringLiteral("0x02900100"),
-                                      QStringLiteral("0x02900000")},
-                                     values);
-            }
-            else if (diCode == "0x0291FF00")
-            {
-                appendValuesForCodes(m_dataItems,
-                                     {QStringLiteral("0x02910200"),
-                                      QStringLiteral("0x02910100")},
-                                     values);
-            }
             else if (diCode == "0x230100FF")
             {
                 appendValuesForCodes(m_dataItems,
@@ -2403,19 +2802,6 @@ QVariant MeterModel::getDataValue(const QString &diCode) const
                                       QStringLiteral("0x23010003"),
                                       QStringLiteral("0x23010002"),
                                       QStringLiteral("0x23010001")},
-                                     values);
-            }
-            else if (diCode == "0x038100FF")
-            {
-                appendValuesForCodes(m_dataItems,
-                                     {QStringLiteral("0x03810007"),
-                                      QStringLiteral("0x03810006"),
-                                      QStringLiteral("0x03810005"),
-                                      QStringLiteral("0x03810004"),
-                                      QStringLiteral("0x03810003"),
-                                      QStringLiteral("0x03810002"),
-                                      QStringLiteral("0x03810001"),
-                                      QStringLiteral("0x03810000")},
                                      values);
             }
             else if (diCode.endsWith("FF00") && isMultiRateEnergyCode(diCode))
@@ -2480,8 +2866,20 @@ bool MeterModel::setDataValue(const QString &diCode, const QVariant &value)
             {
                 refreshLatestFreezeCompositeBlocks(m_dataItems);
             }
-            if (diCode == "0x04000204")
+            if (diCode.startsWith(QStringLiteral("0x040100")) ||
+                diCode.startsWith(QStringLiteral("0x040200")) ||
+                diCode.startsWith(QStringLiteral("0x0403")))
             {
+                refreshParameterScheduleData(m_dataItems);
+                requiresBatchRefresh = true;
+            }
+            if (diCode == "0x04000201" ||
+                diCode == "0x04000202" ||
+                diCode == "0x04000203" ||
+                diCode == "0x04000204" ||
+                diCode == "0x04000205")
+            {
+                refreshParameterScheduleData(m_dataItems);
                 refreshRateDependentBlockFormats(m_dataItems);
                 synchronizeDemandTotals(m_dataItems);
                 synchronizeInstantaneousPowerTotals(m_dataItems);
@@ -2490,6 +2888,10 @@ bool MeterModel::setDataValue(const QString &diCode, const QVariant &value)
                 refreshLatestFreezeCompositeBlocks(m_dataItems);
                 requiresBatchRefresh = true;
             }
+            if (diCode == "0x04000401")
+            {
+                m_meterAddress = emittedValue.toString();
+            }
             updated = true;
         }
     }
@@ -2497,6 +2899,10 @@ bool MeterModel::setDataValue(const QString &diCode, const QVariant &value)
     if (updated)
     {
         emit dataChanged(diCode, emittedValue);
+        if (diCode == "0x04000401")
+        {
+            emit addressChanged(emittedValue.toString());
+        }
         if (requiresBatchRefresh)
         {
             emit dataBatchChanged();
@@ -2523,15 +2929,12 @@ void MeterModel::applyPersistedData(const QMap<QString, QVariant> &dataSnapshot)
             }
         }
 
-        if (m_dataItems.contains("0x04000000"))
-        {
-            m_dataItems["0x04000000"].value = m_meterAddress;
-        }
         if (m_dataItems.contains("0x04000401"))
         {
             m_dataItems["0x04000401"].value = m_meterAddress;
         }
 
+        refreshParameterScheduleData(m_dataItems);
         refreshRateDependentBlockFormats(m_dataItems);
         synchronizeDemandTotals(m_dataItems);
         synchronizeInstantaneousPowerTotals(m_dataItems);
@@ -2642,16 +3045,19 @@ void MeterModel::initializeDefaultDataItems()
     initializeVariableData();
     initializeEventData();
     initializeParameterData();
+    refreshParameterScheduleData(m_dataItems);
     initializeFreezeData();
     initializeLoadRecordData();
     ensureCurrentEnergyRateItems(m_dataItems);
     ensureDemandRateItems(m_dataItems);
     ensureFreezeRateItems(m_dataItems);
+    refreshParameterScheduleData(m_dataItems);
     refreshRateDependentBlockFormats(m_dataItems);
     synchronizeDemandTotals(m_dataItems);
     synchronizeInstantaneousPowerTotals(m_dataItems);
     synchronizeCurrentEnergyTotals(m_dataItems);
     synchronizeFreezeTotals(m_dataItems);
+    refreshLatestFreezeCompositeBlocks(m_dataItems);
 }
 
 void MeterModel::initializeEnergyData()
@@ -2920,13 +3326,6 @@ void MeterModel::initializeVariableData()
     m_dataItems["0x02800009"] = DataItem("0x02800009", "停电抄表电池电压(外部)", 3.18, "V", "AA,.,AA", false, 2);
     m_dataItems["0x0280000A"] = DataItem("0x0280000A", "内部电池工作时间", 8640, "分钟", "AA,AA,AA,AA", false, 0);
     m_dataItems["0x0280000B"] = DataItem("0x0280000B", "当前阶梯电价", 0.5688, "元/kWh", "AA,AA,.,AA,AA", false, 4);
-    m_dataItems["0x02900000"] = DataItem("0x02900000", "当前剩余电流最大相代码(1=A,2=B,3=C)", 1, "-", "AA", false, 0);
-    m_dataItems["0x02900100"] = DataItem("0x02900100", "当前剩余电流", 120, "mA", "AA,AA", false, 0);
-    m_dataItems["0x02900200"] = DataItem("0x02900200", "当前剩余电流门限值", 300, "mA", "AA,AA", false, 0);
-    m_dataItems["0x0290FF00"] = DataItem("0x0290FF00", "当前剩余电流数据块", QVariantList(), "-", "AA,AA:AA,AA:AA", false, 0);
-    m_dataItems["0x02910100"] = DataItem("0x02910100", "当前额定剩余电流动作值", 300, "mA", "AA,AA", false, 0);
-    m_dataItems["0x02910200"] = DataItem("0x02910200", "当前额定极限不驱动时间", 200, "ms", "AA,AA", false, 0);
-    m_dataItems["0x0291FF00"] = DataItem("0x0291FF00", "当前额定剩余电流参数块", QVariantList(), "-", "AA,AA:AA,AA", false, 0);
     m_dataItems["0x23010001"] = DataItem("0x23010001", "A相上端子温度", 32.50, "℃", "AA,AA,.,AA", false, 2);
     m_dataItems["0x23010002"] = DataItem("0x23010002", "B相上端子温度", 33.10, "℃", "AA,AA,.,AA", false, 2);
     m_dataItems["0x23010003"] = DataItem("0x23010003", "C相上端子温度", 31.80, "℃", "AA,AA,.,AA", false, 2);
@@ -2943,178 +3342,592 @@ void MeterModel::initializeEventData()
 {
     // 事件记录 (0x03xxxxxx)
     const QDateTime now = QDateTime::currentDateTime();
-    m_dataItems["0x03300100"] = DataItem("0x03300100", "数据清零总次数", 0, "次", "AA,AA,AA", false, 0);
-    m_dataItems["0x03810000"] = DataItem("0x03810000", "总跳闸次数", 0, "次", "AA,AA", false, 0);
-    m_dataItems["0x03810001"] = DataItem("0x03810001", "闭锁性跳闸次数", 0, "次", "AA,AA", false, 0);
-    m_dataItems["0x03810002"] = DataItem("0x03810002", "剩余电流保护跳闸次数", 0, "次", "AA,AA", false, 0);
-    m_dataItems["0x03810003"] = DataItem("0x03810003", "电流保护跳闸次数", 0, "次", "AA,AA", false, 0);
-    m_dataItems["0x03810004"] = DataItem("0x03810004", "电压保护跳闸次数", 0, "次", "AA,AA", false, 0);
-    m_dataItems["0x03810005"] = DataItem("0x03810005", "手动闭锁跳闸次数", 0, "次", "AA,AA", false, 0);
-    m_dataItems["0x03810006"] = DataItem("0x03810006", "缺零保护跳闸次数", 0, "次", "AA,AA", false, 0);
-    m_dataItems["0x03810007"] = DataItem("0x03810007", "试验跳闸次数（定时、远程、按键）", 0, "次", "AA,AA", false, 0);
-    m_dataItems["0x038100FF"] = DataItem("0x038100FF", "跳闸次数数据块", QVariantList(), "-", "AA,AA:AA,AA:AA,AA:AA,AA:AA,AA:AA,AA:AA,AA:AA,AA", false, 0);
-    m_dataItems["0x03810101"] = DataItem("0x03810101", "退出剩余电流保护次数", 0, "次", "AA,AA", false, 0);
-    m_dataItems["0x03810201"] = DataItem("0x03810201", "保护器运行时间总累计", 0, "分钟", "AA,AA,AA,AA", false, 0);
+    const QStringList phaseNames = {QStringLiteral("A相"),
+                                    QStringLiteral("B相"),
+                                    QStringLiteral("C相")};
+    const QStringList demandLimitNames = {
+        QStringLiteral("正向有功"),
+        QStringLiteral("反向有功"),
+        QStringLiteral("第一象限无功"),
+        QStringLiteral("第二象限无功"),
+        QStringLiteral("第三象限无功"),
+        QStringLiteral("第四象限无功")};
+    const QString countFormat = QStringLiteral("AA,AA,AA");
+    const QString timeToSecondsFormat = QStringLiteral("AA,AA,AA,AA,AA,AA");
+    const QString timeToMinutesFormat = QStringLiteral("AA,AA,AA,AA,AA");
+    const QString operatorCodeFormat = QStringLiteral("AA,AA,AA,AA");
+    const QString diCodeFormat = QStringLiteral("AA,AA,AA,AA");
+    const QString energyFormat = QStringLiteral("AA,AA,AA,.,AA");
+    const QString demandFormat = QStringLiteral("AA,.,AAAA");
+    const QString powerFormat = QStringLiteral("AA,.,AAAA");
+    const QString currentFormat = QStringLiteral("AA,.,AAA");
+    const QString voltageFormat = QStringLiteral("AA,AA,.,A");
+    const QString powerFactorFormat = QStringLiteral("AA,.,A");
+    const QString percentFormat = QStringLiteral("AA,.,AA");
+    const QString largePercentFormat = QStringLiteral("AA,AA,.,AA");
+    const QString monthTimeFormat = QStringLiteral("AA,AA,AA,AA");
+    const QString scheduleTableFormat = repeatedByteFormat(kMaxDayScheduleCount * 3);
+    const QString yearZoneEntryFormat = QStringLiteral("AA,AA,AA");
+    const int programmedDiCount = 12;
 
+    auto phaseEventCode = [](const QString &familyPrefix, int historyIndex) {
+        return familyPrefix + upperHexByte(historyIndex);
+    };
+
+    auto defaultOperatorCode = [this](int historyIndex) {
+        if (!m_operatorCode.isEmpty())
+        {
+            return m_operatorCode;
+        }
+        return QStringLiteral("%1").arg((historyIndex * 1234567) % 100000000, 8, 10, QChar('0'));
+    };
+
+    auto appendEnergySnapshot = [](QVariantList &values, double baseValue) {
+        for (int i = 0; i < 24; ++i)
+        {
+            values.append(roundToDecimals(baseValue + i * 7.35, 2));
+        }
+    };
+
+    auto appendDemandSnapshot = [&](QVariantList &values, int historyIndex, double baseValue) {
+        for (int i = 0; i < 24; ++i)
+        {
+            values.append(roundToDecimals(baseValue + i * 0.12, 4));
+            values.append(compactDateTimeToMinutes(now.addSecs(-(historyIndex * 9 + i + 1) * 30 * 60)));
+        }
+    };
+
+    auto appendPeriodTableSnapshot = [](QVariantList &values, int historyIndex) {
+        for (int setIndex = 0; setIndex < 2; ++setIndex)
+        {
+            for (int tableIndex = 0; tableIndex < kMaxDayScheduleTableCount; ++tableIndex)
+            {
+                values.append(buildDayScheduleTableValue(historyIndex, setIndex, tableIndex));
+            }
+        }
+    };
+
+    auto appendYearZoneSnapshot = [](QVariantList &values, int historyIndex) {
+        for (int setIndex = 0; setIndex < 2; ++setIndex)
+        {
+            for (int zoneIndex = 0; zoneIndex < kMaxYearZoneCount; ++zoneIndex)
+            {
+                values.append(buildYearZoneEntryValue(historyIndex, setIndex, zoneIndex));
+            }
+        }
+    };
+
+    auto appendSequenceEnergySnapshot = [](QVariantList &values, double baseValue) {
+        for (int i = 0; i < 16; ++i)
+        {
+            values.append(roundToDecimals(baseValue + i * 3.15, 2));
+        }
+    };
+
+    QStringList lossVoltageFormatParts = {
+        timeToSecondsFormat,
+        timeToSecondsFormat,
+        energyFormat,
+        energyFormat,
+        energyFormat,
+        energyFormat};
+    for (int dataPhase = 0; dataPhase < 3; ++dataPhase)
+    {
+        Q_UNUSED(dataPhase);
+        lossVoltageFormatParts.append(energyFormat);
+        lossVoltageFormatParts.append(energyFormat);
+        lossVoltageFormatParts.append(energyFormat);
+        lossVoltageFormatParts.append(energyFormat);
+        lossVoltageFormatParts.append(voltageFormat);
+        lossVoltageFormatParts.append(currentFormat);
+        lossVoltageFormatParts.append(powerFormat);
+        lossVoltageFormatParts.append(powerFormat);
+        lossVoltageFormatParts.append(powerFactorFormat);
+    }
+    const QString lossVoltageRecordFormat = lossVoltageFormatParts.join(QStringLiteral(":"));
+    const QString demandLimitTotalsFormat = repeatedFormatParts(countFormat, demandLimitNames.size());
+    const QString demandLimitRecordFormat = QStringList{timeToSecondsFormat,
+                                                        timeToSecondsFormat,
+                                                        demandFormat,
+                                                        timeToMinutesFormat}
+                                                .join(QStringLiteral(":"));
+    const QString programRecordFormat =
+        QStringList{timeToSecondsFormat,
+                    operatorCodeFormat,
+                    repeatedFormatParts(diCodeFormat, programmedDiCount)}
+            .join(QStringLiteral(":"));
+    const QString meterClearRecordFormat =
+        QStringList{timeToSecondsFormat, operatorCodeFormat, repeatedFormatParts(energyFormat, 24)}
+            .join(QStringLiteral(":"));
+    const QString demandClearRecordFormat =
+        QStringList{timeToSecondsFormat,
+                    operatorCodeFormat,
+                    repeatedFormatParts(QStringList{demandFormat, timeToMinutesFormat}.join(QStringLiteral(":")), 24)}
+            .join(QStringLiteral(":"));
+    const QString eventClearRecordFormat =
+        QStringList{timeToSecondsFormat, operatorCodeFormat, diCodeFormat}.join(QStringLiteral(":"));
+    const QString timeCalRecordFormat =
+        QStringList{operatorCodeFormat, timeToSecondsFormat, timeToSecondsFormat}.join(QStringLiteral(":"));
+    const QString periodTableProgramRecordFormat =
+        QStringList{timeToSecondsFormat, operatorCodeFormat, repeatedFormatParts(scheduleTableFormat, 16)}
+            .join(QStringLiteral(":"));
+    const QString yearZoneProgramRecordFormat =
+        QStringList{timeToSecondsFormat, operatorCodeFormat, repeatedFormatParts(yearZoneEntryFormat, 28)}
+            .join(QStringLiteral(":"));
+    const QString fullLossRecordFormat =
+        QStringList{timeToSecondsFormat, currentFormat, timeToSecondsFormat}.join(QStringLiteral(":"));
+    const QString simpleStartEndRecordFormat =
+        QStringList{timeToSecondsFormat, timeToSecondsFormat}.join(QStringLiteral(":"));
+    const QString reverseSequenceRecordFormat =
+        QStringList{timeToSecondsFormat, timeToSecondsFormat, repeatedFormatParts(energyFormat, 16)}
+            .join(QStringLiteral(":"));
+    const QString voltageUnbalanceRecordFormat =
+        QStringList{timeToSecondsFormat, timeToSecondsFormat, percentFormat, repeatedFormatParts(energyFormat, 16)}
+            .join(QStringLiteral(":"));
+    const QString totalVoltageComplianceFormat =
+        QStringList{countFormat,
+                    largePercentFormat,
+                    largePercentFormat,
+                    countFormat,
+                    countFormat,
+                    powerFactorFormat,
+                    monthTimeFormat,
+                    powerFactorFormat,
+                    monthTimeFormat}
+            .join(QStringLiteral(":"));
+    const QString phaseVoltageComplianceFormat =
+        QStringList{countFormat,
+                    percentFormat,
+                    percentFormat,
+                    countFormat,
+                    countFormat,
+                    powerFactorFormat,
+                    monthTimeFormat,
+                    powerFactorFormat,
+                    monthTimeFormat}
+            .join(QStringLiteral(":"));
+
+    auto initializePhaseVoltageEventFamily = [&](const QString &totalPrefix,
+                                                 const QString &historyPrefixBase,
+                                                 const QString &eventName,
+                                                 double baseVoltageOffset) {
+        for (int phaseIndex = 0; phaseIndex < phaseNames.size(); ++phaseIndex)
+        {
+            const QString totalCode = totalPrefix + upperHexByte(phaseIndex);
+            m_dataItems[totalCode] = DataItem(
+                totalCode,
+                QStringLiteral("%1%2总次数，总累计时间").arg(phaseNames[phaseIndex], eventName),
+                QVariantList{10 + phaseIndex * 2, 240 + phaseIndex * 30},
+                QStringLiteral("次,分"),
+                QStringList{countFormat, countFormat}.join(QStringLiteral(":")),
+                false,
+                0);
+
+            const QString historyPrefix = historyPrefixBase + upperHexByte(phaseIndex + 1);
+            for (int historyIndex = 1; historyIndex <= 10; ++historyIndex)
+            {
+                QVariantList values;
+                const QDateTime endTime = now.addSecs(-(historyIndex * 8 + phaseIndex + 1) * 60 * 60);
+                const QDateTime startTime = endTime.addSecs(-(historyIndex * 11 + 12) * 60);
+                values.append(compactDateTimeToSeconds(startTime));
+                values.append(compactDateTimeToSeconds(endTime));
+
+                values.append(roundToDecimals(18.0 + historyIndex * 1.6, 2));
+                values.append(roundToDecimals(2.0 + historyIndex * 0.3, 2));
+                values.append(roundToDecimals(5.0 + historyIndex * 0.28, 2));
+                values.append(roundToDecimals(4.2 + historyIndex * 0.24, 2));
+
+                for (int dataPhase = 0; dataPhase < 3; ++dataPhase)
+                {
+                    const double baseVoltage = (dataPhase == phaseIndex)
+                                                   ? baseVoltageOffset + historyIndex * 0.9
+                                                   : 219.0 + dataPhase * 1.5 - historyIndex * 0.4;
+                    values.append(roundToDecimals(7.0 + historyIndex * 0.55 + dataPhase * 0.7, 2));
+                    values.append(roundToDecimals(1.0 + historyIndex * 0.12 + dataPhase * 0.15, 2));
+                    values.append(roundToDecimals(2.1 + historyIndex * 0.17 + dataPhase * 0.18, 2));
+                    values.append(roundToDecimals(1.8 + historyIndex * 0.14 + dataPhase * 0.16, 2));
+                    values.append(roundToDecimals(baseVoltage, 1));
+                    values.append(roundToDecimals(2.6 + historyIndex * 0.1 + dataPhase * 0.06, 3));
+                    values.append(roundToDecimals(1.1 + historyIndex * 0.07 + dataPhase * 0.05, 4));
+                    values.append(roundToDecimals(0.5 + historyIndex * 0.04 + dataPhase * 0.03, 4));
+                    values.append(roundToDecimals(0.95 - historyIndex * 0.004 - dataPhase * 0.008, 3));
+                }
+
+                const QString code = phaseEventCode(historyPrefix, historyIndex);
+                m_dataItems[code] = DataItem(
+                    code,
+                    QStringLiteral("（上%1次）%2%3记录").arg(historyIndex).arg(phaseNames[phaseIndex], eventName),
+                    values,
+                    QStringLiteral("-"),
+                    lossVoltageRecordFormat,
+                    false,
+                    0);
+            }
+        }
+    };
+
+    initializePhaseVoltageEventFamily(QStringLiteral("0x030100"), QStringLiteral("0x0301"), QStringLiteral("失压"), 168.0);
+    initializePhaseVoltageEventFamily(QStringLiteral("0x030200"), QStringLiteral("0x0302"), QStringLiteral("欠压"), 172.0);
+    initializePhaseVoltageEventFamily(QStringLiteral("0x030300"), QStringLiteral("0x0303"), QStringLiteral("过压"), 248.0);
+    initializePhaseVoltageEventFamily(QStringLiteral("0x030400"), QStringLiteral("0x0304"), QStringLiteral("断相"), 0.0);
+
+    m_dataItems["0x03050000"] = DataItem(
+        "0x03050000",
+        "全失压总次数，总累计时间",
+        QVariantList{6, 180},
+        "次,分",
+        QStringList{countFormat, countFormat}.join(QStringLiteral(":")),
+        false,
+        0);
     for (int historyIndex = 1; historyIndex <= 10; ++historyIndex)
     {
-        const QString suffix = upperHexByte(historyIndex);
-        const int phaseCode = ((historyIndex - 1) % 3) + 1;
-        const QStringList phaseNames = {QStringLiteral("A相"),
-                                        QStringLiteral("B相"),
-                                        QStringLiteral("C相")};
-
-        const QDateTime maxEventTime = now.addSecs(-historyIndex * 18 * 60 * 60);
-        m_dataItems[QStringLiteral("0x038200") + suffix] = DataItem(
-            QStringLiteral("0x038200") + suffix,
-            QStringLiteral("上%1次最大剩余电流记录").arg(historyIndex),
-            QVariantList{compactDateTimeToSeconds(maxEventTime), 960 - historyIndex * 35, phaseCode},
-            "-",
-            "AA,AA,AA,AA,AA,AA:AA,AA:AA",
+        const QString code = QStringLiteral("0x030500") + upperHexByte(historyIndex);
+        const QDateTime endTime = now.addSecs(-(historyIndex * 14 + 2) * 60 * 60);
+        const QDateTime startTime = endTime.addSecs(-(historyIndex * 15 + 20) * 60);
+        m_dataItems[code] = DataItem(
+            code,
+            QStringLiteral("（上%1次）全失压记录").arg(historyIndex),
+            QVariantList{
+                compactDateTimeToSeconds(startTime),
+                roundToDecimals(0.08 + historyIndex * 0.012, 3),
+                compactDateTimeToSeconds(endTime)},
+            QStringLiteral("-"),
+            fullLossRecordFormat,
             false,
             0);
+    }
 
-        const QDateTime minEventTime = now.addSecs(-(historyIndex * 18 + 6) * 60 * 60);
-        m_dataItems[QStringLiteral("0x038300") + suffix] = DataItem(
-            QStringLiteral("0x038300") + suffix,
-            QStringLiteral("上%1次最小剩余电流记录").arg(historyIndex),
-            QVariantList{compactDateTimeToSeconds(minEventTime), 20 + historyIndex * 6, phaseCode},
-            "-",
-            "AA,AA,AA,AA,AA,AA:AA,AA:AA",
+    m_dataItems["0x03060000"] = DataItem(
+        "0x03060000",
+        "辅助电源失电总次数，总累计时间",
+        QVariantList{4, 95},
+        "次,分",
+        QStringList{countFormat, countFormat}.join(QStringLiteral(":")),
+        false,
+        0);
+    for (int historyIndex = 1; historyIndex <= 10; ++historyIndex)
+    {
+        const QString code = QStringLiteral("0x030600") + upperHexByte(historyIndex);
+        const QDateTime endTime = now.addSecs(-(historyIndex * 16 + 1) * 60 * 60);
+        const QDateTime startTime = endTime.addSecs(-(historyIndex * 9 + 10) * 60);
+        m_dataItems[code] = DataItem(
+            code,
+            QStringLiteral("（上%1次）辅助电源失电记录").arg(historyIndex),
+            QVariantList{compactDateTimeToSeconds(startTime), compactDateTimeToSeconds(endTime)},
+            QStringLiteral("-"),
+            simpleStartEndRecordFormat,
             false,
             0);
+    }
 
-        for (int phaseOffset = 0; phaseOffset < phaseNames.size(); ++phaseOffset)
+    m_dataItems["0x03070000"] = DataItem(
+        "0x03070000",
+        "电压逆相序总次数，总累计时间",
+        QVariantList{3, 72},
+        "次,分",
+        QStringList{countFormat, countFormat}.join(QStringLiteral(":")),
+        false,
+        0);
+    for (int historyIndex = 1; historyIndex <= 10; ++historyIndex)
+    {
+        const QString code = QStringLiteral("0x030700") + upperHexByte(historyIndex);
+        QVariantList values;
+        const QDateTime endTime = now.addSecs(-(historyIndex * 17 + 3) * 60 * 60);
+        const QDateTime startTime = endTime.addSecs(-(historyIndex * 11 + 8) * 60);
+        values.append(compactDateTimeToSeconds(startTime));
+        values.append(compactDateTimeToSeconds(endTime));
+        appendSequenceEnergySnapshot(values, 10.0 + historyIndex * 2.2);
+        m_dataItems[code] = DataItem(
+            code,
+            QStringLiteral("（上%1次）电压逆相序记录").arg(historyIndex),
+            values,
+            QStringLiteral("-"),
+            reverseSequenceRecordFormat,
+            false,
+            0);
+    }
+
+    m_dataItems["0x03080000"] = DataItem(
+        "0x03080000",
+        "电流逆相序总次数，总累计时间",
+        QVariantList{2, 48},
+        "次,分",
+        QStringList{countFormat, countFormat}.join(QStringLiteral(":")),
+        false,
+        0);
+    for (int historyIndex = 1; historyIndex <= 10; ++historyIndex)
+    {
+        const QString code = QStringLiteral("0x030800") + upperHexByte(historyIndex);
+        QVariantList values;
+        const QDateTime endTime = now.addSecs(-(historyIndex * 19 + 2) * 60 * 60);
+        const QDateTime startTime = endTime.addSecs(-(historyIndex * 10 + 6) * 60);
+        values.append(compactDateTimeToSeconds(startTime));
+        values.append(compactDateTimeToSeconds(endTime));
+        appendSequenceEnergySnapshot(values, 8.0 + historyIndex * 1.9);
+        m_dataItems[code] = DataItem(
+            code,
+            QStringLiteral("（上%1次）电流逆相序记录").arg(historyIndex),
+            values,
+            QStringLiteral("-"),
+            reverseSequenceRecordFormat,
+            false,
+            0);
+    }
+
+    m_dataItems["0x03090000"] = DataItem(
+        "0x03090000",
+        "电压不平衡总次数，总累计时间",
+        QVariantList{5, 110},
+        "次,分",
+        QStringList{countFormat, countFormat}.join(QStringLiteral(":")),
+        false,
+        0);
+    for (int historyIndex = 1; historyIndex <= 10; ++historyIndex)
+    {
+        const QString code = QStringLiteral("0x030900") + upperHexByte(historyIndex);
+        QVariantList values;
+        const QDateTime endTime = now.addSecs(-(historyIndex * 13 + 5) * 60 * 60);
+        const QDateTime startTime = endTime.addSecs(-(historyIndex * 12 + 7) * 60);
+        values.append(compactDateTimeToSeconds(startTime));
+        values.append(compactDateTimeToSeconds(endTime));
+        values.append(roundToDecimals(1.5 + historyIndex * 0.18, 2));
+        appendSequenceEnergySnapshot(values, 9.5 + historyIndex * 2.0);
+        m_dataItems[code] = DataItem(
+            code,
+            QStringLiteral("（上%1次）电压不平衡记录").arg(historyIndex),
+            values,
+            QStringLiteral("-"),
+            voltageUnbalanceRecordFormat,
+            false,
+            0);
+    }
+
+    auto appendVoltageComplianceStats = [&](const QString &code,
+                                            const QString &description,
+                                            bool totalItem,
+                                            int monthIndex,
+                                            int phaseIndex) {
+        const int monitorMinutes = 43000 - monthIndex * 2300 - qMax(0, phaseIndex) * 500;
+        const double qualifiedRate = totalItem ? (97.40 - monthIndex * 0.18) : (98.20 - monthIndex * 0.22 - phaseIndex * 0.15);
+        const double overLimitRate = totalItem ? (1.25 + monthIndex * 0.04) : (0.82 + monthIndex * 0.05 + phaseIndex * 0.03);
+        const int overUpperMinutes = 120 + monthIndex * 8 + qMax(0, phaseIndex) * 5;
+        const int overLowerMinutes = 95 + monthIndex * 7 + qMax(0, phaseIndex) * 4;
+        const double highestVoltage = 241.0 - monthIndex * 0.6 - qMax(0, phaseIndex) * 0.4;
+        const double lowestVoltage = 201.0 + monthIndex * 0.5 + qMax(0, phaseIndex) * 0.3;
+        const QString highestTime = QDateTime(now.date().addMonths(-monthIndex), QTime(9 + (monthIndex % 8), 20)).toString(QStringLiteral("MMddHHmm"));
+        const QString lowestTime = QDateTime(now.date().addMonths(-monthIndex), QTime(18 - (monthIndex % 6), 35)).toString(QStringLiteral("MMddHHmm"));
+
+        m_dataItems[code] = DataItem(
+            code,
+            description,
+            QVariantList{
+                monitorMinutes,
+                roundToDecimals(qualifiedRate, 2),
+                roundToDecimals(overLimitRate, 2),
+                overUpperMinutes,
+                overLowerMinutes,
+                roundToDecimals(highestVoltage, 1),
+                highestTime,
+                roundToDecimals(lowestVoltage, 1),
+                lowestTime},
+            QStringLiteral("-"),
+            totalItem ? totalVoltageComplianceFormat : phaseVoltageComplianceFormat,
+            false,
+            totalItem ? 2 : 2);
+    };
+
+    appendVoltageComplianceStats(QStringLiteral("0x03100000"), QStringLiteral("（本月）电压合格率统计数据"), true, 0, -1);
+    for (int historyIndex = 1; historyIndex <= 12; ++historyIndex)
+    {
+        appendVoltageComplianceStats(QStringLiteral("0x031000") + upperHexByte(historyIndex),
+                                     QStringLiteral("（上%1月）电压合格率统计数据").arg(historyIndex),
+                                     true,
+                                     historyIndex,
+                                     -1);
+    }
+
+    for (int phaseIndex = 0; phaseIndex < phaseNames.size(); ++phaseIndex)
+    {
+        const QString phasePrefix = QStringLiteral("0x0310") + upperHexByte(phaseIndex + 1);
+        appendVoltageComplianceStats(phasePrefix + QStringLiteral("00"),
+                                     QStringLiteral("（本月）%1电压合格率统计数据").arg(phaseNames[phaseIndex]),
+                                     false,
+                                     0,
+                                     phaseIndex);
+        for (int historyIndex = 1; historyIndex <= 12; ++historyIndex)
         {
-            const QString maxVoltageCode = QStringLiteral("0x0382") + upperHexByte(phaseOffset + 1) + suffix;
-            const QDateTime maxVoltageTime = now.addSecs(-(historyIndex * 16 + phaseOffset) * 60 * 60);
-            m_dataItems[maxVoltageCode] = DataItem(
-                maxVoltageCode,
-                QStringLiteral("上%1次%2最大电压记录").arg(historyIndex).arg(phaseNames[phaseOffset]),
-                QVariantList{compactDateTimeToSeconds(maxVoltageTime),
-                             236.0 + historyIndex * 1.4 + phaseOffset * 2.1},
-                "-",
-                "AA,AA,AA,AA,AA,AA:AA,xx",
-                false,
-                0);
+            appendVoltageComplianceStats(phasePrefix + upperHexByte(historyIndex),
+                                         QStringLiteral("（上%1月）%2电压合格率统计数据").arg(historyIndex).arg(phaseNames[phaseIndex]),
+                                         false,
+                                         historyIndex,
+                                         phaseIndex);
+        }
+    }
 
-            const QString minVoltageCode = QStringLiteral("0x0383") + upperHexByte(phaseOffset + 1) + suffix;
-            const QDateTime minVoltageTime = now.addSecs(-(historyIndex * 16 + phaseOffset + 4) * 60 * 60);
-            m_dataItems[minVoltageCode] = DataItem(
-                minVoltageCode,
-                QStringLiteral("上%1次%2最小电压记录").arg(historyIndex).arg(phaseNames[phaseOffset]),
-                QVariantList{compactDateTimeToSeconds(minVoltageTime),
-                             182.0 - historyIndex * 0.8 + phaseOffset * 1.3},
-                "-",
-                "AA,AA,AA,AA,AA,AA:AA,xx",
-                false,
-                0);
+    m_dataItems["0x03110000"] = DataItem("0x03110000", "掉电总次数", 9, "次", "AA,AA,AA", false, 0);
+    for (int historyIndex = 1; historyIndex <= 10; ++historyIndex)
+    {
+        const QString code = QStringLiteral("0x031100") + upperHexByte(historyIndex);
+        const QDateTime endTime = now.addSecs(-(historyIndex * 12 + 3) * 60 * 60);
+        const QDateTime startTime = endTime.addSecs(-(historyIndex * 8 + 20) * 60);
+        m_dataItems[code] = DataItem(
+            code,
+            QStringLiteral("（上%1次）掉电记录").arg(historyIndex),
+            QVariantList{compactDateTimeToSeconds(startTime), compactDateTimeToSeconds(endTime)},
+            QStringLiteral("-"),
+            QStringList{timeToSecondsFormat, timeToSecondsFormat}.join(QStringLiteral(":")),
+            false,
+            0);
+    }
 
-            const QString maxCurrentCode = QStringLiteral("0x0382") + upperHexByte(phaseOffset + 4) + suffix;
-            const QDateTime maxCurrentTime = now.addSecs(-(historyIndex * 15 + phaseOffset + 2) * 60 * 60);
-            m_dataItems[maxCurrentCode] = DataItem(
-                maxCurrentCode,
-                QStringLiteral("上%1次%2最大电流记录").arg(historyIndex).arg(phaseNames[phaseOffset]),
-                QVariantList{compactDateTimeToSeconds(maxCurrentTime),
-                             18.0 + historyIndex * 2.6 + phaseOffset * 1.8},
-                "-",
-                "AA,AA,AA,AA,AA,AA:AA,AA,xx",
-                false,
-                0);
+    m_dataItems["0x03120000"] = DataItem(
+        "0x03120000",
+        "需量超限总次数",
+        QVariantList{7, 5, 4, 3, 2, 1},
+        "次",
+        demandLimitTotalsFormat,
+        false,
+        0);
 
-            const QString minCurrentCode = QStringLiteral("0x0383") + upperHexByte(phaseOffset + 4) + suffix;
-            const QDateTime minCurrentTime = now.addSecs(-(historyIndex * 15 + phaseOffset + 6) * 60 * 60);
-            m_dataItems[minCurrentCode] = DataItem(
-                minCurrentCode,
-                QStringLiteral("上%1次%2最小电流记录").arg(historyIndex).arg(phaseNames[phaseOffset]),
-                QVariantList{compactDateTimeToSeconds(minCurrentTime),
-                             1.5 + historyIndex * 0.4 + phaseOffset * 0.3},
-                "-",
-                "AA,AA,AA,AA,AA,AA:AA,AA,xx",
+    for (int demandIndex = 0; demandIndex < demandLimitNames.size(); ++demandIndex)
+    {
+        for (int historyIndex = 1; historyIndex <= 10; ++historyIndex)
+        {
+            const QString code = QStringLiteral("0x0312") + upperHexByte(demandIndex + 1) + upperHexByte(historyIndex);
+            const QDateTime endTime = now.addSecs(-(historyIndex * 10 + demandIndex + 2) * 60 * 60);
+            const QDateTime startTime = endTime.addSecs(-(historyIndex * 12 + 18) * 60);
+            const QDateTime maxDemandTime = startTime.addSecs((historyIndex * 8 + demandIndex + 1) * 60);
+            const double demandValue = roundToDecimals(3.2 + demandIndex * 0.45 + historyIndex * 0.18, 4);
+            m_dataItems[code] = DataItem(
+                code,
+                QStringLiteral("（上%1次）%2需量超限记录").arg(historyIndex).arg(demandLimitNames[demandIndex]),
+                QVariantList{
+                    compactDateTimeToSeconds(startTime),
+                    compactDateTimeToSeconds(endTime),
+                    demandValue,
+                    compactDateTimeToMinutes(maxDemandTime)},
+                QStringLiteral("-"),
+                demandLimitRecordFormat,
                 false,
                 0);
         }
+    }
 
-        const QDateTime overLimitEndTime = now.addSecs(-(historyIndex * 9) * 60 * 60);
-        const QDateTime overLimitStartTime = overLimitEndTime.addSecs(-(historyIndex * 20 + 30) * 60);
-        m_dataItems[QStringLiteral("0x038800") + suffix] = DataItem(
-            QStringLiteral("0x038800") + suffix,
-            QStringLiteral("上%1次剩余电流超限记录").arg(historyIndex),
-            QVariantList{compactDateTimeToSeconds(overLimitEndTime),
-                         compactDateTimeToSeconds(overLimitStartTime),
-                         650 - historyIndex * 18,
-                         phaseCode},
-            "-",
-            "AA,AA,AA,AA,AA,AA:AA,AA,AA,AA,AA,AA:AA,AA:AA",
+    m_dataItems["0x03300000"] = DataItem("0x03300000", "编程总次数", 8, "次", "AA,AA,AA", false, 0);
+    m_dataItems["0x03300100"] = DataItem("0x03300100", "电表清零总次数", 5, "次", "AA,AA,AA", false, 0);
+    m_dataItems["0x03300200"] = DataItem("0x03300200", "需量清零总次数", 4, "次", "AA,AA,AA", false, 0);
+    m_dataItems["0x03300300"] = DataItem("0x03300300", "事件清零总次数", 3, "次", "AA,AA,AA", false, 0);
+    m_dataItems["0x03300400"] = DataItem("0x03300400", "校时总次数", 6, "次", "AA,AA,AA", false, 0);
+    m_dataItems["0x03300500"] = DataItem("0x03300500", "时段表编程总次数", 2, "次", "AA,AA,AA", false, 0);
+    m_dataItems["0x03300600"] = DataItem("0x03300600", "时区表编程总次数", 1, "次", "AA,AA,AA", false, 0);
+
+    const QStringList programmedDiCodes = {
+        QStringLiteral("03010000"), QStringLiteral("03010001"), QStringLiteral("03010002"),
+        QStringLiteral("03110000"), QStringLiteral("03120000"), QStringLiteral("03300000"),
+        QStringLiteral("03300100"), QStringLiteral("03300200"), QStringLiteral("03300300"),
+        QStringLiteral("03300400"), QStringLiteral("03300500"), QStringLiteral("03300600")};
+
+    for (int historyIndex = 1; historyIndex <= 10; ++historyIndex)
+    {
+        const QString operatorCode = defaultOperatorCode(historyIndex);
+        const QDateTime eventTime = now.addSecs(-(historyIndex * 5 + 2) * 60 * 60);
+
+        QVariantList programmingRecord;
+        programmingRecord.append(compactDateTimeToSeconds(eventTime));
+        programmingRecord.append(operatorCode);
+        for (const QString &diCode : programmedDiCodes)
+        {
+            programmingRecord.append(diCode);
+        }
+        const QString programmingCode = QStringLiteral("0x033000") + upperHexByte(historyIndex);
+        m_dataItems[programmingCode] = DataItem(
+            programmingCode,
+            QStringLiteral("（上%1次）编程记录").arg(historyIndex),
+            programmingRecord,
+            QStringLiteral("-"),
+            programRecordFormat,
             false,
             0);
 
-        const QDateTime alarmStartTime = now.addSecs(-(historyIndex * 14) * 60 * 60);
-        const QDateTime alarmEndTime = alarmStartTime.addSecs((historyIndex * 16 + 20) * 60);
-        m_dataItems[QStringLiteral("0x038F00") + suffix] = DataItem(
-            QStringLiteral("0x038F00") + suffix,
-            QStringLiteral("上%1次剩余电流报警事件记录").arg(historyIndex),
-            QVariantList{420 - historyIndex * 11,
-                         phaseCode,
-                         compactDateTimeToSeconds(alarmStartTime),
-                         compactDateTimeToSeconds(alarmEndTime)},
-            "-",
-            "AA,AA:AA:AA,AA,AA,AA,AA,AA:AA,AA,AA,AA,AA,AA",
+        QVariantList meterClearRecord;
+        meterClearRecord.append(compactDateTimeToSeconds(now.addSecs(-(historyIndex * 8 + 1) * 60 * 60)));
+        meterClearRecord.append(operatorCode);
+        appendEnergySnapshot(meterClearRecord, 120.0 + historyIndex * 12.5);
+        const QString meterClearCode = QStringLiteral("0x033001") + upperHexByte(historyIndex);
+        m_dataItems[meterClearCode] = DataItem(
+            meterClearCode,
+            QStringLiteral("（上%1次）电表清零记录").arg(historyIndex),
+            meterClearRecord,
+            QStringLiteral("-"),
+            meterClearRecordFormat,
             false,
             0);
 
-        const QDateTime record00Time = now.addSecs(-(historyIndex * 11) * 60 * 60);
-        m_dataItems[QStringLiteral("0x039000") + suffix] = DataItem(
-            QStringLiteral("0x039000") + suffix,
-            QStringLiteral("上%1次剩余电流记录(00组)").arg(historyIndex),
-            QVariantList{compactDateTimeToSeconds(record00Time), 300 + historyIndex * 9, phaseCode},
-            "-",
-            "AA,AA,AA,AA,AA,AA:AA,AA:AA",
+        QVariantList demandClearRecord;
+        demandClearRecord.append(compactDateTimeToSeconds(now.addSecs(-(historyIndex * 9 + 2) * 60 * 60)));
+        demandClearRecord.append(operatorCode);
+        appendDemandSnapshot(demandClearRecord, historyIndex, 1.8 + historyIndex * 0.2);
+        const QString demandClearCode = QStringLiteral("0x033002") + upperHexByte(historyIndex);
+        m_dataItems[demandClearCode] = DataItem(
+            demandClearCode,
+            QStringLiteral("（上%1次）需量清零记录").arg(historyIndex),
+            demandClearRecord,
+            QStringLiteral("-"),
+            demandClearRecordFormat,
             false,
             0);
 
-        const QDateTime record01Time = now.addSecs(-(historyIndex * 13) * 60 * 60);
-        m_dataItems[QStringLiteral("0x039001") + suffix] = DataItem(
-            QStringLiteral("0x039001") + suffix,
-            QStringLiteral("上%1次剩余电流记录(01组)").arg(historyIndex),
-            QVariantList{compactDateTimeToSeconds(record01Time), 180 + historyIndex * 7, phaseCode},
-            "-",
-            "AA,AA,AA,AA,AA,AA:AA,AA:AA",
+        const QString eventClearCode = QStringLiteral("0x033003") + upperHexByte(historyIndex);
+        m_dataItems[eventClearCode] = DataItem(
+            eventClearCode,
+            QStringLiteral("（上%1次）事件清零记录").arg(historyIndex),
+            QVariantList{compactDateTimeToSeconds(now.addSecs(-(historyIndex * 11 + 3) * 60 * 60)),
+                         operatorCode,
+                         programmedDiCodes.at((historyIndex - 1) % programmedDiCodes.size())},
+            QStringLiteral("-"),
+            eventClearRecordFormat,
             false,
             0);
 
-        const QDateTime selfCheckTime = now.addSecs(-(historyIndex * 7 + 3) * 60 * 60);
-        m_dataItems[QStringLiteral("0x038D00") + suffix] = DataItem(
-            QStringLiteral("0x038D00") + suffix,
-            QStringLiteral("上%1次保护器自检结果记录").arg(historyIndex),
-            QVariantList{55.5 + historyIndex * 1.8,
-                         48.2 + historyIndex * 1.5,
-                         62.4 + historyIndex * 2.0,
-                         phaseCode,
-                         historyIndex,
-                         compactDateTimeToSeconds(selfCheckTime),
-                         (historyIndex % 4) + 1},
-            "-",
-            "AA,AA,xx:AA,AA,xx:AA,AA,xx:AA:AA:AA,AA,AA,AA,AA,AA:AA",
+        const QDateTime afterTime = now.addSecs(-(historyIndex * 4 + 1) * 60 * 60);
+        const QDateTime beforeTime = afterTime.addSecs(-(historyIndex * 6 + 12) * 60);
+        const QString timeCalCode = QStringLiteral("0x033004") + upperHexByte(historyIndex);
+        m_dataItems[timeCalCode] = DataItem(
+            timeCalCode,
+            QStringLiteral("（上%1次）校时记录").arg(historyIndex),
+            QVariantList{operatorCode,
+                         compactDateTimeToSeconds(beforeTime),
+                         compactDateTimeToSeconds(afterTime)},
+            QStringLiteral("-"),
+            timeCalRecordFormat,
             false,
             0);
 
-        const QDateTime tripTime = now.addSecs(-(historyIndex * 5 + 2) * 60 * 60);
-        m_dataItems[QStringLiteral("0x038E00") + suffix] = DataItem(
-            QStringLiteral("0x038E00") + suffix,
-            QStringLiteral("上%1次跳闸前事件记录").arg(historyIndex),
-            QVariantList{73.6 + historyIndex * 1.4,
-                         61.3 + historyIndex * 1.2,
-                         88.7 + historyIndex * 1.7,
-                         223.5,
-                         219.8,
-                         228.6,
-                         360 + historyIndex * 12,
-                         compactDateTimeToSeconds(tripTime),
-                         phaseCode,
-                         historyIndex + 16},
-            "-",
-            "AA,AA,xx:AA,AA,xx:AA,AA,xx:AA,xx:AA,xx:AA,xx:AA,AA:AA,AA,AA,AA,AA,AA:AA:AA",
+        QVariantList periodTableRecord;
+        periodTableRecord.append(compactDateTimeToSeconds(now.addSecs(-(historyIndex * 6 + 4) * 60 * 60)));
+        periodTableRecord.append(operatorCode);
+        appendPeriodTableSnapshot(periodTableRecord, historyIndex);
+        const QString periodTableCode = QStringLiteral("0x033005") + upperHexByte(historyIndex);
+        m_dataItems[periodTableCode] = DataItem(
+            periodTableCode,
+            QStringLiteral("（上%1次）时段表编程记录").arg(historyIndex),
+            periodTableRecord,
+            QStringLiteral("-"),
+            periodTableProgramRecordFormat,
+            false,
+            0);
+
+        QVariantList yearZoneRecord;
+        yearZoneRecord.append(compactDateTimeToSeconds(now.addSecs(-(historyIndex * 7 + 5) * 60 * 60)));
+        yearZoneRecord.append(operatorCode);
+        appendYearZoneSnapshot(yearZoneRecord, historyIndex);
+        const QString yearZoneCode = QStringLiteral("0x033006") + upperHexByte(historyIndex);
+        m_dataItems[yearZoneCode] = DataItem(
+            yearZoneCode,
+            QStringLiteral("（上%1次）时区表编程记录").arg(historyIndex),
+            yearZoneRecord,
+            QStringLiteral("-"),
+            yearZoneProgramRecordFormat,
             false,
             0);
     }
@@ -3124,29 +3937,257 @@ void MeterModel::initializeParameterData()
 {
     // 参变量 (0x04xxxxxx)
     const QDateTime now = QDateTime::currentDateTime();
-
-    m_dataItems["0x04000000"] = DataItem("0x04000000", "电表地址", m_meterAddress, "-", "AA,AA,AA,AA,AA,AA", true, 0);
-    m_dataItems["0x04000001"] = DataItem("0x04000001", "波特率特征字(08=2400bps)", 8, "-", "AA", true, 0);
-    m_dataItems["0x04000040"] = DataItem("0x04000040", "需量周期", 15, "分钟", "AA", true, 0);
-    m_dataItems["0x04000041"] = DataItem("0x04000041", "滑差时间", 1, "分钟", "AA", true, 0);
+    const int configuredYearZoneCount = 2;
+    const int configuredDayScheduleTableCount = 2;
+    const int configuredDayScheduleCount = 8;
+    const int configuredRateCount = 5;
+    const int configuredHolidayCount = 12;
+    const int configuredStepCount = 3;
+    const int configuredAutoScreenCount = 6;
+    const int configuredKeyScreenCount = 4;
 
     m_dataItems["0x04000101"] = DataItem("0x04000101", "当前日期(含星期代码)", compactDateWithWeek(now.date()), "-", "AA,AA,AA,AA", true, 0);
     m_dataItems["0x04000102"] = DataItem("0x04000102", "当前时间", now.time().toString(QStringLiteral("HHmmss")), "-", "AA,AA,AA", true, 0);
+    m_dataItems["0x04000103"] = DataItem("0x04000103", "最大需量周期", 15, "分钟", "AA", true, 0);
+    m_dataItems["0x04000104"] = DataItem("0x04000104", "滑差时间", 1, "分钟", "AA", true, 0);
     m_dataItems["0x04000105"] = DataItem("0x04000105", "校表脉冲宽度", 100, "毫秒", "AA,AA", true, 0);
     m_dataItems["0x04000106"] = DataItem("0x04000106", "两套时区表切换时间", compactDateTimeToMinutes(now.addDays(30)), "-", "AA,AA,AA,AA,AA", true, 0);
     m_dataItems["0x04000107"] = DataItem("0x04000107", "两套日时段表切换时间", compactDateTimeToMinutes(now.addDays(60)), "-", "AA,AA,AA,AA,AA", true, 0);
     m_dataItems["0x04000108"] = DataItem("0x04000108", "两套费率电价切换时间", compactDateTimeToMinutes(now.addDays(90)), "-", "AA,AA,AA,AA,AA", true, 0);
     m_dataItems["0x04000109"] = DataItem("0x04000109", "两套梯度切换时间", compactDateTimeToMinutes(now.addDays(120)), "-", "AA,AA,AA,AA,AA", true, 0);
-    m_dataItems["0x04000201"] = DataItem("0x04000201", "年时区数p", 2, "-", "AA", true, 0);
-    m_dataItems["0x04000202"] = DataItem("0x04000202", "日时段表数q", 2, "-", "AA", true, 0);
-    m_dataItems["0x04000203"] = DataItem("0x04000203", "日时段数m", 8, "-", "AA", true, 0);
-    m_dataItems["0x04000204"] = DataItem("0x04000204", "费率数k", 5, "-", "AA", true, 0);
-    m_dataItems["0x04000205"] = DataItem("0x04000205", "公共假日数n", 12, "天", "AA,AA", true, 0);
+    m_dataItems["0x04000201"] = DataItem("0x04000201", "年时区数p", configuredYearZoneCount, "个", "AA", true, 0);
+    m_dataItems["0x04000202"] = DataItem("0x04000202", "日时段表数q", configuredDayScheduleTableCount, "个", "AA", true, 0);
+    m_dataItems["0x04000203"] = DataItem("0x04000203", "日时段数m", configuredDayScheduleCount, "个", "AA", true, 0);
+    m_dataItems["0x04000204"] = DataItem("0x04000204", "费率数k", configuredRateCount, "个", "AA", true, 0);
+    m_dataItems["0x04000205"] = DataItem("0x04000205", "公共假日数n", configuredHolidayCount, "个", "AA,AA", true, 0);
     m_dataItems["0x04000206"] = DataItem("0x04000206", "谐波分析次数", 1, "次", "AA", true, 0);
-    m_dataItems["0x04000207"] = DataItem("0x04000207", "梯度数", 3, "个", "AA", true, 0);
+    m_dataItems["0x04000207"] = DataItem("0x04000207", "梯度数", configuredStepCount, "个", "AA", true, 0);
+
+    m_dataItems["0x04000301"] = DataItem("0x04000301", "自动循环显示屏数", configuredAutoScreenCount, "个", "AA", true, 0);
+    m_dataItems["0x04000302"] = DataItem("0x04000302", "每屏显示时间", 5, "秒", "AA", true, 0);
+    m_dataItems["0x04000303"] = DataItem("0x04000303", "显示电能小数位数", 2, "位", "AA", true, 0);
+    m_dataItems["0x04000304"] = DataItem("0x04000304", "显示功率(最大需量)小数位数", 4, "位", "AA", true, 0);
+    m_dataItems["0x04000305"] = DataItem("0x04000305", "按键循环显示屏数", configuredKeyScreenCount, "个", "AA", true, 0);
+    m_dataItems["0x04000306"] = DataItem("0x04000306", "电流互感器变比", QStringLiteral("000200"), "-", "AA,AA,AA", true, 0);
+    m_dataItems["0x04000307"] = DataItem("0x04000307", "电压互感器变比", QStringLiteral("000001"), "-", "AA,AA,AA", true, 0);
+
     m_dataItems["0x04000401"] = DataItem("0x04000401", "通信地址", m_meterAddress, "-", "AA,AA,AA,AA,AA,AA", true, 0);
-    m_dataItems["0x04000402"] = DataItem("0x04000402", "设备号", QStringLiteral("000000000001"), "-", "AA,AA,AA,AA,AA,AA", true, 0);
-    m_dataItems["0x04000703"] = DataItem("0x04000703", "波特率代码", 8, "-", "AA", true, 0);
+    m_dataItems["0x04000402"] = DataItem("0x04000402", "表号", QStringLiteral("000000000001"), "-", "AA,AA,AA,AA,AA,AA", true, 0);
+    m_dataItems["0x04000403"] = DataItem("0x04000403", "资产管理编码(ASCII码)", QStringLiteral("20260429000000000000000000000001"), "-", repeatedByteFormat(32), true, 0);
+    m_dataItems["0x04000404"] = DataItem("0x04000404", "额定电压(ASCII码)", QStringLiteral("000000220000"), "-", repeatedByteFormat(6), true, 0);
+    m_dataItems["0x04000405"] = DataItem("0x04000405", "额定电流/基本电流(ASCII码)", QStringLiteral("000000050000"), "-", repeatedByteFormat(6), true, 0);
+    m_dataItems["0x04000406"] = DataItem("0x04000406", "最大电流(ASCII码)", QStringLiteral("000000600000"), "-", repeatedByteFormat(6), true, 0);
+    m_dataItems["0x04000407"] = DataItem("0x04000407", "有功准确度等级(ASCII码)", QStringLiteral("0001"), "-", repeatedByteFormat(4), true, 0);
+    m_dataItems["0x04000408"] = DataItem("0x04000408", "无功准确度等级(ASCII码)", QStringLiteral("0002"), "-", repeatedByteFormat(4), true, 0);
+    m_dataItems["0x04000409"] = DataItem("0x04000409", "电表有功常数", QStringLiteral("1600"), "imp/kWh", "AA,AA", true, 0);
+    m_dataItems["0x0400040A"] = DataItem("0x0400040A", "电表无功常数", QStringLiteral("1600"), "imp/kvarh", "AA,AA", true, 0);
+    m_dataItems["0x0400040B"] = DataItem("0x0400040B", "电表型号(ASCII码)", QStringLiteral("DTZ0000001"), "-", repeatedByteFormat(10), true, 0);
+    m_dataItems["0x0400040C"] = DataItem("0x0400040C", "生产日期(ASCII码)", QStringLiteral("2026042900"), "-", repeatedByteFormat(10), true, 0);
+    m_dataItems["0x0400040D"] = DataItem("0x0400040D", "协议版本号(ASCII码)", QStringLiteral("6452007000000000"), "-", repeatedByteFormat(16), true, 0);
+    m_dataItems["0x0400040E"] = DataItem("0x0400040E", "客户编号", QStringLiteral("000001234567"), "-", "AA,AA,AA,AA,AA,AA", true, 0);
+
+    QVariantList statusWordBlock;
+    for (int i = 1; i <= 7; ++i)
+    {
+        const QString diCode = QStringLiteral("0x040005%1").arg(i, 2, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
+        const int value = (i == 1) ? 1 : 0;
+        m_dataItems[diCode] = DataItem(diCode, QStringLiteral("电表运行状态字%1").arg(i), value, "-", "AA,AA", true, 0);
+        statusWordBlock.append(value);
+    }
+    m_dataItems["0x040005FF"] = DataItem("0x040005FF", "电表运行状态字数据块", statusWordBlock, "-", repeatedFormatParts("AA,AA", 7), true, 0);
+
+    m_dataItems["0x04000601"] = DataItem("0x04000601", "有功组合方式特征字", 1, "-", "AA", true, 0);
+    m_dataItems["0x04000602"] = DataItem("0x04000602", "无功组合方式1特征字", 1, "-", "AA", true, 0);
+    m_dataItems["0x04000603"] = DataItem("0x04000603", "无功组合方式2特征字", 1, "-", "AA", true, 0);
+
+    m_dataItems["0x04000701"] = DataItem("0x04000701", "调制型红外光口通信速率特征字", 8, "-", "AA", true, 0);
+    m_dataItems["0x04000702"] = DataItem("0x04000702", "接触式红外光口通信速率特征字", 8, "-", "AA", true, 0);
+    m_dataItems["0x04000703"] = DataItem("0x04000703", "通信口1通信速率特征字", 8, "-", "AA", true, 0);
+    m_dataItems["0x04000704"] = DataItem("0x04000704", "通信口2通信速率特征字", 8, "-", "AA", true, 0);
+    m_dataItems["0x04000705"] = DataItem("0x04000705", "通信口3通信速率特征字", 8, "-", "AA", true, 0);
+
+    m_dataItems["0x04000801"] = DataItem("0x04000801", "周休日特征字", 96, "-", "AA", true, 0);
+    m_dataItems["0x04000802"] = DataItem("0x04000802", "周休日采用的日时段表号", 1, "-", "AA", true, 0);
+
+    m_dataItems["0x04000901"] = DataItem("0x04000901", "负荷记录模式字", 1, "-", "AA", true, 0);
+    m_dataItems["0x04000902"] = DataItem("0x04000902", "定时冻结数据模式字", 1, "-", "AA", true, 0);
+    m_dataItems["0x04000903"] = DataItem("0x04000903", "瞬时冻结数据模式字", 1, "-", "AA", true, 0);
+    m_dataItems["0x04000904"] = DataItem("0x04000904", "约定冻结数据模式字", 1, "-", "AA", true, 0);
+    m_dataItems["0x04000905"] = DataItem("0x04000905", "整点冻结数据模式字", 1, "-", "AA", true, 0);
+    m_dataItems["0x04000906"] = DataItem("0x04000906", "日冻结数据模式字", 1, "-", "AA", true, 0);
+
+    m_dataItems["0x04000A01"] = DataItem("0x04000A01", "负荷记录起始时间", QStringLiteral("01010000"), "-", "AA,AA,AA,AA", true, 0);
+    m_dataItems["0x04000A02"] = DataItem("0x04000A02", "第1类负荷记录间隔时间", 15, "分钟", "AA,AA", true, 0);
+    m_dataItems["0x04000A03"] = DataItem("0x04000A03", "第2类负荷记录间隔时间", 30, "分钟", "AA,AA", true, 0);
+    m_dataItems["0x04000A04"] = DataItem("0x04000A04", "第3类负荷记录间隔时间", 60, "分钟", "AA,AA", true, 0);
+    m_dataItems["0x04000A05"] = DataItem("0x04000A05", "第4类负荷记录间隔时间", 60, "分钟", "AA,AA", true, 0);
+    m_dataItems["0x04000A06"] = DataItem("0x04000A06", "第5类负荷记录间隔时间", 60, "分钟", "AA,AA", true, 0);
+    m_dataItems["0x04000A07"] = DataItem("0x04000A07", "第6类负荷记录间隔时间", 60, "分钟", "AA,AA", true, 0);
+
+    m_dataItems["0x04000B01"] = DataItem("0x04000B01", "每月第1结算日", QStringLiteral("0100"), "-", "AA,AA", true, 0);
+    m_dataItems["0x04000B02"] = DataItem("0x04000B02", "每月第2结算日", QStringLiteral("1500"), "-", "AA,AA", true, 0);
+    m_dataItems["0x04000B03"] = DataItem("0x04000B03", "每月第3结算日", QStringLiteral("9999"), "-", "AA,AA", true, 0);
+
+    m_dataItems["0x04001201"] = DataItem("0x04001201", "整点冻结起始时间", compactDateTimeToMinutes(QDateTime(QDate(now.date().year(), 1, 1), QTime(0, 0))), "-", "AA,AA,AA,AA,AA", true, 0);
+    m_dataItems["0x04001202"] = DataItem("0x04001202", "整点冻结时间间隔", 60, "分钟", "AA", true, 0);
+    m_dataItems["0x04001203"] = DataItem("0x04001203", "日冻结时间", QStringLiteral("0000"), "-", "AA,AA", true, 0);
+    m_dataItems["0x04001301"] = DataItem("0x04001301", "无线通信在线及信号强弱指示", 132, "-", "AA", true, 0);
+    m_dataItems["0x04001401"] = DataItem("0x04001401", "跳闸延时时间", 15, "分钟", "AA,AA", true, 0);
+
+    QVariantList firstSetYearZones;
+    QVariantList secondSetYearZones;
+    for (int zoneIndex = 0; zoneIndex < kMaxYearZoneCount; ++zoneIndex)
+    {
+        firstSetYearZones.append(buildYearZoneEntryValue(11, 0, zoneIndex));
+        secondSetYearZones.append(buildYearZoneEntryValue(37, 1, zoneIndex));
+    }
+    m_dataItems["0x04010000"] = DataItem("0x04010000", "第一套时区表数据", firstSetYearZones, "-", repeatedFormatParts("AA,AA,AA", kMaxYearZoneCount), true, 0);
+    m_dataItems["0x04020000"] = DataItem("0x04020000", "第二套时区表数据", secondSetYearZones, "-", repeatedFormatParts("AA,AA,AA", kMaxYearZoneCount), true, 0);
+
+    for (int tableIndex = 0; tableIndex < kMaxDayScheduleTableCount; ++tableIndex)
+    {
+        const QString firstDiCode = QStringLiteral("0x040100%1").arg(tableIndex + 1, 2, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
+        const QString secondDiCode = QStringLiteral("0x040200%1").arg(tableIndex + 1, 2, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
+        m_dataItems[firstDiCode] = DataItem(firstDiCode,
+                                            QStringLiteral("第一套第%1日时段表数据").arg(tableIndex + 1),
+                                            QVariantList(),
+                                            "-",
+                                            repeatedFormatParts("AA,AA,AA", kMaxDayScheduleCount),
+                                            true,
+                                            0);
+        m_dataItems[secondDiCode] = DataItem(secondDiCode,
+                                             QStringLiteral("第二套第%1日时段表数据").arg(tableIndex + 1),
+                                             QVariantList(),
+                                             "-",
+                                             repeatedFormatParts("AA,AA,AA", kMaxDayScheduleCount),
+                                             true,
+                                             0);
+        const QString firstValue = buildDayScheduleTableValue(19, 0, tableIndex);
+        const QString secondValue = buildDayScheduleTableValue(43, 1, tableIndex);
+        QVariantList firstTableEntries;
+        QVariantList secondTableEntries;
+        for (int slotIndex = 0; slotIndex < kMaxDayScheduleCount; ++slotIndex)
+        {
+            firstTableEntries.append(firstValue.mid(slotIndex * 6, 6));
+            secondTableEntries.append(secondValue.mid(slotIndex * 6, 6));
+        }
+        m_dataItems[firstDiCode].value = firstTableEntries;
+        m_dataItems[secondDiCode].value = secondTableEntries;
+    }
+
+    for (int holidayIndex = 0; holidayIndex < configuredHolidayCount; ++holidayIndex)
+    {
+        const QString diCode = QStringLiteral("0x0403%1").arg(holidayIndex + 1, 4, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
+        const QDate holidayDate(now.date().year(), (holidayIndex % 12) + 1, qMin(holidayIndex + 1, 28));
+        const int scheduleTableIndex = (holidayIndex % configuredDayScheduleTableCount) + 1;
+        m_dataItems[diCode] = DataItem(diCode,
+                                       QStringLiteral("第%1公共假日日期及日时段表号").arg(holidayIndex + 1),
+                                       buildHolidayEntryValue(holidayDate, scheduleTableIndex),
+                                       "-",
+                                       "AA,AA,AA,AA",
+                                       true,
+                                       0);
+    }
+
+    const QStringList autoScreenTargets = {
+        QStringLiteral("0x00000000"),
+        QStringLiteral("0x00010000"),
+        QStringLiteral("0x02010100"),
+        QStringLiteral("0x02020100"),
+        QStringLiteral("0x02030000"),
+        QStringLiteral("0x02060000")};
+    for (int screenIndex = 0; screenIndex < autoScreenTargets.size(); ++screenIndex)
+    {
+        const QString diCode = QStringLiteral("0x040401%1").arg(screenIndex + 1, 2, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
+        m_dataItems[diCode] = DataItem(diCode,
+                                       QStringLiteral("自动循环显示第%1屏显示数据项(是否分屏)").arg(screenIndex + 1),
+                                       buildDisplayScreenEntryValue(autoScreenTargets.at(screenIndex), screenIndex % 2),
+                                       "-",
+                                       "AA,AA,AA,AA,AA",
+                                       true,
+                                       0);
+    }
+
+    const QStringList keyScreenTargets = {
+        QStringLiteral("0x00020000"),
+        QStringLiteral("0x02010200"),
+        QStringLiteral("0x02020200"),
+        QStringLiteral("0x02040000")};
+    for (int screenIndex = 0; screenIndex < keyScreenTargets.size(); ++screenIndex)
+    {
+        const QString diCode = QStringLiteral("0x040402%1").arg(screenIndex + 1, 2, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
+        m_dataItems[diCode] = DataItem(diCode,
+                                       QStringLiteral("按键循环显示第%1屏显示数据项(是否分屏)").arg(screenIndex + 1),
+                                       buildDisplayScreenEntryValue(keyScreenTargets.at(screenIndex), screenIndex % 2),
+                                       "-",
+                                       "AA,AA,AA,AA,AA",
+                                       true,
+                                       0);
+    }
+
+    const QList<double> firstRatePrices = {0.5688, 0.6288, 0.6888, 0.7488, 0.8088};
+    const QList<double> secondRatePrices = {0.5888, 0.6488, 0.7088, 0.7688, 0.8288};
+    for (int rateIndex = 0; rateIndex < configuredRateCount; ++rateIndex)
+    {
+        const QString firstDiCode = QStringLiteral("0x040501%1").arg(rateIndex + 1, 2, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
+        const QString secondDiCode = QStringLiteral("0x040502%1").arg(rateIndex + 1, 2, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
+        m_dataItems[firstDiCode] = DataItem(firstDiCode, QStringLiteral("第一套费率电价%1").arg(rateIndex + 1), firstRatePrices.at(rateIndex), "元", "AA,AA,.,AA,AA", true, 4);
+        m_dataItems[secondDiCode] = DataItem(secondDiCode, QStringLiteral("第二套费率电价%1").arg(rateIndex + 1), secondRatePrices.at(rateIndex), "元", "AA,AA,.,AA,AA", true, 4);
+    }
+
+    const QList<double> firstStepValues = {1800.0, 3200.0, 5000.0};
+    const QList<double> firstStepPrices = {0.5688, 0.6188, 0.6888};
+    const QList<double> secondStepValues = {2000.0, 3500.0, 5200.0};
+    const QList<double> secondStepPrices = {0.5888, 0.6388, 0.7088};
+    for (int stepIndex = 0; stepIndex < configuredStepCount; ++stepIndex)
+    {
+        const QString firstValueDiCode = QStringLiteral("0x040600%1").arg(stepIndex + 1, 2, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
+        const QString firstPriceDiCode = QStringLiteral("0x040601%1").arg(stepIndex + 1, 2, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
+        const QString secondValueDiCode = QStringLiteral("0x040602%1").arg(stepIndex + 1, 2, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
+        const QString secondPriceDiCode = QStringLiteral("0x040603%1").arg(stepIndex + 1, 2, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
+        m_dataItems[firstValueDiCode] = DataItem(firstValueDiCode, QStringLiteral("第一套第%1阶梯值").arg(stepIndex + 1), firstStepValues.at(stepIndex), "kWh", "AA,AA,AA,.,AA", true, 2);
+        m_dataItems[firstPriceDiCode] = DataItem(firstPriceDiCode, QStringLiteral("第一套阶梯电价%1").arg(stepIndex + 1), firstStepPrices.at(stepIndex), "元", "AA,AA,.,AA,AA", true, 4);
+        m_dataItems[secondValueDiCode] = DataItem(secondValueDiCode, QStringLiteral("第二套第%1阶梯值").arg(stepIndex + 1), secondStepValues.at(stepIndex), "kWh", "AA,AA,AA,.,AA", true, 2);
+        m_dataItems[secondPriceDiCode] = DataItem(secondPriceDiCode, QStringLiteral("第二套阶梯电价%1").arg(stepIndex + 1), secondStepPrices.at(stepIndex), "元", "AA,AA,.,AA,AA", true, 4);
+    }
+
+    m_dataItems["0x04090101"] = DataItem("0x04090101", "失压事件电压触发上限", 60.0, "V", "AA,AA,.,A", true, 1);
+    m_dataItems["0x04090102"] = DataItem("0x04090102", "失压事件电压恢复下限", 180.0, "V", "AA,AA,.,A", true, 1);
+    m_dataItems["0x04090103"] = DataItem("0x04090103", "失压事件电流触发下限", 1.5, "A", "AA,.,AA,AA", true, 4);
+    m_dataItems["0x04090104"] = DataItem("0x04090104", "失压事件判定延时时间", 10, "秒", "AA", true, 0);
+    m_dataItems["0x04090201"] = DataItem("0x04090201", "欠压事件电压触发上限", 180.0, "V", "AA,AA,.,A", true, 1);
+    m_dataItems["0x04090202"] = DataItem("0x04090202", "欠压事件判定延时时间", 10, "秒", "AA", true, 0);
+    m_dataItems["0x04090301"] = DataItem("0x04090301", "过压事件电压触发下限", 260.0, "V", "AA,AA,.,A", true, 1);
+    m_dataItems["0x04090302"] = DataItem("0x04090302", "过压事件判定延时时间", 10, "秒", "AA", true, 0);
+    m_dataItems["0x04090401"] = DataItem("0x04090401", "断相事件电压触发上限", 60.0, "V", "AA,AA,.,A", true, 1);
+    m_dataItems["0x04090402"] = DataItem("0x04090402", "断相事件电流触发上限", 1.0, "A", "AA,.,AA,AA", true, 4);
+    m_dataItems["0x04090403"] = DataItem("0x04090403", "断相事件判定延时时间", 10, "秒", "AA", true, 0);
+    m_dataItems["0x04090501"] = DataItem("0x04090501", "电压不平衡率限值", 20.0, "%", "AA,.,AA", true, 2);
+    m_dataItems["0x04090502"] = DataItem("0x04090502", "电压不平衡率判定延时时间", 30, "秒", "AA", true, 0);
+    m_dataItems["0x04090601"] = DataItem("0x04090601", "电流不平衡率限值", 30.0, "%", "AA,.,AA", true, 2);
+    m_dataItems["0x04090602"] = DataItem("0x04090602", "电流不平衡率判定延时时间", 30, "秒", "AA", true, 0);
+    m_dataItems["0x04090701"] = DataItem("0x04090701", "失流事件电压触发下限", 180.0, "V", "AA,AA,.,A", true, 1);
+    m_dataItems["0x04090702"] = DataItem("0x04090702", "失流事件电流触发上限", 0.8, "A", "AA,.,AA,AA", true, 4);
+    m_dataItems["0x04090703"] = DataItem("0x04090703", "失流事件电流触发下限", 0.1, "A", "AA,.,AA,AA", true, 4);
+    m_dataItems["0x04090704"] = DataItem("0x04090704", "失流事件判定延时时间", 10, "秒", "AA", true, 0);
+    m_dataItems["0x04090801"] = DataItem("0x04090801", "过流事件电流触发下限", 80.0, "A", "AA,AA,.,A", true, 1);
+    m_dataItems["0x04090802"] = DataItem("0x04090802", "过流事件判定延时时间", 10, "秒", "AA", true, 0);
+    m_dataItems["0x04090901"] = DataItem("0x04090901", "断流事件电压触发下限", 180.0, "V", "AA,AA,.,A", true, 1);
+    m_dataItems["0x04090902"] = DataItem("0x04090902", "断流事件电流触发上限", 0.5, "A", "AA,.,AA,AA", true, 4);
+    m_dataItems["0x04090903"] = DataItem("0x04090903", "断流事件判定延时时间", 10, "秒", "AA", true, 0);
+    m_dataItems["0x04090A01"] = DataItem("0x04090A01", "潮流反向事件有功功率触发下限", 1.5, "kW", "AA,.,AA,AA", true, 4);
+    m_dataItems["0x04090A02"] = DataItem("0x04090A02", "潮流反向事件判定延时时间", 10, "秒", "AA", true, 0);
+    m_dataItems["0x04090B01"] = DataItem("0x04090B01", "过载事件有功功率触发下限", 15.0, "kW", "AA,.,AA,AA", true, 4);
+    m_dataItems["0x04090B02"] = DataItem("0x04090B02", "过载事件判定延时时间", 10, "秒", "AA", true, 0);
+    m_dataItems["0x04090C01"] = DataItem("0x04090C01", "电压考核上限", 242.0, "V", "AA,AA,.,A", true, 1);
+    m_dataItems["0x04090C02"] = DataItem("0x04090C02", "电压考核下限", 198.0, "V", "AA,AA,.,A", true, 1);
+    m_dataItems["0x04090D01"] = DataItem("0x04090D01", "有功需量超限事件需量触发下限", 10.0, "kW", "AA,.,AA,AA", true, 4);
+    m_dataItems["0x04090D02"] = DataItem("0x04090D02", "无功需量超限事件需量触发下限", 6.0, "kVar", "AA,.,AA,AA", true, 4);
+    m_dataItems["0x04090D03"] = DataItem("0x04090D03", "需量超限事件判定延时时间", 60, "秒", "AA", true, 0);
+    m_dataItems["0x04090E01"] = DataItem("0x04090E01", "总功率因数超下限阀值", 0.85, "-", "xx,AA", true, 3);
+    m_dataItems["0x04090E02"] = DataItem("0x04090E02", "总功率因数超下限判定延时时间", 60, "秒", "AA", true, 0);
+    m_dataItems["0x04090F01"] = DataItem("0x04090F01", "电流严重不平衡限值", 40.0, "%", "AA,.,AA", true, 2);
+    m_dataItems["0x04090F02"] = DataItem("0x04090F02", "电流严重不平衡触发延时时间", 60, "秒", "AA", true, 0);
 }
 
 void MeterModel::initializeFreezeData()
@@ -3226,6 +4267,32 @@ QList<QString> MeterModel::getDemandDataCodes() const
     return codes;
 }
 
+QList<QString> MeterModel::getSettlementDayDemandDataCodes(int settlementDay) const
+{
+    if (!isValidSettlementDayIndex(settlementDay))
+    {
+        return {};
+    }
+
+    QMutexLocker locker(&m_mutex);
+    QList<QString> codes;
+    for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
+    {
+        if (!isDemandDataCode(it.key()) || !isDataItemSupportedUnlocked(it.key()))
+        {
+            continue;
+        }
+
+        bool ok = false;
+        const int prefixValue = prefixedCodeValue(it.key(), &ok);
+        if (ok && settlementDayFromPrefixValue(prefixValue) == settlementDay)
+        {
+            codes.append(it.key());
+        }
+    }
+    return codes;
+}
+
 QList<QString> MeterModel::getMaxDemandDataCodes() const
 {
     QMutexLocker locker(&m_mutex);
@@ -3246,7 +4313,12 @@ QList<QString> MeterModel::getVariableDataCodes() const
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if (it.key().startsWith("0x02") && isDataItemSupportedUnlocked(it.key()))
+        bool ok = false;
+        const quint32 codeValue = it.key().toUInt(&ok, 16);
+        if (ok &&
+            codeValue >= 0x02000000 &&
+            codeValue < 0x02900000 &&
+            isDataItemSupportedUnlocked(it.key()))
         {
             codes.append(it.key());
         }
