@@ -249,26 +249,44 @@ namespace
 
     QString buildDayScheduleTableValue(int seed, int setIndex, int tableIndex)
     {
+        Q_UNUSED(seed);
+        Q_UNUSED(setIndex);
+
+        static const QVector<QStringList> tableTemplates = {
+            {QStringLiteral("000003"), QStringLiteral("040004"), QStringLiteral("080002"), QStringLiteral("110003"), QStringLiteral("130004"), QStringLiteral("170003"), QStringLiteral("190002")},
+            {QStringLiteral("000003"), QStringLiteral("040004"), QStringLiteral("080002"), QStringLiteral("110003"), QStringLiteral("130004"), QStringLiteral("140005"), QStringLiteral("160004"), QStringLiteral("170003"), QStringLiteral("190002")},
+            {QStringLiteral("000003"), QStringLiteral("040004"), QStringLiteral("080002"), QStringLiteral("110003"), QStringLiteral("130004"), QStringLiteral("140005"), QStringLiteral("160004"), QStringLiteral("170003"), QStringLiteral("190002"), QStringLiteral("210001"), QStringLiteral("230002")},
+            {QStringLiteral("000003"), QStringLiteral("040004"), QStringLiteral("080002"), QStringLiteral("110003"), QStringLiteral("130004"), QStringLiteral("170003"), QStringLiteral("190001"), QStringLiteral("210002")}};
+
+        const QStringList &templateValues = tableTemplates.at(tableIndex % tableTemplates.size());
         QString value;
         value.reserve(kMaxDayScheduleCount * 6);
         for (int slotIndex = 0; slotIndex < kMaxDayScheduleCount; ++slotIndex)
         {
-            const int hour = (seed + setIndex * 3 + tableIndex * 2 + slotIndex) % 24;
-            const int minute = ((slotIndex + tableIndex) % 4) * 15;
-            const int rateIndex = ((seed + setIndex + tableIndex + slotIndex) % kMaxRateCount) + 1;
-            value += QStringLiteral("%1%2%3")
-                         .arg(hour, 2, 10, QChar('0'))
-                         .arg(minute, 2, 10, QChar('0'))
-                         .arg(rateIndex, 2, 10, QChar('0'));
+            value += templateValues.at(qMin(slotIndex, templateValues.size() - 1));
         }
         return value;
     }
 
     QString buildYearZoneEntryValue(int seed, int setIndex, int zoneIndex)
     {
-        const int month = ((seed + setIndex + zoneIndex) % 12) + 1;
-        const int day = ((seed * 3 + zoneIndex * 2 + setIndex) % 28) + 1;
-        const int zoneNumber = ((seed + setIndex * 5 + zoneIndex) % kMaxYearZoneCount) + 1;
+        Q_UNUSED(seed);
+        Q_UNUSED(setIndex);
+
+        static const QStringList yearZoneTemplates = {
+            QStringLiteral("010104"),
+            QStringLiteral("020101"),
+            QStringLiteral("050102"),
+            QStringLiteral("070103"),
+            QStringLiteral("080102"),
+            QStringLiteral("090101"),
+            QStringLiteral("110104"),
+            QStringLiteral("120104")};
+
+        const QString templateValue = yearZoneTemplates.at(qMin(zoneIndex, yearZoneTemplates.size() - 1));
+        const int month = templateValue.mid(0, 2).toInt();
+        const int day = templateValue.mid(2, 2).toInt();
+        const int zoneNumber = templateValue.mid(4, 2).toInt();
         return QStringLiteral("%1%2%3")
             .arg(month, 2, 10, QChar('0'))
             .arg(day, 2, 10, QChar('0'))
@@ -1562,6 +1580,29 @@ namespace
         return codes;
     }
 
+    bool applyEnergyBlockValues(QMap<QString, DataItem> &items, const QString &blockCode, const QVariantList &values)
+    {
+        if (!blockCode.endsWith(QStringLiteral("FF00")) || !isMultiRateEnergyCode(blockCode))
+        {
+            return false;
+        }
+
+        const QStringList blockCodes = currentEnergyBlockCodes(items, blockCode);
+        const int valueCount = qMin(values.size(), blockCodes.size());
+        for (int valueIndex = 0; valueIndex < valueCount; ++valueIndex)
+        {
+            const QString &targetCode = blockCodes.at(valueIndex);
+            if (!items.contains(targetCode))
+            {
+                continue;
+            }
+
+            items[targetCode].value = values.at(valueIndex);
+        }
+
+        return true;
+    }
+
     QStringList currentDemandBlockCodes(const QMap<QString, DataItem> &items, const QString &diPrefix)
     {
         const int rateCount = currentRateCount(items);
@@ -2846,6 +2887,10 @@ bool MeterModel::setDataValue(const QString &diCode, const QVariant &value)
             emittedValue = normalizedParameterSettingValue(diCode, value);
 
             m_dataItems[diCode].value = emittedValue;
+            if (applyEnergyBlockValues(m_dataItems, diCode, emittedValue.toList()))
+            {
+                requiresBatchRefresh = true;
+            }
             if (isMultiRateEnergyCode(diCode))
             {
                 synchronizeCurrentEnergyTotals(m_dataItems);

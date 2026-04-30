@@ -106,6 +106,190 @@ namespace
         return QStringLiteral("%1 / %2").arg(selection.rootCategory, selection.leafCategory);
     }
 
+    QString rateName(int rateIndex)
+    {
+        switch (rateIndex)
+        {
+        case 1:
+            return QStringLiteral("尖峰");
+        case 2:
+            return QStringLiteral("高峰");
+        case 3:
+            return QStringLiteral("平");
+        case 4:
+            return QStringLiteral("低谷");
+        case 5:
+            return QStringLiteral("深谷");
+        default:
+            return QStringLiteral("费率%1").arg(rateIndex);
+        }
+    }
+
+    bool isYearZoneTableCode(const QString &diCode)
+    {
+        return diCode == QStringLiteral("0x04010000") || diCode == QStringLiteral("0x04020000");
+    }
+
+    bool isDayScheduleTableCode(const QString &diCode)
+    {
+        return diCode.startsWith(QStringLiteral("0x040100")) || diCode.startsWith(QStringLiteral("0x040200"));
+    }
+
+    bool parseYearZoneMonthDay(const QString &value, int *monthDay)
+    {
+        if (value.size() < 6)
+        {
+            return false;
+        }
+
+        bool monthOk = false;
+        bool dayOk = false;
+        const int month = value.mid(0, 2).toInt(&monthOk);
+        const int day = value.mid(2, 2).toInt(&dayOk);
+        if (!monthOk || !dayOk || month < 1 || month > 12 || day < 1 || day > 31)
+        {
+            return false;
+        }
+
+        *monthDay = month * 100 + day;
+        return true;
+    }
+
+    bool parseDayScheduleTime(const QString &value, int *minutes)
+    {
+        if (value.size() < 6)
+        {
+            return false;
+        }
+
+        bool hourOk = false;
+        bool minuteOk = false;
+        const int hour = value.mid(0, 2).toInt(&hourOk);
+        const int minute = value.mid(2, 2).toInt(&minuteOk);
+        if (!hourOk || !minuteOk || hour < 0 || hour > 23 || minute < 0 || minute > 59)
+        {
+            return false;
+        }
+
+        *minutes = hour * 60 + minute;
+        return true;
+    }
+
+    bool validateDetailValues(const QString &diCode, const QStringList &values, QString *message)
+    {
+        if (!isYearZoneTableCode(diCode) && !isDayScheduleTableCode(diCode))
+        {
+            return true;
+        }
+
+        int previousKey = -1;
+        for (int i = 0; i < values.size(); ++i)
+        {
+            int currentKey = 0;
+            const bool ok = isYearZoneTableCode(diCode)
+                                ? parseYearZoneMonthDay(values.at(i), &currentKey)
+                                : parseDayScheduleTime(values.at(i), &currentKey);
+            if (!ok)
+            {
+                *message = isYearZoneTableCode(diCode)
+                               ? QStringLiteral("第%1项格式不正确：时区表应为 MMDDTT，且月日必须合法。").arg(i + 1)
+                               : QStringLiteral("第%1项格式不正确：时段表应为 HHMMR，小时范围 00-23，分钟范围 00-59。").arg(i + 1);
+                return false;
+            }
+
+            if (previousKey > currentKey)
+            {
+                *message = isYearZoneTableCode(diCode)
+                               ? QStringLiteral("第%1项月日不能小于前一项月日。").arg(i + 1)
+                               : QStringLiteral("第%1项时分不能小于前一项时分，且小时不能填写 24。").arg(i + 1);
+                return false;
+            }
+
+            previousKey = currentKey;
+        }
+
+        return true;
+    }
+
+    QVariant convertEditedValue(const QString &text, const QVariant &originalValue)
+    {
+        bool ok = false;
+        switch (originalValue.type())
+        {
+        case QVariant::Int:
+        {
+            const int value = text.toInt(&ok);
+            return ok ? QVariant(value) : QVariant(text);
+        }
+        case QVariant::UInt:
+        {
+            const uint value = text.toUInt(&ok);
+            return ok ? QVariant(value) : QVariant(text);
+        }
+        case QVariant::LongLong:
+        {
+            const qlonglong value = text.toLongLong(&ok);
+            return ok ? QVariant(value) : QVariant(text);
+        }
+        case QVariant::ULongLong:
+        {
+            const qulonglong value = text.toULongLong(&ok);
+            return ok ? QVariant(value) : QVariant(text);
+        }
+        case QVariant::Double:
+        {
+            const double value = text.toDouble(&ok);
+            return ok ? QVariant(value) : QVariant(text);
+        }
+        default:
+            return text;
+        }
+    }
+
+    QVariantList editedValuesToVariantList(const QStringList &editedValues, const QVariantList &originalValues)
+    {
+        QVariantList convertedValues;
+        convertedValues.reserve(editedValues.size());
+        for (int valueIndex = 0; valueIndex < editedValues.size(); ++valueIndex)
+        {
+            const QVariant originalValue = valueIndex < originalValues.size() ? originalValues.at(valueIndex) : QVariant();
+            convertedValues.append(convertEditedValue(editedValues.at(valueIndex), originalValue));
+        }
+
+        return convertedValues;
+    }
+
+    QString detailValueDescription(const QString &diCode, const QString &value)
+    {
+        bool monthOk = false;
+        bool dayOk = false;
+        bool indexOk = false;
+
+        if (isYearZoneTableCode(diCode) && value.size() >= 6)
+        {
+            const int month = value.mid(0, 2).toInt(&monthOk);
+            const int day = value.mid(2, 2).toInt(&dayOk);
+            const int tableIndex = value.mid(4, 2).toInt(&indexOk);
+            if (monthOk && dayOk && indexOk)
+            {
+                return QStringLiteral("%1月%2日起使用第%3日时段表").arg(month).arg(day).arg(tableIndex);
+            }
+        }
+
+        if (isDayScheduleTableCode(diCode) && value.size() >= 6)
+        {
+            const int hour = value.mid(0, 2).toInt(&monthOk);
+            const int minute = value.mid(2, 2).toInt(&dayOk);
+            const int rateIndex = value.mid(4, 2).toInt(&indexOk);
+            if (monthOk && dayOk && indexOk)
+            {
+                return QStringLiteral("%1:%2起执行%3").arg(hour, 2, 10, QChar('0')).arg(minute, 2, 10, QChar('0')).arg(rateName(rateIndex));
+            }
+        }
+
+        return QString();
+    }
+
     QList<EventCategoryDefinition> eventCategoryDefinitions()
     {
         return {
@@ -740,6 +924,7 @@ bool DataTableWidget::updateDataItem(const QString &diCode, const QVariant &valu
             QTableWidgetItem *valueItem = m_tableWidget->item(i, 1);
             if (valueItem)
             {
+                QSignalBlocker blocker(m_tableWidget);
                 QString formattedValue = value.toString();
                 if (m_meterModel)
                 {
@@ -846,16 +1031,25 @@ void DataTableWidget::onItemClicked(QTableWidgetItem *item)
     }
 }
 
-void DataTableWidget::showValueDetailDialog(QTableWidgetItem *item)
+bool DataTableWidget::showValueDetailDialog(QTableWidgetItem *item)
 {
     if (!item || item->column() != 1)
     {
-        return;
+        return false;
     }
 
     const int row = item->row();
     const QString valueText = item->text();
     const QStringList values = valueText.split(QRegularExpression(QStringLiteral("\\s*[:：]\\s*")), Qt::KeepEmptyParts);
+    const QVariantList originalValues = item->data(Qt::UserRole).toList();
+    const QString separator = valueText.contains(QStringLiteral("：")) && !valueText.contains(QStringLiteral(":"))
+                                  ? QStringLiteral("：")
+                                  : QStringLiteral(":");
+
+    if (values.size() <= 1)
+    {
+        return false;
+    }
 
     QTableWidgetItem *diItem = m_tableWidget->item(row, 0);
     QTableWidgetItem *descItem = m_tableWidget->item(row, 4);
@@ -871,32 +1065,109 @@ void DataTableWidget::showValueDetailDialog(QTableWidgetItem *item)
     titleLabel->setWordWrap(true);
     layout->addWidget(titleLabel);
 
-    QTableWidget *detailTable = new QTableWidget(values.size(), 2, &dialog);
-    detailTable->setHorizontalHeaderLabels(QStringList() << QStringLiteral("序号") << QStringLiteral("数据值"));
-    detailTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    QLabel *hintLabel = new QLabel(QStringLiteral("提示：双击下方“数据值”单元格可直接修改，确定后写回原数据值。"), &dialog);
+    hintLabel->setWordWrap(true);
+    layout->addWidget(hintLabel);
+
+    QTableWidget *detailTable = new QTableWidget(values.size(), 3, &dialog);
+    detailTable->setHorizontalHeaderLabels(QStringList() << QStringLiteral("序号") << QStringLiteral("数据值") << QStringLiteral("说明"));
+    detailTable->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
     detailTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     detailTable->verticalHeader()->setVisible(false);
     detailTable->horizontalHeader()->setStretchLastSection(true);
     detailTable->setColumnWidth(0, 70);
+    detailTable->setColumnWidth(1, 140);
 
     for (int i = 0; i < values.size(); ++i)
     {
         QTableWidgetItem *indexItem = new QTableWidgetItem(QString::number(i + 1));
+        indexItem->setFlags(indexItem->flags() & ~Qt::ItemIsEditable);
         indexItem->setTextAlignment(Qt::AlignCenter);
         detailTable->setItem(i, 0, indexItem);
 
         QTableWidgetItem *valueItem = new QTableWidgetItem(values.at(i));
         valueItem->setTextAlignment(Qt::AlignCenter);
         detailTable->setItem(i, 1, valueItem);
+
+        QTableWidgetItem *descriptionItem = new QTableWidgetItem(detailValueDescription(diCode, values.at(i)));
+        descriptionItem->setFlags(descriptionItem->flags() & ~Qt::ItemIsEditable);
+        detailTable->setItem(i, 2, descriptionItem);
     }
+
+    connect(detailTable, &QTableWidget::itemChanged, detailTable, [detailTable, diCode](QTableWidgetItem *changedItem) {
+        if (!changedItem || changedItem->column() != 1)
+        {
+            return;
+        }
+
+        QTableWidgetItem *descriptionItem = detailTable->item(changedItem->row(), 2);
+        if (descriptionItem)
+        {
+            descriptionItem->setText(detailValueDescription(diCode, changedItem->text()));
+        }
+    });
 
     layout->addWidget(detailTable);
 
-    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok, &dialog);
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     layout->addWidget(buttonBox);
 
-    dialog.exec();
+    QVariantList acceptedValue;
+    bool hasAcceptedValue = false;
+
+    while (dialog.exec() == QDialog::Accepted)
+    {
+        QStringList editedValues;
+        editedValues.reserve(detailTable->rowCount());
+        for (int i = 0; i < detailTable->rowCount(); ++i)
+        {
+            QTableWidgetItem *valueItem = detailTable->item(i, 1);
+            editedValues.append(valueItem ? valueItem->text() : QString());
+        }
+
+        QString validationMessage;
+        if (!validateDetailValues(diCode, editedValues, &validationMessage))
+        {
+            QMessageBox::warning(&dialog, QStringLiteral("数据值格式不正确"), validationMessage);
+            continue;
+        }
+
+        acceptedValue = editedValuesToVariantList(editedValues, originalValues);
+        hasAcceptedValue = true;
+        break;
+    }
+
+    if (hasAcceptedValue)
+    {
+        if (m_meterModel)
+        {
+            QTimer::singleShot(0, this, [this, diCode, acceptedValue]() {
+                if (!m_meterModel)
+                {
+                    return;
+                }
+
+                m_meterModel->setDataValue(diCode, acceptedValue);
+                emit dataItemEdited(diCode, acceptedValue);
+            });
+        }
+        else
+        {
+            QSignalBlocker blocker(m_tableWidget);
+            item->setData(Qt::UserRole, acceptedValue);
+            QStringList displayValues;
+            displayValues.reserve(acceptedValue.size());
+            for (const QVariant &value : acceptedValue)
+            {
+                displayValues.append(value.toString());
+            }
+            item->setText(displayValues.join(separator));
+        }
+    }
+
+    return true;
 }
 
 void DataTableWidget::onItemDoubleClicked(QTableWidgetItem *item)
@@ -906,7 +1177,12 @@ void DataTableWidget::onItemDoubleClicked(QTableWidgetItem *item)
 
     if (item->column() == 1)
     {
-        showValueDetailDialog(item);
+        if (showValueDetailDialog(item))
+        {
+            return;
+        }
+
+        m_tableWidget->editItem(item);
         return;
     }
 
@@ -1195,6 +1471,7 @@ void DataTableWidget::updateItemValue(const QString &diCode, const QVariant &val
             QTableWidgetItem *valueItem = m_tableWidget->item(i, 1);
             if (valueItem)
             {
+                QSignalBlocker blocker(m_tableWidget);
                 valueItem->setText(value.toString());
                 valueItem->setData(Qt::UserRole, value);
             }
