@@ -110,6 +110,208 @@ QString resultSummary(const MasterQueryResult &result)
 
     return QString();
 }
+
+struct CategorySelection
+{
+    QString rootCategory;
+    QString leafCategory;
+};
+
+struct EventCategoryDefinition
+{
+    QString name;
+    QStringList prefixes;
+};
+
+struct ParameterCategoryDefinition
+{
+    QString name;
+    QStringList prefixes;
+};
+
+CategorySelection parseCategorySelection(const QString &category)
+{
+    const int separatorIndex = category.indexOf('/');
+    if (separatorIndex < 0)
+    {
+        return {category, QString()};
+    }
+
+    return {category.left(separatorIndex), category.mid(separatorIndex + 1)};
+}
+
+int settlementDayFromCategoryName(const QString &categoryName)
+{
+    if (categoryName == QStringLiteral("当前"))
+    {
+        return 0;
+    }
+
+    static const QRegularExpression settlementDayPattern(QStringLiteral("^上(\\d+)结算日$"));
+    const QRegularExpressionMatch match = settlementDayPattern.match(categoryName);
+    if (match.hasMatch())
+    {
+        return match.captured(1).toInt();
+    }
+
+    return -1;
+}
+
+QList<QString> settlementDayCategories(const QString &rootCategory)
+{
+    QList<QString> categories;
+    categories.reserve(13);
+    categories.append(QStringLiteral("%1/当前").arg(rootCategory));
+    for (int settlementDay = 1; settlementDay <= 12; ++settlementDay)
+    {
+        categories.append(QStringLiteral("%1/上%2结算日").arg(rootCategory).arg(settlementDay));
+    }
+
+    return categories;
+}
+
+QStringList eventCategoryNames()
+{
+    return {
+        QStringLiteral("失压"),
+        QStringLiteral("欠压"),
+        QStringLiteral("过压"),
+        QStringLiteral("断相"),
+        QStringLiteral("全失压"),
+        QStringLiteral("辅助电源失电"),
+        QStringLiteral("电压逆相序"),
+        QStringLiteral("电流逆相序"),
+        QStringLiteral("电压不平衡"),
+        QStringLiteral("电压合格率"),
+        QStringLiteral("掉电"),
+        QStringLiteral("需量超限"),
+        QStringLiteral("编程记录"),
+        QStringLiteral("电表清零"),
+        QStringLiteral("需量清零"),
+        QStringLiteral("事件清零"),
+        QStringLiteral("校时"),
+        QStringLiteral("时段表编程"),
+        QStringLiteral("时区表编程")};
+}
+
+QList<EventCategoryDefinition> eventCategoryDefinitions()
+{
+    return {
+        {QStringLiteral("失压"), {QStringLiteral("0x0301")}},
+        {QStringLiteral("欠压"), {QStringLiteral("0x0302")}},
+        {QStringLiteral("过压"), {QStringLiteral("0x0303")}},
+        {QStringLiteral("断相"), {QStringLiteral("0x0304")}},
+        {QStringLiteral("全失压"), {QStringLiteral("0x0305")}},
+        {QStringLiteral("辅助电源失电"), {QStringLiteral("0x0306")}},
+        {QStringLiteral("电压逆相序"), {QStringLiteral("0x0307")}},
+        {QStringLiteral("电流逆相序"), {QStringLiteral("0x0308")}},
+        {QStringLiteral("电压不平衡"), {QStringLiteral("0x0309")}},
+        {QStringLiteral("电压合格率"), {QStringLiteral("0x0310")}},
+        {QStringLiteral("掉电"), {QStringLiteral("0x0311")}},
+        {QStringLiteral("需量超限"), {QStringLiteral("0x0312")}},
+        {QStringLiteral("编程记录"), {QStringLiteral("0x033000")}},
+        {QStringLiteral("电表清零"), {QStringLiteral("0x033001")}},
+        {QStringLiteral("需量清零"), {QStringLiteral("0x033002")}},
+        {QStringLiteral("事件清零"), {QStringLiteral("0x033003")}},
+        {QStringLiteral("校时"), {QStringLiteral("0x033004")}},
+        {QStringLiteral("时段表编程"), {QStringLiteral("0x033005")}},
+        {QStringLiteral("时区表编程"), {QStringLiteral("0x033006")}}};
+}
+
+QStringList parameterCategoryNames()
+{
+    return {
+        QStringLiteral("基本参数"),
+        QStringLiteral("第一套时区时段"),
+        QStringLiteral("第二套时区时段"),
+        QStringLiteral("公共假日"),
+        QStringLiteral("显示参数"),
+        QStringLiteral("费率电价"),
+        QStringLiteral("阶梯电价"),
+        QStringLiteral("事件参数")};
+}
+
+QList<ParameterCategoryDefinition> parameterCategoryDefinitions()
+{
+    return {
+        {QStringLiteral("基本参数"), {QStringLiteral("0x0400")}},
+        {QStringLiteral("第一套时区时段"), {QStringLiteral("0x0401")}},
+        {QStringLiteral("第二套时区时段"), {QStringLiteral("0x0402")}},
+        {QStringLiteral("公共假日"), {QStringLiteral("0x0403")}},
+        {QStringLiteral("显示参数"), {QStringLiteral("0x0404")}},
+        {QStringLiteral("费率电价"), {QStringLiteral("0x040501"), QStringLiteral("0x040502")}},
+        {QStringLiteral("阶梯电价"), {QStringLiteral("0x040600"), QStringLiteral("0x040601"), QStringLiteral("0x040602"), QStringLiteral("0x040603")}},
+        {QStringLiteral("事件参数"), {QStringLiteral("0x0409")}}};
+}
+
+QList<QString> filterCodesByPrefixes(const QList<QString> &allCodes, const QStringList &prefixes)
+{
+    if (prefixes.isEmpty())
+    {
+        return allCodes;
+    }
+
+    QList<QString> filteredCodes;
+    filteredCodes.reserve(allCodes.size());
+    for (const QString &diCode : allCodes)
+    {
+        for (const QString &prefix : prefixes)
+        {
+            if (diCode.startsWith(prefix))
+            {
+                filteredCodes.append(diCode);
+                break;
+            }
+        }
+    }
+
+    return filteredCodes;
+}
+
+QList<QString> filterEventCodesByCategory(const MeterModel *meterModel, const QList<QString> &allCodes, const QString &categoryName)
+{
+    QStringList matchedPrefixes;
+    for (const EventCategoryDefinition &definition : eventCategoryDefinitions())
+    {
+        if (definition.name == categoryName)
+        {
+            matchedPrefixes = definition.prefixes;
+            break;
+        }
+    }
+
+    QList<QString> filteredCodes = filterCodesByPrefixes(allCodes, matchedPrefixes);
+    if (!filteredCodes.isEmpty() || matchedPrefixes.isEmpty() || !meterModel)
+    {
+        return filteredCodes;
+    }
+
+    for (const QString &diCode : allCodes)
+    {
+        const DataItem dataItem = meterModel->getDataItem(diCode);
+        if (dataItem.description.contains(categoryName, Qt::CaseInsensitive))
+        {
+            filteredCodes.append(diCode);
+        }
+    }
+
+    return filteredCodes;
+}
+
+QList<QString> filterParameterCodesByCategory(const QList<QString> &allCodes, const QString &categoryName)
+{
+    QStringList matchedPrefixes;
+    for (const ParameterCategoryDefinition &definition : parameterCategoryDefinitions())
+    {
+        if (definition.name == categoryName)
+        {
+            matchedPrefixes = definition.prefixes;
+            break;
+        }
+    }
+
+    return filterCodesByPrefixes(allCodes, matchedPrefixes);
+}
 }
 
 MasterQueryDialog::MasterQueryDialog(QWidget *parent)
@@ -1135,31 +1337,64 @@ void MasterQueryDialog::populateDataItems()
 
 QList<QString> MasterQueryDialog::allCategories() const
 {
-    return {
-        QString::fromUtf8("电能量"),
-        QString::fromUtf8("最大需量及发生时间"),
-        QString::fromUtf8("变量"),
-        QString::fromUtf8("事件记录"),
-        QString::fromUtf8("参变量"),
-        QString::fromUtf8("定时冻结"),
-        QString::fromUtf8("瞬时冻结"),
-        QString::fromUtf8("时区切换冻结"),
-        QString::fromUtf8("日时段切换冻结"),
-        QString::fromUtf8("整点冻结"),
-        QString::fromUtf8("分时费率切换冻结"),
-        QString::fromUtf8("日冻结"),
-        QString::fromUtf8("阶梯切换冻结"),
-        QString::fromUtf8("负荷记录")};
+    QList<QString> categories;
+    categories.append(settlementDayCategories(QStringLiteral("电能量")));
+    categories.append(settlementDayCategories(QStringLiteral("最大需量及发生时间")));
+    categories.append(QStringLiteral("变量"));
+
+    for (const QString &category : eventCategoryNames())
+    {
+        categories.append(QStringLiteral("事件记录/%1").arg(category));
+    }
+
+    for (const QString &category : parameterCategoryNames())
+    {
+        categories.append(QStringLiteral("参变量/%1").arg(category));
+    }
+
+    categories << QStringLiteral("定时冻结")
+               << QStringLiteral("瞬时冻结")
+               << QStringLiteral("时区切换冻结")
+               << QStringLiteral("日时段切换冻结")
+               << QStringLiteral("整点冻结")
+               << QStringLiteral("分时费率切换冻结")
+               << QStringLiteral("日冻结")
+               << QStringLiteral("阶梯切换冻结")
+               << QStringLiteral("负荷记录");
+
+    return categories;
 }
 
 QList<QString> MasterQueryDialog::dataCodesForCategory(const QString &category) const
 {
-    if (category == QString::fromUtf8("电能量"))
+    const CategorySelection selection = parseCategorySelection(category);
+    const QString rootCategory = selection.rootCategory;
+    const QString leafCategory = selection.leafCategory;
+    const bool hasRootCategory = !leafCategory.isEmpty();
+
+    if ((hasRootCategory && rootCategory == QStringLiteral("电能量")) || category == QStringLiteral("当前"))
     {
-        return m_catalogMeterModel->getEnergyDataCodes();
+        const int settlementDay = hasRootCategory ? settlementDayFromCategoryName(leafCategory)
+                                                  : settlementDayFromCategoryName(category);
+        if (settlementDay == 0)
+        {
+            return m_catalogMeterModel->getEnergyDataCodes();
+        }
+        if (settlementDay > 0)
+        {
+            return m_catalogMeterModel->getSettlementDayEnergyDataCodes(settlementDay);
+        }
+        return {};
     }
-    if (category == QString::fromUtf8("最大需量及发生时间"))
+
+    if ((hasRootCategory && rootCategory == QStringLiteral("最大需量及发生时间")) || category == QStringLiteral("最大需量及发生时间"))
     {
+        if (hasRootCategory)
+        {
+            const int settlementDay = settlementDayFromCategoryName(leafCategory);
+            return settlementDay >= 0 ? m_catalogMeterModel->getSettlementDayDemandDataCodes(settlementDay) : QList<QString>();
+        }
+
         QList<QString> codes = m_catalogMeterModel->getDemandDataCodes();
         const QList<QString> maxDemandCodes = m_catalogMeterModel->getMaxDemandDataCodes();
         for (const QString &diCode : maxDemandCodes)
@@ -1171,30 +1406,32 @@ QList<QString> MasterQueryDialog::dataCodesForCategory(const QString &category) 
         }
         return codes;
     }
-    if (category == QString::fromUtf8("变量"))
+    if (category == QStringLiteral("变量"))
     {
         return m_catalogMeterModel->getVariableDataCodes();
     }
-    if (category == QString::fromUtf8("事件记录"))
+    if ((hasRootCategory && rootCategory == QStringLiteral("事件记录")) || category == QStringLiteral("事件记录"))
     {
-        return m_catalogMeterModel->getEventDataCodes();
+        const QList<QString> eventCodes = m_catalogMeterModel->getEventDataCodes();
+        return hasRootCategory ? filterEventCodesByCategory(m_catalogMeterModel, eventCodes, leafCategory) : eventCodes;
     }
-    if (category == QString::fromUtf8("参变量"))
+    if ((hasRootCategory && rootCategory == QStringLiteral("参变量")) || category == QStringLiteral("参变量"))
     {
-        return m_catalogMeterModel->getParameterDataCodes();
+        const QList<QString> parameterCodes = m_catalogMeterModel->getParameterDataCodes();
+        return hasRootCategory ? filterParameterCodesByCategory(parameterCodes, leafCategory) : parameterCodes;
     }
-    if (category == QString::fromUtf8("定时冻结") ||
-        category == QString::fromUtf8("瞬时冻结") ||
-        category == QString::fromUtf8("时区切换冻结") ||
-        category == QString::fromUtf8("日时段切换冻结") ||
-        category == QString::fromUtf8("整点冻结") ||
-        category == QString::fromUtf8("分时费率切换冻结") ||
-        category == QString::fromUtf8("日冻结") ||
-        category == QString::fromUtf8("阶梯切换冻结"))
+    if (category == QStringLiteral("定时冻结") ||
+        category == QStringLiteral("瞬时冻结") ||
+        category == QStringLiteral("时区切换冻结") ||
+        category == QStringLiteral("日时段切换冻结") ||
+        category == QStringLiteral("整点冻结") ||
+        category == QStringLiteral("分时费率切换冻结") ||
+        category == QStringLiteral("日冻结") ||
+        category == QStringLiteral("阶梯切换冻结"))
     {
         return m_catalogMeterModel->getFreezeDataCodes(category);
     }
-    if (category == QString::fromUtf8("负荷记录"))
+    if (category == QStringLiteral("负荷记录"))
     {
         return m_catalogMeterModel->getLoadRecordDataCodes();
     }
