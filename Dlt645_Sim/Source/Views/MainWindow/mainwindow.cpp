@@ -32,6 +32,11 @@
 #include <QStyle>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
+#include <QFile>
+#include <QFileDialog>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QDebug>
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), ui(new Ui::MainWindow), m_serialController(new SerialController(this)), m_tcpController(new TcpController(this)), m_protocolController(new ProtocolController(this)), m_dataGenerator(new DataGenerator(this)), m_viewModel(new MainWindowViewModel(this)), m_operationLogWidget(nullptr), m_dataTableWidget(nullptr), m_mainSplitter(nullptr), m_bottomSplitter(nullptr), m_connectionButtonStack(nullptr), m_connectionStatusLabel(nullptr), m_meterAddressLabel(nullptr), m_realTimeBarWidget(nullptr), m_realTimeDataLabel(nullptr), m_realTimeDataTimer(nullptr), m_realTimePhaseIndex(0), m_newConnectionAction(nullptr), m_newMeterAction(nullptr), m_batchNewMeterAction(nullptr), m_openConnectionAction(nullptr), m_openConnectionSeparatorAction(nullptr), m_closeConnectionAction(nullptr), m_closeConnectionSeparatorAction(nullptr), m_commInteractionAction(nullptr), m_masterQueryAction(nullptr), m_queryFrameAction(nullptr), m_frameParseAction(nullptr), m_darkThemeAction(nullptr), m_lightThemeAction(nullptr), m_communicationDialog(nullptr), m_masterQueryDialog(nullptr), m_queryFrameDialog(nullptr), m_frameParseDialog(nullptr), m_meterDataStore(new MeterDataStore(this)), m_currentMeterModel(nullptr)
@@ -266,6 +271,18 @@ void MainWindow::setupMenuBar()
     QMenu *fileMenu = menuBar->addMenu(QStringLiteral("文件(&F)"));
 
     QAction *exitAction = fileMenu->addAction(QStringLiteral("退出(&X)"));
+    QAction *importConfigAction = fileMenu->addAction(QStringLiteral("导入配置..."));
+    importConfigAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+O")));
+    connect(importConfigAction, &QAction::triggered, this, &MainWindow::onImportConfiguration);
+
+    QAction *exportConfigAction = fileMenu->addAction(QStringLiteral("导出配置..."));
+    exportConfigAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+S")));
+    connect(exportConfigAction, &QAction::triggered, this, &MainWindow::onExportConfiguration);
+
+    fileMenu->insertAction(exitAction, importConfigAction);
+    fileMenu->insertAction(exitAction, exportConfigAction);
+    fileMenu->insertSeparator(exitAction);
+
     exitAction->setShortcut(QKeySequence("Ctrl+Q"));
     connect(exitAction, &QAction::triggered, this, &QMainWindow::close);
 
@@ -2151,6 +2168,247 @@ void MainWindow::onLoggerLogEntryAdded(LogLevel level, const QDateTime &timestam
         m_operationLogWidget->addError(message);
         break;
     }
+}
+
+void MainWindow::onExportConfiguration()
+{
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    if (!deviceTree)
+    {
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("未找到设备树"));
+        return;
+    }
+
+    const QString fileName = QFileDialog::getSaveFileName(
+        this,
+        QStringLiteral("导出配置"),
+        QStringLiteral("dlt645_config.json"),
+        QStringLiteral("JSON 配置文件 (*.json)"));
+    if (fileName.isEmpty())
+    {
+        return;
+    }
+
+    QJsonArray connectionArray;
+    QTreeWidget *tree = deviceTree->getTreeWidget();
+    for (int i = 0; i < tree->topLevelItemCount(); ++i)
+    {
+        QTreeWidgetItem *connectionItem = tree->topLevelItem(i);
+        if (!connectionItem)
+        {
+            continue;
+        }
+
+        const QString alias = connectionItem->data(0, Qt::UserRole).toString();
+        if (!m_viewModel->hasConnectionConfig(alias))
+        {
+            continue;
+        }
+
+        const ConnectionConfig config = m_viewModel->connectionConfig(alias);
+        QJsonObject connectionObject;
+        connectionObject.insert(QStringLiteral("type"), config.type == ConnectionType::Serial ? QStringLiteral("serial") : QStringLiteral("tcp"));
+        connectionObject.insert(QStringLiteral("alias"), config.alias);
+        connectionObject.insert(QStringLiteral("serialPort"), config.serialPort);
+        connectionObject.insert(QStringLiteral("baudRate"), config.baudRate);
+        connectionObject.insert(QStringLiteral("dataBits"), config.dataBits);
+        connectionObject.insert(QStringLiteral("stopBits"), config.stopBits);
+        connectionObject.insert(QStringLiteral("parity"), config.parity);
+        connectionObject.insert(QStringLiteral("flowControl"), config.flowControl);
+        connectionObject.insert(QStringLiteral("tcpAddress"), config.tcpAddress);
+        connectionObject.insert(QStringLiteral("tcpPort"), config.tcpPort);
+
+        QJsonArray meterArray;
+        for (int j = 0; j < connectionItem->childCount(); ++j)
+        {
+            QTreeWidgetItem *meterItem = connectionItem->child(j);
+            if (!meterItem)
+            {
+                continue;
+            }
+
+            const ItemType itemType = static_cast<ItemType>(meterItem->data(0, Qt::UserRole + 1).toInt());
+            if (itemType != ItemType::Meter)
+            {
+                continue;
+            }
+
+            QJsonObject meterObject;
+            meterObject.insert(QStringLiteral("alias"), meterItem->data(0, Qt::UserRole).toString());
+            meterObject.insert(QStringLiteral("address"), meterItem->data(0, Qt::UserRole + 2).toString());
+            meterObject.insert(QStringLiteral("operatorCode"), meterItem->data(0, Qt::UserRole + 3).toString());
+            meterObject.insert(QStringLiteral("password"), meterItem->data(0, Qt::UserRole + 4).toString());
+            meterObject.insert(QStringLiteral("includeLeadingFE"), meterItem->data(0, Qt::UserRole + 5).toBool());
+            meterObject.insert(QStringLiteral("phaseType"), meterItem->data(0, Qt::UserRole + 6).toInt());
+            meterArray.append(meterObject);
+        }
+
+        connectionObject.insert(QStringLiteral("meters"), meterArray);
+        connectionArray.append(connectionObject);
+    }
+
+    QJsonObject rootObject;
+    rootObject.insert(QStringLiteral("version"), 1);
+    rootObject.insert(QStringLiteral("exportedAt"), QDateTime::currentDateTime().toString(Qt::ISODate));
+    rootObject.insert(QStringLiteral("connections"), connectionArray);
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    {
+        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("无法写入配置文件：%1").arg(file.errorString()));
+        return;
+    }
+
+    file.write(QJsonDocument(rootObject).toJson(QJsonDocument::Indented));
+    QMessageBox::information(this, QStringLiteral("成功"), QStringLiteral("配置已导出"));
+}
+
+void MainWindow::onImportConfiguration()
+{
+    const QString fileName = QFileDialog::getOpenFileName(
+        this,
+        QStringLiteral("导入配置"),
+        QString(),
+        QStringLiteral("JSON 配置文件 (*.json)"));
+    if (fileName.isEmpty())
+    {
+        return;
+    }
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("无法读取配置文件：%1").arg(file.errorString()));
+        return;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject())
+    {
+        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("配置文件格式错误：%1").arg(parseError.errorString()));
+        return;
+    }
+
+    const QJsonArray connectionArray = document.object().value(QStringLiteral("connections")).toArray();
+    if (connectionArray.isEmpty())
+    {
+        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("配置文件中没有连接配置"));
+        return;
+    }
+
+    const QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        QStringLiteral("确认导入"),
+        QStringLiteral("导入会替换当前所有连接和电表配置，是否继续？"),
+        QMessageBox::Yes | QMessageBox::No);
+    if (reply != QMessageBox::Yes)
+    {
+        return;
+    }
+
+    if (m_viewModel->isConnected())
+    {
+        closeConnectionInternal(m_viewModel->currentConnectionAlias());
+    }
+
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    if (!deviceTree)
+    {
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("未找到设备树"));
+        return;
+    }
+
+    QStringList existingConnectionAliases;
+    QTreeWidget *tree = deviceTree->getTreeWidget();
+    for (int i = 0; i < tree->topLevelItemCount(); ++i)
+    {
+        QTreeWidgetItem *connectionItem = tree->topLevelItem(i);
+        if (connectionItem)
+        {
+            existingConnectionAliases.append(connectionItem->data(0, Qt::UserRole).toString());
+        }
+    }
+
+    for (const QString &alias : existingConnectionAliases)
+    {
+        m_viewModel->removeConnectionConfig(alias);
+    }
+
+    const QStringList existingAddresses = collectMeterAddresses();
+    for (const QString &address : existingAddresses)
+    {
+        MeterModel *meterModel = m_meterModelsByAddress.take(address);
+        m_protocolController->unregisterMeterModel(address);
+        if (meterModel)
+        {
+            meterModel->deleteLater();
+        }
+    }
+
+    deviceTree->clearTree();
+    clearCurrentMeter();
+
+    MeterInfo lastMeterInfo;
+    QStringList importedAddresses;
+    for (const QJsonValue &connectionValue : connectionArray)
+    {
+        const QJsonObject connectionObject = connectionValue.toObject();
+        ConnectionConfig config;
+        config.type = connectionObject.value(QStringLiteral("type")).toString() == QStringLiteral("tcp")
+                          ? ConnectionType::TCP
+                          : ConnectionType::Serial;
+        config.alias = connectionObject.value(QStringLiteral("alias")).toString();
+        config.serialPort = connectionObject.value(QStringLiteral("serialPort")).toString();
+        config.baudRate = connectionObject.value(QStringLiteral("baudRate")).toInt(config.baudRate);
+        config.dataBits = connectionObject.value(QStringLiteral("dataBits")).toInt(config.dataBits);
+        config.stopBits = connectionObject.value(QStringLiteral("stopBits")).toInt(config.stopBits);
+        config.parity = connectionObject.value(QStringLiteral("parity")).toInt(config.parity);
+        config.flowControl = connectionObject.value(QStringLiteral("flowControl")).toInt(config.flowControl);
+        config.tcpAddress = connectionObject.value(QStringLiteral("tcpAddress")).toString();
+        config.tcpPort = connectionObject.value(QStringLiteral("tcpPort")).toInt(config.tcpPort);
+
+        if (config.alias.isEmpty())
+        {
+            continue;
+        }
+
+        m_viewModel->upsertConnectionConfig(config);
+        deviceTree->addConnection(buildConnectionInfo(config, false));
+
+        const QJsonArray meterArray = connectionObject.value(QStringLiteral("meters")).toArray();
+        for (const QJsonValue &meterValue : meterArray)
+        {
+            const QJsonObject meterObject = meterValue.toObject();
+            MeterInfo meterInfo;
+            meterInfo.alias = meterObject.value(QStringLiteral("alias")).toString();
+            meterInfo.address = meterObject.value(QStringLiteral("address")).toString();
+            meterInfo.operatorCode = meterObject.value(QStringLiteral("operatorCode")).toString();
+            meterInfo.password = meterObject.value(QStringLiteral("password")).toString();
+            meterInfo.includeLeadingFE = meterObject.value(QStringLiteral("includeLeadingFE")).toBool();
+            meterInfo.phaseType = static_cast<MeterPhaseType>(meterObject.value(QStringLiteral("phaseType")).toInt(static_cast<int>(MeterPhaseType::ThreePhase)));
+
+            if (meterInfo.alias.isEmpty() || meterInfo.address.isEmpty() || importedAddresses.contains(meterInfo.address))
+            {
+                continue;
+            }
+
+            if (deviceTree->addMeter(config.alias, meterInfo))
+            {
+                createMeterModel(meterInfo);
+                importedAddresses.append(meterInfo.address);
+                lastMeterInfo = meterInfo;
+            }
+        }
+    }
+
+    refreshMeterPresence();
+    if (!lastMeterInfo.address.isEmpty())
+    {
+        applyCurrentMeter(lastMeterInfo);
+    }
+    updateToolBarButtons();
+    QMessageBox::information(this, QStringLiteral("成功"), QStringLiteral("配置已导入"));
 }
 
 void MainWindow::onSearchTextChanged(const QString &text)

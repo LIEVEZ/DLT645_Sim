@@ -64,6 +64,8 @@ private slots:
     void onQueryFrameDialogClosed();
     void onFrameParseDialog();
     void onLoggerLogEntryAdded(LogLevel level, const QDateTime &timestamp, const QString &message);
+    void onImportConfiguration();
+    void onExportConfiguration();
 
     void onSearchTextChanged(const QString &text);
     void onConnectionSelected(const QString &connectionAlias);

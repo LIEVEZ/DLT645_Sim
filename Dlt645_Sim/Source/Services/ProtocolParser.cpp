@@ -148,9 +148,9 @@ ProtocolFrame ProtocolParser::buildReadRequest(const QByteArray &address, const 
     frame.startFlag2 = 0x68;
     frame.controlCode = static_cast<quint8>(ControlCode::ReadData);
 
-    // 数据域：数据标识（4字节）+ 数据长度（1字节）
+    // Data field: DI (4 bytes).
     QByteArray diBytes = diCodeToBytes(diCode);
-    frame.dataField = diBytes + QByteArray(1, 0x00); // 数据长度为0表示读取全部
+    frame.dataField = diBytes;
     frame.dataLength = static_cast<quint8>(frame.dataField.size());
 
     frame.checksum = 0;
