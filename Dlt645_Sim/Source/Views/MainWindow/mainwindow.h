@@ -72,8 +72,11 @@ private slots:
     void onOpenConnectionRequested(const QString &connectionAlias);
     void onCloseConnectionRequested(const QString &connectionAlias);
     void onDeleteConnectionRequested(const QString &connectionAlias);
+    void onDeleteAllMetersRequested(const QString &connectionAlias);
     void onEditConnectionRequested(const QString &connectionAlias);
     void onNewMeterRequested(const QString &connectionAlias);
+    void onBatchNewMeterDialog();
+    void onBatchNewMeterRequested(const QString &connectionAlias);
     void onDeleteMeterRequested(const QString &connectionAlias, const QString &meterAlias);
     void onToggleDarkTheme(bool enabled);
     void onToggleLightTheme(bool enabled);
@@ -129,6 +132,7 @@ private:
 
     QAction *m_newConnectionAction;
     QAction *m_newMeterAction;
+    QAction *m_batchNewMeterAction;
     QAction *m_openConnectionAction;
     QAction *m_openConnectionSeparatorAction;
     QAction *m_closeConnectionAction;

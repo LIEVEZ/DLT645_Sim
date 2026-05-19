@@ -6,6 +6,7 @@
 #include "Views/DataTable/DataTableWidget.h"
 #include "Views/Dialogs/NewConnectionDialog.h"
 #include "Views/Dialogs/NewMeterDialog.h"
+#include "Views/Dialogs/BatchNewMeterDialog.h"
 #include "Views/Dialogs/CommunicationDialog.h"
 #include "Views/Dialogs/MasterQueryDialog.h"
 #include "Views/Dialogs/FrameParseDialog.h"
@@ -33,7 +34,7 @@
 #include <QTreeWidgetItem>
 #include <QDebug>
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow), m_serialController(new SerialController(this)), m_tcpController(new TcpController(this)), m_protocolController(new ProtocolController(this)), m_dataGenerator(new DataGenerator(this)), m_viewModel(new MainWindowViewModel(this)), m_operationLogWidget(nullptr), m_dataTableWidget(nullptr), m_mainSplitter(nullptr), m_bottomSplitter(nullptr), m_connectionButtonStack(nullptr), m_connectionStatusLabel(nullptr), m_meterAddressLabel(nullptr), m_realTimeBarWidget(nullptr), m_realTimeDataLabel(nullptr), m_realTimeDataTimer(nullptr), m_realTimePhaseIndex(0), m_newConnectionAction(nullptr), m_newMeterAction(nullptr), m_openConnectionAction(nullptr), m_openConnectionSeparatorAction(nullptr), m_closeConnectionAction(nullptr), m_closeConnectionSeparatorAction(nullptr), m_commInteractionAction(nullptr), m_masterQueryAction(nullptr), m_queryFrameAction(nullptr), m_frameParseAction(nullptr), m_darkThemeAction(nullptr), m_lightThemeAction(nullptr), m_communicationDialog(nullptr), m_masterQueryDialog(nullptr), m_queryFrameDialog(nullptr), m_frameParseDialog(nullptr), m_meterDataStore(new MeterDataStore(this)), m_currentMeterModel(nullptr)
+    : QMainWindow(parent), ui(new Ui::MainWindow), m_serialController(new SerialController(this)), m_tcpController(new TcpController(this)), m_protocolController(new ProtocolController(this)), m_dataGenerator(new DataGenerator(this)), m_viewModel(new MainWindowViewModel(this)), m_operationLogWidget(nullptr), m_dataTableWidget(nullptr), m_mainSplitter(nullptr), m_bottomSplitter(nullptr), m_connectionButtonStack(nullptr), m_connectionStatusLabel(nullptr), m_meterAddressLabel(nullptr), m_realTimeBarWidget(nullptr), m_realTimeDataLabel(nullptr), m_realTimeDataTimer(nullptr), m_realTimePhaseIndex(0), m_newConnectionAction(nullptr), m_newMeterAction(nullptr), m_batchNewMeterAction(nullptr), m_openConnectionAction(nullptr), m_openConnectionSeparatorAction(nullptr), m_closeConnectionAction(nullptr), m_closeConnectionSeparatorAction(nullptr), m_commInteractionAction(nullptr), m_masterQueryAction(nullptr), m_queryFrameAction(nullptr), m_frameParseAction(nullptr), m_darkThemeAction(nullptr), m_lightThemeAction(nullptr), m_communicationDialog(nullptr), m_masterQueryDialog(nullptr), m_queryFrameDialog(nullptr), m_frameParseDialog(nullptr), m_meterDataStore(new MeterDataStore(this)), m_currentMeterModel(nullptr)
 {
     ui->setupUi(this);
     setupUI();
@@ -244,10 +245,14 @@ void MainWindow::setupConnections()
                 this, &MainWindow::onCloseConnectionRequested);
         connect(deviceTree, &DeviceTreeWidget::deleteConnectionRequested,
                 this, &MainWindow::onDeleteConnectionRequested);
+        connect(deviceTree, &DeviceTreeWidget::deleteAllMetersRequested,
+                this, &MainWindow::onDeleteAllMetersRequested);
         connect(deviceTree, &DeviceTreeWidget::editConnectionRequested,
                 this, &MainWindow::onEditConnectionRequested);
         connect(deviceTree, &DeviceTreeWidget::newMeterRequested,
                 this, &MainWindow::onNewMeterRequested);
+        connect(deviceTree, &DeviceTreeWidget::batchNewMeterRequested,
+                this, &MainWindow::onBatchNewMeterRequested);
         connect(deviceTree, &DeviceTreeWidget::deleteMeterRequested,
                 this, &MainWindow::onDeleteMeterRequested);
     }
@@ -316,6 +321,14 @@ void MainWindow::setupToolBar()
     m_newMeterAction->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
     connect(m_newMeterAction, &QAction::triggered, this, &MainWindow::onNewMeterDialog);
     toolBar->addAction(m_newMeterAction);
+
+    m_batchNewMeterAction = new QAction(QStringLiteral("批量新建"), this);
+    m_batchNewMeterAction->setShortcut(QKeySequence("Ctrl+B"));
+    m_batchNewMeterAction->setToolTip(QStringLiteral("在当前连接下批量新建电表"));
+    m_batchNewMeterAction->setText(QStringLiteral("批量新建"));
+    m_batchNewMeterAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogNewFolder));
+    connect(m_batchNewMeterAction, &QAction::triggered, this, &MainWindow::onBatchNewMeterDialog);
+    toolBar->addAction(m_batchNewMeterAction);
     toolBar->addSeparator();
 
     // 打开连接
@@ -1103,10 +1116,13 @@ void MainWindow::onNewMeterDialog()
         meterInfo.phaseType = config.phaseType;
 
         // 添加电表节点到设备树（第 2 层级）
-        deviceTree->addMeter(connectionAlias, meterInfo);
+        if (!deviceTree->addMeter(connectionAlias, meterInfo))
+        {
+            return;
+        }
 
         refreshMeterPresence();
-        m_viewModel->setCurrentMeterAddress(config.address);
+        applyCurrentMeter(meterInfo);
 
         // 更新状态栏显示
         QStatusBar *statusBar = this->statusBar();
@@ -1122,6 +1138,107 @@ void MainWindow::onNewMeterDialog()
                      .arg(config.operatorCode)
                      .arg(config.includePrefixFE ? "true" : "false"));
     }
+}
+
+void MainWindow::onBatchNewMeterDialog()
+{
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    if (!deviceTree || !deviceTree->canAddMeter())
+    {
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("请先选择一个连接节点"));
+        return;
+    }
+
+    const QString connectionAlias = deviceTree->getSelectedConnectionAlias();
+    if (connectionAlias.isEmpty())
+    {
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("请先选择一个连接节点"));
+        return;
+    }
+
+    onBatchNewMeterRequested(connectionAlias);
+}
+
+void MainWindow::onBatchNewMeterRequested(const QString &connectionAlias)
+{
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    if (!deviceTree)
+    {
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("未找到设备树"));
+        return;
+    }
+
+    BatchNewMeterDialog dialog(this);
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return;
+    }
+
+    const BatchMeterConfig config = dialog.getBatchMeterConfig();
+    const QStringList existingAddresses = collectMeterAddresses();
+    QStringList newAddresses;
+    newAddresses.reserve(config.count);
+
+    for (int i = 0; i < config.count; ++i)
+    {
+        bool ok = false;
+        const quint64 startAddress = config.startAddress.toULongLong(&ok);
+        const QString address = ok
+                                    ? QString("%1").arg(startAddress + static_cast<quint64>(i), 12, 10, QLatin1Char('0'))
+                                    : config.startAddress;
+
+        if (existingAddresses.contains(address) || newAddresses.contains(address))
+        {
+            QMessageBox::warning(this, QStringLiteral("错误"),
+                                 QStringLiteral("通信地址 %1 已存在，不能批量创建重复电表。").arg(address));
+            return;
+        }
+        newAddresses.append(address);
+    }
+
+    MeterInfo lastMeterInfo;
+    int addedCount = 0;
+    for (int i = 0; i < newAddresses.size(); ++i)
+    {
+        MeterInfo meterInfo;
+        meterInfo.alias = QStringLiteral("%1%2").arg(config.aliasPrefix).arg(config.aliasStartNumber + i);
+        meterInfo.address = newAddresses.at(i);
+        meterInfo.operatorCode = config.operatorCode;
+        meterInfo.password = config.password;
+        meterInfo.includeLeadingFE = config.includePrefixFE;
+        meterInfo.phaseType = config.phaseType;
+
+        if (!deviceTree->addMeter(connectionAlias, meterInfo))
+        {
+            break;
+        }
+
+        createMeterModel(meterInfo);
+        lastMeterInfo = meterInfo;
+        ++addedCount;
+    }
+
+    if (addedCount <= 0)
+    {
+        return;
+    }
+
+    refreshMeterPresence();
+    applyCurrentMeter(lastMeterInfo);
+
+    QStatusBar *statusBar = this->statusBar();
+    QList<QLabel *> labels = statusBar->findChildren<QLabel *>();
+    if (labels.size() >= 2)
+    {
+        labels[1]->setText(QStringLiteral("地址: ") + lastMeterInfo.address);
+    }
+
+    LOG_INFO(QString("Batch meters added: Connection=%1, Count=%2, StartAddress=%3")
+                 .arg(connectionAlias)
+                 .arg(addedCount)
+                 .arg(config.startAddress));
+    QMessageBox::information(this, QStringLiteral("成功"),
+                             QStringLiteral("已批量新建 %1 个电表").arg(addedCount));
 }
 
 void MainWindow::onOpenConnection()
@@ -1315,6 +1432,10 @@ void MainWindow::updateToolBarButtons()
 
     // 更新新建电表按钮状态（未选中连接时禁用）
     m_newMeterAction->setEnabled(m_viewModel->isNewMeterEnabled());
+    if (m_batchNewMeterAction)
+    {
+        m_batchNewMeterAction->setEnabled(m_viewModel->isNewMeterEnabled());
+    }
 
     // 更新通信交互按钮状态（连接已打开时启用）
     m_commInteractionAction->setEnabled(m_viewModel->isCommunicationInteractionEnabled());
@@ -2129,6 +2250,97 @@ void MainWindow::onDeleteConnectionRequested(const QString &connectionAlias)
         QMessageBox::information(this, QStringLiteral("成功"), QStringLiteral("连接已删除"));
     }
 }
+
+void MainWindow::onDeleteAllMetersRequested(const QString &connectionAlias)
+{
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    if (!deviceTree)
+    {
+        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("未找到设备树"));
+        return;
+    }
+
+    QList<MeterInfo> metersToDelete;
+    QTreeWidget *tree = deviceTree->getTreeWidget();
+    for (int i = 0; i < tree->topLevelItemCount(); ++i)
+    {
+        QTreeWidgetItem *connectionItem = tree->topLevelItem(i);
+        if (!connectionItem || connectionItem->data(0, Qt::UserRole).toString() != connectionAlias)
+        {
+            continue;
+        }
+
+        for (int j = 0; j < connectionItem->childCount(); ++j)
+        {
+            QTreeWidgetItem *meterItem = connectionItem->child(j);
+            if (!meterItem)
+            {
+                continue;
+            }
+
+            const ItemType itemType = static_cast<ItemType>(meterItem->data(0, Qt::UserRole + 1).toInt());
+            if (itemType != ItemType::Meter)
+            {
+                continue;
+            }
+
+            MeterInfo meterInfo;
+            meterInfo.alias = meterItem->data(0, Qt::UserRole).toString();
+            meterInfo.address = meterItem->data(0, Qt::UserRole + 2).toString();
+            meterInfo.operatorCode = meterItem->data(0, Qt::UserRole + 3).toString();
+            meterInfo.password = meterItem->data(0, Qt::UserRole + 4).toString();
+            meterInfo.includeLeadingFE = meterItem->data(0, Qt::UserRole + 5).toBool();
+            meterInfo.phaseType = static_cast<MeterPhaseType>(meterItem->data(0, Qt::UserRole + 6).toInt());
+            metersToDelete.append(meterInfo);
+        }
+        break;
+    }
+
+    if (metersToDelete.isEmpty())
+    {
+        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("该连接下没有电表"));
+        return;
+    }
+
+    const QMessageBox::StandardButton reply = QMessageBox::question(
+        this,
+        QStringLiteral("确认删除"),
+        QStringLiteral("确定要删除连接 \"%1\" 下的全部 %2 个电表吗？").arg(connectionAlias).arg(metersToDelete.size()),
+        QMessageBox::Yes | QMessageBox::No);
+    if (reply != QMessageBox::Yes)
+    {
+        return;
+    }
+
+    bool currentMeterDeleted = false;
+    const QString currentMeterAddress = m_viewModel->currentMeterAddress();
+    for (const MeterInfo &meterInfo : metersToDelete)
+    {
+        deviceTree->deleteMeter(connectionAlias, meterInfo.alias);
+
+        if (!meterInfo.address.isEmpty())
+        {
+            currentMeterDeleted = currentMeterDeleted || (meterInfo.address == currentMeterAddress);
+            MeterModel *meterModel = m_meterModelsByAddress.take(meterInfo.address);
+            m_protocolController->unregisterMeterModel(meterInfo.address);
+            if (meterModel)
+            {
+                meterModel->deleteLater();
+            }
+        }
+    }
+
+    if (currentMeterDeleted)
+    {
+        clearCurrentMeter();
+    }
+    refreshMeterPresence();
+
+    LOG_INFO(QString("All meters deleted from connection: %1, count=%2")
+                 .arg(connectionAlias)
+                 .arg(metersToDelete.size()));
+}
+
 void MainWindow::onEditConnectionRequested(const QString &connectionAlias)
 {
     if (!m_viewModel->hasConnectionConfig(connectionAlias))
@@ -2311,7 +2523,10 @@ void MainWindow::onNewMeterRequested(const QString &connectionAlias)
         // 添加电表节点到设备树
         if (deviceTree)
         {
-            deviceTree->addMeter(connectionAlias, meterInfo);
+            if (!deviceTree->addMeter(connectionAlias, meterInfo))
+            {
+                return;
+            }
         }
 
         refreshMeterPresence();

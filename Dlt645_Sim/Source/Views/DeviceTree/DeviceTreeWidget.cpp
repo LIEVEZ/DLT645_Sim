@@ -32,7 +32,7 @@ namespace
 
 DeviceTreeWidget::DeviceTreeWidget(QWidget *parent)
     : QWidget(parent), m_treeWidget(new QTreeWidget(this)),
-      m_filterEdit(new QLineEdit(this)), m_refreshButton(new QPushButton("刷新", this)), m_expandAllButton(new QPushButton("展开", this)), m_collapseAllButton(new QPushButton("折叠", this)),
+      m_filterEdit(new QLineEdit(this)), m_refreshButton(new QPushButton(QStringLiteral("刷新"), this)), m_expandAllButton(new QPushButton(QStringLiteral("展开"), this)), m_collapseAllButton(new QPushButton(QStringLiteral("折叠"), this)),
       m_contextMenu(new QMenu(this)), m_emptyStateLabel(new QLabel(this)), m_isConnected(false)
 {
     setupUI();
@@ -110,9 +110,12 @@ void DeviceTreeWidget::setupTree()
     m_treeWidget->setDropIndicatorShown(false);
 
     // 设置列宽自适应，确保文本完全显示
-    m_treeWidget->setColumnCount(1);
-    m_treeWidget->setColumnWidth(0, 300);
-    m_treeWidget->header()->setStretchLastSection(true);
+    m_treeWidget->setColumnCount(2);
+    m_treeWidget->setColumnWidth(1, 48);
+    m_treeWidget->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    m_treeWidget->header()->setSectionResizeMode(1, QHeaderView::Fixed);
+    m_treeWidget->header()->setStretchLastSection(false);
+    m_treeWidget->setAllColumnsShowFocus(true);
 
     // 连接信号
     connect(m_treeWidget, &QTreeWidget::itemClicked, this, &DeviceTreeWidget::onItemClicked);
@@ -157,29 +160,39 @@ void DeviceTreeWidget::addConnection(const ConnectionInfo &connectionInfo)
     emit connectionSelected(connectionInfo.alias);
 }
 
-void DeviceTreeWidget::addMeter(const QString &connectionAlias, const MeterInfo &meterInfo)
+bool DeviceTreeWidget::addMeter(const QString &connectionAlias, const MeterInfo &meterInfo)
 {
     QTreeWidgetItem *connectionItem = findConnectionItem(connectionAlias);
     if (!connectionItem)
     {
-        QMessageBox::warning(this, "错误", "未找到连接节点");
-        return;
+        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("未找到连接节点"));
+        return false;
     }
 
-    // 创建电表节点
+    if (meterInfo.address.isEmpty())
+    {
+        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("电表地址不能为空"));
+        return false;
+    }
+
+    if (isMeterAddressExists(meterInfo.address))
+    {
+        QMessageBox::warning(this, QStringLiteral("错误"),
+                             QStringLiteral("通信地址 %1 已存在，不能创建重复电表。").arg(meterInfo.address));
+        return false;
+    }
+
     QTreeWidgetItem *meterItem = createMeterNode(meterInfo);
     connectionItem->addChild(meterItem);
 
-    // 自动展开连接节点
     connectionItem->setExpanded(true);
 
-    // 创建数据分类节点
     createDataCategoryNodes(meterItem);
+    updateConnectionMeterCount(connectionItem);
 
-    // 自动展开电表节点
     meterItem->setExpanded(true);
+    return true;
 }
-
 void DeviceTreeWidget::clearTree()
 {
     m_treeWidget->clear();
@@ -247,6 +260,7 @@ void DeviceTreeWidget::deleteMeter(const QString &connectionAlias, const QString
                 LOG_INFO(QString("deleteMeter: Found meter item, deleting..."));
                 connectionItem->removeChild(meterItem);
                 delete meterItem;
+                updateConnectionMeterCount(connectionItem);
                 break;
             }
         }
@@ -559,6 +573,7 @@ QTreeWidgetItem *DeviceTreeWidget::createConnectionNode(const ConnectionInfo &in
 
     // 设置显示文本和图标（链接图标 + 状态圆点）
     updateConnectionStatusIcon(item, info.isConnected);
+    updateConnectionMeterCount(item);
 
     return item;
 }
@@ -658,7 +673,7 @@ void DeviceTreeWidget::onItemClicked(QTreeWidgetItem *item, int column)
         }
         QString meterAlias;
 
-        // 获取父级电表节点
+        // 鑾峰彇鐖剁骇鐢佃〃鑺傜偣
         QTreeWidgetItem *parentItem = item->parent();
         while (parentItem)
         {
@@ -827,6 +842,8 @@ void DeviceTreeWidget::onCustomContextMenuRequested(const QPoint &pos)
 
             m_contextMenu->addAction(QIcon(":/icons/add.png"), "新建电表", [this, connectionAlias]()
                                      { emit newMeterRequested(connectionAlias); });
+            m_contextMenu->addAction(QIcon(":/icons/add.png"), QStringLiteral("批量新建电表"), [this, connectionAlias]()
+                                     { emit batchNewMeterRequested(connectionAlias); });
             m_contextMenu->addSeparator();
 
             if (isConnected)
@@ -843,6 +860,8 @@ void DeviceTreeWidget::onCustomContextMenuRequested(const QPoint &pos)
             m_contextMenu->addSeparator();
             m_contextMenu->addAction(QIcon(":/icons/delete.png"), "删除连接", [this, connectionAlias]()
                                      { emit deleteConnectionRequested(connectionAlias); });
+            m_contextMenu->addAction(QIcon(":/icons/delete.png"), QStringLiteral("删除所有电表"), [this, connectionAlias]()
+                                     { emit deleteAllMetersRequested(connectionAlias); });
             m_contextMenu->addAction(QIcon(":/icons/settings.png"), "编辑", [this, connectionAlias]()
                                      { emit editConnectionRequested(connectionAlias); });
             break;
@@ -999,6 +1018,33 @@ void DeviceTreeWidget::updateConnectionStatusIcon(QTreeWidgetItem *connectionIte
 
     // 设置链接图标
     connectionItem->setIcon(0, QIcon(":/icons/link.png"));
+}
+
+void DeviceTreeWidget::updateConnectionMeterCount(QTreeWidgetItem *connectionItem)
+{
+    if (!connectionItem)
+    {
+        return;
+    }
+
+    int meterCount = 0;
+    for (int i = 0; i < connectionItem->childCount(); ++i)
+    {
+        QTreeWidgetItem *child = connectionItem->child(i);
+        if (!child)
+        {
+            continue;
+        }
+
+        ItemType childType = static_cast<ItemType>(child->data(0, Qt::UserRole + 1).toInt());
+        if (childType == ItemType::Meter)
+        {
+            ++meterCount;
+        }
+    }
+
+    connectionItem->setText(1, QString("%1台").arg(meterCount));
+    connectionItem->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
 }
 
 QTreeWidgetItem *DeviceTreeWidget::findConnectionItem(const QString &connectionAlias)

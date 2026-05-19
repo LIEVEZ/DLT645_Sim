@@ -44,6 +44,7 @@ SOURCES += \
     Source/Views/Dialogs/NewConnectionDialog.cpp \
     Source/Views/Dialogs/NewMeterDialog.cpp \
     Source/Views/Dialogs/CommunicationDialog.cpp \
+    Source/Views/Dialogs/BatchNewMeterDialog.cpp \
     Source/Views/Dialogs/MasterQueryDialog.cpp \
     Source/Views/Dialogs/FrameParseDialog.cpp \
     Source/Views/Dialogs/QueryFrameDialog.cpp
@@ -75,6 +76,7 @@ HEADERS += \
     Source/Views/Dialogs/NewConnectionDialog.h \
     Source/Views/Dialogs/NewMeterDialog.h \
     Source/Views/Dialogs/CommunicationDialog.h \
+    Source/Views/Dialogs/BatchNewMeterDialog.h \
     Source/Views/Dialogs/MasterQueryDialog.h \
     Source/Views/Dialogs/FrameParseDialog.h \
     Source/Views/Dialogs/QueryFrameDialog.h

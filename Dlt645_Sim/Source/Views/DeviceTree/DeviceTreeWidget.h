@@ -99,7 +99,7 @@ public:
      * @param connectionAlias 连接别名
      * @param meterInfo 电表信息
      */
-    void addMeter(const QString &connectionAlias, const MeterInfo &meterInfo);
+    bool addMeter(const QString &connectionAlias, const MeterInfo &meterInfo);
 
     /**
      * @brief 清空设备树
@@ -241,6 +241,7 @@ signals:
      * @param connectionAlias 连接别名
      */
     void deleteConnectionRequested(const QString &connectionAlias);
+    void deleteAllMetersRequested(const QString &connectionAlias);
 
     /**
      * @brief 编辑连接信号
@@ -253,6 +254,8 @@ signals:
      * @param connectionAlias 连接别名
      */
     void newMeterRequested(const QString &connectionAlias);
+
+    void batchNewMeterRequested(const QString &connectionAlias);
 
     /**
      * @brief 读取所有数据信号
@@ -322,6 +325,7 @@ private:
     void filterTree(const QString &filterText);
     bool itemMatchesFilter(QTreeWidgetItem *item, const QString &filterText);
     void updateConnectionStatusIcon(QTreeWidgetItem *connectionItem, bool connected);
+    void updateConnectionMeterCount(QTreeWidgetItem *connectionItem);
     QTreeWidgetItem *findConnectionItem(const QString &connectionAlias);
     QTreeWidgetItem *findMeterItem(const QString &connectionAlias, const QString &meterAlias);
 
