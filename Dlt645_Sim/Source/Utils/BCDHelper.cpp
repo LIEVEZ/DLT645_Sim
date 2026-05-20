@@ -180,6 +180,8 @@ QString BCDHelper::bcdStringToDecimal(const QString &bcdString, int decimalPlace
 
 QString BCDHelper::decimalToBCDString(const QString &decimalString, int decimalPlaces)
 {
+    Q_UNUSED(decimalPlaces);
+
     QString result = decimalString;
     result.remove('.'); // 移除小数点
 
@@ -331,8 +333,6 @@ char BCDHelper::convertToBCD(const QString &digitStr)
 
 QString BCDHelper::formatValueToString(const QVariant &value, const QString &format)
 {
-    qDebug() << "formatValueToString: " << value.toString();
-
     double numValue = value.toDouble();
     QStringList originalFormatList = format.split(",");
 

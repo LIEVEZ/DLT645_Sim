@@ -1,6 +1,5 @@
 #include "ProtocolController.h"
 #include "Utils/Logger.h"
-#include <QDebug>
 #include <algorithm>
 
 ProtocolController::ProtocolController(QObject *parent)
@@ -111,7 +110,6 @@ void ProtocolController::processReceivedData(const QByteArray &data)
 
     m_receiveBuffer.append(data);
 
-    qDebug() << "processReceivedData data:" << data.toHex();
 
     ProtocolFrame frame;
     QByteArray rawFrame;
@@ -414,7 +412,6 @@ void ProtocolController::onResponseTimerTimeout()
     }
 
     const QString diCode = ProtocolParser::extractDIFromDataField(m_lastRequestFrame.dataField);
-    qDebug() << "===diCode:" << diCode;
     m_protocolParser->setMeterModel(m_lastRequestMeterModel);
 
     if ((m_lastRequestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::ReadData))
@@ -428,7 +425,6 @@ void ProtocolController::onResponseTimerTimeout()
         }
 
         QVariant value = m_lastRequestMeterModel->getDataValue(diCode);
-        qDebug() << "===value:" << value;
         ProtocolFrame response = m_protocolParser->buildReadResponse(m_lastRequestFrame, value, diCode);
         sendResponse(response, m_lastRequestMeterModel);
         emit dataRead(diCode, value);
@@ -564,7 +560,6 @@ bool ProtocolController::shouldRespondToAddress(const QByteArray &addressBytes) 
 MeterModel *ProtocolController::meterModelForAddress(const QByteArray &addressBytes) const
 {
     const QString requestAddress = ProtocolParser::bytesToAddress(addressBytes);
-    qDebug() << "===requestAddress:" << requestAddress;
     if (m_meterModelsByAddress.contains(requestAddress))
     {
         return m_meterModelsByAddress.value(requestAddress);

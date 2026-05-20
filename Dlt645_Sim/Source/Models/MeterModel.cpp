@@ -1,7 +1,6 @@
 ﻿#include "MeterModel.h"
 #include <QRandomGenerator>
 #include <QDateTime>
-#include <QDebug>
 #include <QSet>
 #include <cmath>
 
@@ -545,7 +544,7 @@ namespace
         }
     }
 
-    const QStringList &currentEnergyPrefixes()
+    [[maybe_unused]] const QStringList &currentEnergyPrefixes()
     {
         static const QStringList prefixes = {
             QStringLiteral("0x0000"),
@@ -1018,7 +1017,6 @@ namespace
             return false;
         }
 
-        bool ok = false;
         int familyValue = 0;
         if (!parseHexByteValue(diCode.mid(6, 2), &familyValue))
         {
@@ -1033,7 +1031,7 @@ namespace
         return isFreezeEnergyFamilyCode(diCode) && diCode.endsWith(QStringLiteral("01"));
     }
 
-    bool isFreezeDemandBlockCode(const QString &diCode)
+    [[maybe_unused]] bool isFreezeDemandBlockCode(const QString &diCode)
     {
         if (diCode.size() != 10 || !diCode.startsWith(QStringLiteral("0x05")) || !diCode.endsWith(QStringLiteral("01")))
         {
@@ -1044,7 +1042,7 @@ namespace
         return familyHex == QStringLiteral("09") || familyHex == QStringLiteral("0A");
     }
 
-    bool isFreezeVariableBlockCode(const QString &diCode)
+    [[maybe_unused]] bool isFreezeVariableBlockCode(const QString &diCode)
     {
         return diCode.size() == 10 &&
                diCode.startsWith(QStringLiteral("0x05")) &&
@@ -2049,7 +2047,7 @@ namespace
         return date.toString(QStringLiteral("yyMMdd")) + QStringLiteral("%1").arg(weekCode, 2, 10, QChar('0'));
     }
 
-    QString eventHistoryCode(const QString &baseCode, int historyIndex)
+    [[maybe_unused]] QString eventHistoryCode(const QString &baseCode, int historyIndex)
     {
         return baseCode + upperHexByte(historyIndex);
     }
@@ -2861,7 +2859,6 @@ QVariant MeterModel::getDataValue(const QString &diCode) const
 
             if (!values.isEmpty())
             {
-                qDebug() << "MeterModel::getDataValue: " << diCode << " " << values;
                 return values;
             }
             return m_dataItems[diCode].value;

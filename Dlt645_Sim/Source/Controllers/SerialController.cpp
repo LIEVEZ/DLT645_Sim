@@ -1,6 +1,5 @@
 #include "SerialController.h"
 #include "Utils/Logger.h"
-#include <QDebug>
 
 SerialController::SerialController(QObject *parent)
     : QObject(parent), m_serialPort(new QSerialPort(this))

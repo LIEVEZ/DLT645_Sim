@@ -1,7 +1,6 @@
 #include "ProtocolParser.h"
 #include "Models/DataItem.h"
 #include "Utils/BCDHelper.h"
-#include <QDebug>
 #include <algorithm>
 
 ProtocolParser::ProtocolParser(MeterModel *meterModel, QObject *parent)
@@ -256,7 +255,6 @@ QByteArray ProtocolParser::processDataValue(const QVariant &value, const QString
 
     // 使用BCDHelper的格式化方法获取字符串
     QString formattedString = BCDHelper::formatValueToString(value, format);
-    qDebug() << "===Formatted string:" << formattedString << "from value:" << value << "with format:" << format;
 
     // 去除字符串的小数点
     formattedString.remove(".");
@@ -315,10 +313,8 @@ ProtocolFrame ProtocolParser::buildReadResponse(const ProtocolFrame &requestFram
 
         // 使用新的processDataValue方法处理数据值
         QByteArray processedBytes = processDataValue(value, currentFormat);
-        qDebug() << "===Processing value:" << value << "with format:" << currentFormat << "processedBytes:" << processedBytes.toHex();
         valueBytes.append(processedBytes);
     }
-    qDebug() << "===Value bytes:" << valueBytes.toHex();
     // DLT645协议：数据域需要倒序处理
     // 对每个字节加0x33处理
     for (int i = 0; i < valueBytes.size(); ++i)
@@ -326,7 +322,6 @@ ProtocolFrame ProtocolParser::buildReadResponse(const ProtocolFrame &requestFram
         valueBytes[i] = static_cast<char>(valueBytes[i] + 0x33);
     }
 
-    qDebug() << "===11Value bytes:" << valueBytes.toHex();
     std::reverse(valueBytes.begin(), valueBytes.end());
 
     frame.dataField = diBytes + valueBytes;

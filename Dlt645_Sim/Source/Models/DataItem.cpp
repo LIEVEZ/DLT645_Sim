@@ -2,7 +2,6 @@
 #include "Utils/BCDHelper.h"
 #include <QLocale>
 #include <QRegularExpression>
-#include <QDebug>
 
 QString DataItem::getFormattedValue() const
 {
@@ -21,7 +20,6 @@ QString DataItem::getFormattedValue() const
         // {
         //     return BCDHelper::formatValueToString(value, format);
         // }
-        qDebug() << "===DataItem::getFormattedValue()" << value;
         QVariantList valuesList;
         if (value.type() == QVariant::List)
         {

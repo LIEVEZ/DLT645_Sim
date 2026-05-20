@@ -1,5 +1,4 @@
 #include "ChecksumHelper.h"
-#include <QDebug>
 
 quint8 ChecksumHelper::calculateChecksum(const QByteArray &data)
 {

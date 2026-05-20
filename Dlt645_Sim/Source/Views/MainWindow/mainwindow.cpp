@@ -13,6 +13,7 @@
 #include "Views/Dialogs/QueryFrameDialog.h"
 #include "Views/CommunicationBar/CommunicationBarWidget.h"
 #include "Services/MeterDataStore.h"
+#include "Services/ProtocolParser.h"
 #include <QSerialPortInfo>
 #include <QMessageBox>
 #include <QVBoxLayout>
@@ -37,7 +38,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QDebug>
+#include <QSet>
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), ui(new Ui::MainWindow), m_serialController(new SerialController(this)), m_tcpController(new TcpController(this)), m_protocolController(new ProtocolController(this)), m_dataGenerator(new DataGenerator(this)), m_viewModel(new MainWindowViewModel(this)), m_operationLogWidget(nullptr), m_dataTableWidget(nullptr), m_mainSplitter(nullptr), m_bottomSplitter(nullptr), m_connectionButtonStack(nullptr), m_connectionStatusLabel(nullptr), m_meterAddressLabel(nullptr), m_realTimeBarWidget(nullptr), m_realTimeDataLabel(nullptr), m_realTimeDataTimer(nullptr), m_realTimePhaseIndex(0), m_newConnectionAction(nullptr), m_newMeterAction(nullptr), m_batchNewMeterAction(nullptr), m_openConnectionAction(nullptr), m_openConnectionSeparatorAction(nullptr), m_closeConnectionAction(nullptr), m_closeConnectionSeparatorAction(nullptr), m_commInteractionAction(nullptr), m_masterQueryAction(nullptr), m_queryFrameAction(nullptr), m_frameParseAction(nullptr), m_darkThemeAction(nullptr), m_lightThemeAction(nullptr), m_communicationDialog(nullptr), m_masterQueryDialog(nullptr), m_queryFrameDialog(nullptr), m_frameParseDialog(nullptr), m_meterDataStore(new MeterDataStore(this)), m_currentMeterModel(nullptr)
 {
@@ -338,6 +339,7 @@ void MainWindow::setupToolBar()
     m_newMeterAction->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
     connect(m_newMeterAction, &QAction::triggered, this, &MainWindow::onNewMeterDialog);
     toolBar->addAction(m_newMeterAction);
+    toolBar->addSeparator();
 
     m_batchNewMeterAction = new QAction(QStringLiteral("批量新建"), this);
     m_batchNewMeterAction->setShortcut(QKeySequence("Ctrl+B"));
@@ -2259,7 +2261,12 @@ void MainWindow::onExportConfiguration()
         return;
     }
 
-    file.write(QJsonDocument(rootObject).toJson(QJsonDocument::Indented));
+    const QByteArray configData = QJsonDocument(rootObject).toJson(QJsonDocument::Indented);
+    if (file.write(configData) != configData.size())
+    {
+        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("配置文件写入不完整：%1").arg(file.errorString()));
+        return;
+    }
     QMessageBox::information(this, QStringLiteral("成功"), QStringLiteral("配置已导出"));
 }
 
@@ -2294,6 +2301,123 @@ void MainWindow::onImportConfiguration()
     if (connectionArray.isEmpty())
     {
         QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("配置文件中没有连接配置"));
+        return;
+    }
+
+    struct ImportedConnection
+    {
+        ConnectionConfig config;
+        QList<MeterInfo> meters;
+    };
+
+    QList<ImportedConnection> importedConnections;
+    QSet<QString> importedConnectionAliases;
+    QSet<QString> importedMeterAddresses;
+    QStringList validationErrors;
+
+    auto appendValidationError = [&validationErrors](const QString &message)
+    {
+        if (validationErrors.size() < 10)
+        {
+            validationErrors.append(message);
+        }
+    };
+
+    for (int connectionIndex = 0; connectionIndex < connectionArray.size(); ++connectionIndex)
+    {
+        const QJsonValue connectionValue = connectionArray.at(connectionIndex);
+        if (!connectionValue.isObject())
+        {
+            appendValidationError(QStringLiteral("第 %1 个连接不是有效对象").arg(connectionIndex + 1));
+            continue;
+        }
+
+        const QJsonObject connectionObject = connectionValue.toObject();
+        ConnectionConfig config;
+        config.type = connectionObject.value(QStringLiteral("type")).toString() == QStringLiteral("tcp")
+                          ? ConnectionType::TCP
+                          : ConnectionType::Serial;
+        config.alias = connectionObject.value(QStringLiteral("alias")).toString().trimmed();
+        config.serialPort = connectionObject.value(QStringLiteral("serialPort")).toString();
+        config.baudRate = connectionObject.value(QStringLiteral("baudRate")).toInt(config.baudRate);
+        config.dataBits = connectionObject.value(QStringLiteral("dataBits")).toInt(config.dataBits);
+        config.stopBits = connectionObject.value(QStringLiteral("stopBits")).toInt(config.stopBits);
+        config.parity = connectionObject.value(QStringLiteral("parity")).toInt(config.parity);
+        config.flowControl = connectionObject.value(QStringLiteral("flowControl")).toInt(config.flowControl);
+        config.tcpAddress = connectionObject.value(QStringLiteral("tcpAddress")).toString();
+        config.tcpPort = connectionObject.value(QStringLiteral("tcpPort")).toInt(config.tcpPort);
+
+        if (config.alias.isEmpty())
+        {
+            appendValidationError(QStringLiteral("第 %1 个连接别名为空").arg(connectionIndex + 1));
+            continue;
+        }
+
+        if (importedConnectionAliases.contains(config.alias))
+        {
+            appendValidationError(QStringLiteral("连接别名重复：%1").arg(config.alias));
+            continue;
+        }
+        importedConnectionAliases.insert(config.alias);
+
+        ImportedConnection importedConnection;
+        importedConnection.config = config;
+
+        const QJsonArray meterArray = connectionObject.value(QStringLiteral("meters")).toArray();
+        for (int meterIndex = 0; meterIndex < meterArray.size(); ++meterIndex)
+        {
+            const QJsonValue meterValue = meterArray.at(meterIndex);
+            if (!meterValue.isObject())
+            {
+                appendValidationError(QStringLiteral("连接 %1 的第 %2 个电表不是有效对象").arg(config.alias).arg(meterIndex + 1));
+                continue;
+            }
+
+            const QJsonObject meterObject = meterValue.toObject();
+            MeterInfo meterInfo;
+            meterInfo.alias = meterObject.value(QStringLiteral("alias")).toString().trimmed();
+            meterInfo.address = meterObject.value(QStringLiteral("address")).toString().trimmed();
+            meterInfo.operatorCode = meterObject.value(QStringLiteral("operatorCode")).toString();
+            meterInfo.password = meterObject.value(QStringLiteral("password")).toString();
+            meterInfo.includeLeadingFE = meterObject.value(QStringLiteral("includeLeadingFE")).toBool();
+            meterInfo.phaseType = static_cast<MeterPhaseType>(meterObject.value(QStringLiteral("phaseType")).toInt(static_cast<int>(MeterPhaseType::ThreePhase)));
+
+            if (meterInfo.alias.isEmpty())
+            {
+                appendValidationError(QStringLiteral("连接 %1 的第 %2 个电表别名为空").arg(config.alias).arg(meterIndex + 1));
+                continue;
+            }
+
+            if (!ProtocolParser::isValidAddress(meterInfo.address))
+            {
+                appendValidationError(QStringLiteral("电表 %1 地址无效：%2").arg(meterInfo.alias, meterInfo.address));
+                continue;
+            }
+
+            if (importedMeterAddresses.contains(meterInfo.address))
+            {
+                appendValidationError(QStringLiteral("电表地址重复：%1").arg(meterInfo.address));
+                continue;
+            }
+
+            importedMeterAddresses.insert(meterInfo.address);
+            importedConnection.meters.append(meterInfo);
+        }
+
+        importedConnections.append(importedConnection);
+    }
+
+    if (!validationErrors.isEmpty())
+    {
+        QMessageBox::warning(this,
+                             QStringLiteral("导入失败"),
+                             QStringLiteral("配置文件校验未通过，当前配置未改变：\n%1").arg(validationErrors.join(QLatin1Char('\n'))));
+        return;
+    }
+
+    if (importedConnections.isEmpty())
+    {
+        QMessageBox::warning(this, QStringLiteral("导入失败"), QStringLiteral("配置文件中没有可导入的连接配置"));
         return;
     }
 
@@ -2350,53 +2474,16 @@ void MainWindow::onImportConfiguration()
     clearCurrentMeter();
 
     MeterInfo lastMeterInfo;
-    QStringList importedAddresses;
-    for (const QJsonValue &connectionValue : connectionArray)
+    for (const ImportedConnection &importedConnection : importedConnections)
     {
-        const QJsonObject connectionObject = connectionValue.toObject();
-        ConnectionConfig config;
-        config.type = connectionObject.value(QStringLiteral("type")).toString() == QStringLiteral("tcp")
-                          ? ConnectionType::TCP
-                          : ConnectionType::Serial;
-        config.alias = connectionObject.value(QStringLiteral("alias")).toString();
-        config.serialPort = connectionObject.value(QStringLiteral("serialPort")).toString();
-        config.baudRate = connectionObject.value(QStringLiteral("baudRate")).toInt(config.baudRate);
-        config.dataBits = connectionObject.value(QStringLiteral("dataBits")).toInt(config.dataBits);
-        config.stopBits = connectionObject.value(QStringLiteral("stopBits")).toInt(config.stopBits);
-        config.parity = connectionObject.value(QStringLiteral("parity")).toInt(config.parity);
-        config.flowControl = connectionObject.value(QStringLiteral("flowControl")).toInt(config.flowControl);
-        config.tcpAddress = connectionObject.value(QStringLiteral("tcpAddress")).toString();
-        config.tcpPort = connectionObject.value(QStringLiteral("tcpPort")).toInt(config.tcpPort);
+        m_viewModel->upsertConnectionConfig(importedConnection.config);
+        deviceTree->addConnection(buildConnectionInfo(importedConnection.config, false));
 
-        if (config.alias.isEmpty())
+        for (const MeterInfo &meterInfo : importedConnection.meters)
         {
-            continue;
-        }
-
-        m_viewModel->upsertConnectionConfig(config);
-        deviceTree->addConnection(buildConnectionInfo(config, false));
-
-        const QJsonArray meterArray = connectionObject.value(QStringLiteral("meters")).toArray();
-        for (const QJsonValue &meterValue : meterArray)
-        {
-            const QJsonObject meterObject = meterValue.toObject();
-            MeterInfo meterInfo;
-            meterInfo.alias = meterObject.value(QStringLiteral("alias")).toString();
-            meterInfo.address = meterObject.value(QStringLiteral("address")).toString();
-            meterInfo.operatorCode = meterObject.value(QStringLiteral("operatorCode")).toString();
-            meterInfo.password = meterObject.value(QStringLiteral("password")).toString();
-            meterInfo.includeLeadingFE = meterObject.value(QStringLiteral("includeLeadingFE")).toBool();
-            meterInfo.phaseType = static_cast<MeterPhaseType>(meterObject.value(QStringLiteral("phaseType")).toInt(static_cast<int>(MeterPhaseType::ThreePhase)));
-
-            if (meterInfo.alias.isEmpty() || meterInfo.address.isEmpty() || importedAddresses.contains(meterInfo.address))
-            {
-                continue;
-            }
-
-            if (deviceTree->addMeter(config.alias, meterInfo))
+            if (deviceTree->addMeter(importedConnection.config.alias, meterInfo))
             {
                 createMeterModel(meterInfo);
-                importedAddresses.append(meterInfo.address);
                 lastMeterInfo = meterInfo;
             }
         }
