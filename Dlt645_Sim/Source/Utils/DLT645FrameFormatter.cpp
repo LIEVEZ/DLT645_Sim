@@ -150,6 +150,13 @@ int currentRateCount(const MeterModel *meterModel)
     return qBound(1, ok ? rateCount : kDefaultRateCount, kMaxRateCount);
 }
 
+int effectiveRateCount(const MeterModel *meterModel, int rateCountOverride)
+{
+    return rateCountOverride > 0
+               ? qBound(1, rateCountOverride, kMaxRateCount)
+               : currentRateCount(meterModel);
+}
+
 bool isDynamicDemandBlock(const MeterModel *meterModel, const QString &diCode)
 {
     if (!meterModel || !diCode.endsWith(QStringLiteral("FF00")))
@@ -204,10 +211,10 @@ bool isLatestHourlyFreezeCompositeBlock(const QString &diCode)
     return diCode == QStringLiteral("0x0504FF01");
 }
 
-QStringList dynamicEnergyPayloadOrderCodes(const MeterModel *meterModel, const QString &diCode)
+QStringList dynamicEnergyPayloadOrderCodes(const MeterModel *meterModel, const QString &diCode, int rateCountOverride = -1)
 {
     const QString prefix = diCode.left(6);
-    const int rateCount = currentRateCount(meterModel);
+    const int rateCount = effectiveRateCount(meterModel, rateCountOverride);
 
     QStringList codes;
     codes.reserve(rateCount + 1);
@@ -219,10 +226,10 @@ QStringList dynamicEnergyPayloadOrderCodes(const MeterModel *meterModel, const Q
     return codes;
 }
 
-QStringList dynamicEnergyDisplayOrderCodes(const MeterModel *meterModel, const QString &diCode)
+QStringList dynamicEnergyDisplayOrderCodes(const MeterModel *meterModel, const QString &diCode, int rateCountOverride = -1)
 {
     const QString prefix = diCode.left(6);
-    const int rateCount = currentRateCount(meterModel);
+    const int rateCount = effectiveRateCount(meterModel, rateCountOverride);
 
     QStringList codes;
     codes.reserve(rateCount + 1);
@@ -234,10 +241,10 @@ QStringList dynamicEnergyDisplayOrderCodes(const MeterModel *meterModel, const Q
     return codes;
 }
 
-QStringList dynamicDemandPayloadOrderCodes(const MeterModel *meterModel, const QString &diCode)
+QStringList dynamicDemandPayloadOrderCodes(const MeterModel *meterModel, const QString &diCode, int rateCountOverride = -1)
 {
     const QString prefix = diCode.left(6);
-    const int rateCount = currentRateCount(meterModel);
+    const int rateCount = effectiveRateCount(meterModel, rateCountOverride);
 
     QStringList codes;
     codes.reserve((rateCount + 1) * 2);
@@ -252,10 +259,10 @@ QStringList dynamicDemandPayloadOrderCodes(const MeterModel *meterModel, const Q
     return codes;
 }
 
-QStringList dynamicDemandDisplayOrderCodes(const MeterModel *meterModel, const QString &diCode)
+QStringList dynamicDemandDisplayOrderCodes(const MeterModel *meterModel, const QString &diCode, int rateCountOverride = -1)
 {
     const QString prefix = diCode.left(6);
-    const int rateCount = currentRateCount(meterModel);
+    const int rateCount = effectiveRateCount(meterModel, rateCountOverride);
 
     QStringList codes;
     codes.reserve((rateCount + 1) * 2);
@@ -270,10 +277,10 @@ QStringList dynamicDemandDisplayOrderCodes(const MeterModel *meterModel, const Q
     return codes;
 }
 
-QStringList dynamicFreezeEnergyPayloadOrderCodes(const MeterModel *meterModel, const QString &diCode)
+QStringList dynamicFreezeEnergyPayloadOrderCodes(const MeterModel *meterModel, const QString &diCode, int rateCountOverride = -1)
 {
     const QString prefix = diCode.left(8);
-    const int rateCount = currentRateCount(meterModel);
+    const int rateCount = effectiveRateCount(meterModel, rateCountOverride);
 
     QStringList codes;
     codes.reserve(rateCount + 1);
@@ -285,10 +292,10 @@ QStringList dynamicFreezeEnergyPayloadOrderCodes(const MeterModel *meterModel, c
     return codes;
 }
 
-QStringList dynamicFreezeEnergyDisplayOrderCodes(const MeterModel *meterModel, const QString &diCode)
+QStringList dynamicFreezeEnergyDisplayOrderCodes(const MeterModel *meterModel, const QString &diCode, int rateCountOverride = -1)
 {
     const QString prefix = diCode.left(8);
-    const int rateCount = currentRateCount(meterModel);
+    const int rateCount = effectiveRateCount(meterModel, rateCountOverride);
 
     QStringList codes;
     codes.reserve(rateCount + 1);
@@ -308,21 +315,21 @@ QStringList latestHourlyFreezeCompositeCodes()
         QStringLiteral("0x05040200")};
 }
 
-QStringList payloadOrderCodesForBlock(const MeterModel *meterModel, const QString &diCode)
+QStringList payloadOrderCodesForBlock(const MeterModel *meterModel, const QString &diCode, int rateCountOverride = -1)
 {
     if (isDynamicEnergyBlock(meterModel, diCode))
     {
-        return dynamicEnergyPayloadOrderCodes(meterModel, diCode);
+        return dynamicEnergyPayloadOrderCodes(meterModel, diCode, rateCountOverride);
     }
 
     if (isDynamicFreezeEnergyBlock(meterModel, diCode))
     {
-        return dynamicFreezeEnergyPayloadOrderCodes(meterModel, diCode);
+        return dynamicFreezeEnergyPayloadOrderCodes(meterModel, diCode, rateCountOverride);
     }
 
     if (isDynamicDemandBlock(meterModel, diCode))
     {
-        return dynamicDemandPayloadOrderCodes(meterModel, diCode);
+        return dynamicDemandPayloadOrderCodes(meterModel, diCode, rateCountOverride);
     }
 
     if (isHarmonicBlockCode(diCode, QStringLiteral("0x020A")) ||
@@ -397,21 +404,21 @@ QStringList payloadOrderCodesForBlock(const MeterModel *meterModel, const QStrin
     return {};
 }
 
-QStringList displayOrderCodesForBlock(const MeterModel *meterModel, const QString &diCode)
+QStringList displayOrderCodesForBlock(const MeterModel *meterModel, const QString &diCode, int rateCountOverride = -1)
 {
     if (isDynamicEnergyBlock(meterModel, diCode))
     {
-        return dynamicEnergyDisplayOrderCodes(meterModel, diCode);
+        return dynamicEnergyDisplayOrderCodes(meterModel, diCode, rateCountOverride);
     }
 
     if (isDynamicFreezeEnergyBlock(meterModel, diCode))
     {
-        return dynamicFreezeEnergyDisplayOrderCodes(meterModel, diCode);
+        return dynamicFreezeEnergyDisplayOrderCodes(meterModel, diCode, rateCountOverride);
     }
 
     if (isDynamicDemandBlock(meterModel, diCode))
     {
-        return dynamicDemandDisplayOrderCodes(meterModel, diCode);
+        return dynamicDemandDisplayOrderCodes(meterModel, diCode, rateCountOverride);
     }
 
     if (isHarmonicBlockCode(diCode, QStringLiteral("0x020A")) ||
@@ -526,15 +533,81 @@ QString blockDisplayValueForItem(const MeterModel *meterModel,
         {
             *unitOut = item.unit;
         }
-
-        if (!item.format.contains(':') && BCDHelper::isValidBCD(payload))
-        {
-            const QString rawDigits = BCDHelper::bytesToHexString(payload, QString());
-            return BCDHelper::bcdStringToDecimal(rawDigits, item.decimalPlaces);
-        }
     }
 
     return decodedValueForItem(meterModel, diCode, payload, descriptionOut, unitOut);
+}
+
+bool isRateCountDependentBlock(const MeterModel *meterModel, const QString &diCode)
+{
+    return isDynamicEnergyBlock(meterModel, diCode) ||
+           isDynamicFreezeEnergyBlock(meterModel, diCode) ||
+           isDynamicDemandBlock(meterModel, diCode);
+}
+
+int payloadSizeForCodes(const MeterModel *meterModel, const QStringList &codes)
+{
+    if (!meterModel || codes.isEmpty())
+    {
+        return -1;
+    }
+
+    int totalSize = 0;
+    for (const QString &code : codes)
+    {
+        const DataItem item = meterModel->getDataItem(code);
+        if (item.diCode.isEmpty())
+        {
+            return -1;
+        }
+
+        const int size = DLT645DataHelper::bytesRequiredForFormat(item.format);
+        if (size <= 0)
+        {
+            return -1;
+        }
+
+        totalSize += size;
+    }
+
+    return totalSize;
+}
+
+QStringList selectPayloadOrderCodesForBlock(const MeterModel *meterModel,
+                                            const QString &blockDiCode,
+                                            const QByteArray &payload,
+                                            int *rateCountOverrideOut)
+{
+    if (rateCountOverrideOut)
+    {
+        *rateCountOverrideOut = -1;
+    }
+
+    QStringList payloadCodes = payloadOrderCodesForBlock(meterModel, blockDiCode);
+    if (payloadSizeForCodes(meterModel, payloadCodes) == payload.size())
+    {
+        return payloadCodes;
+    }
+
+    if (!isRateCountDependentBlock(meterModel, blockDiCode))
+    {
+        return payloadCodes;
+    }
+
+    for (int rateCount = kMaxRateCount; rateCount >= 1; --rateCount)
+    {
+        const QStringList candidateCodes = payloadOrderCodesForBlock(meterModel, blockDiCode, rateCount);
+        if (payloadSizeForCodes(meterModel, candidateCodes) == payload.size())
+        {
+            if (rateCountOverrideOut)
+            {
+                *rateCountOverrideOut = rateCount;
+            }
+            return candidateCodes;
+        }
+    }
+
+    return payloadCodes;
 }
 
 QList<FrameParseCard> buildBlockDecodeCards(const MeterModel *meterModel, const QString &blockDiCode, const QByteArray &payload)
@@ -544,7 +617,8 @@ QList<FrameParseCard> buildBlockDecodeCards(const MeterModel *meterModel, const 
         return {};
     }
 
-    const QStringList payloadCodes = payloadOrderCodesForBlock(meterModel, blockDiCode);
+    int rateCountOverride = -1;
+    const QStringList payloadCodes = selectPayloadOrderCodesForBlock(meterModel, blockDiCode, payload, &rateCountOverride);
     if (payloadCodes.isEmpty())
     {
         return {};
@@ -590,7 +664,7 @@ QList<FrameParseCard> buildBlockDecodeCards(const MeterModel *meterModel, const 
         return {};
     }
 
-    const QStringList displayCodes = displayOrderCodesForBlock(meterModel, blockDiCode);
+    const QStringList displayCodes = displayOrderCodesForBlock(meterModel, blockDiCode, rateCountOverride);
     QList<FrameParseCard> cards;
     for (const QString &code : displayCodes)
     {

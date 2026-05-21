@@ -3298,7 +3298,7 @@ void MeterModel::initializeVariableData()
     m_dataItems["0x02010100"] = DataItem("0x02010100", "A相电压", 20.1, "V", "AA,xx", false, 1);
     m_dataItems["0x02010200"] = DataItem("0x02010200", "B相电压", 220.2, "V", "AA,xx", false, 1);
     m_dataItems["0x02010300"] = DataItem("0x02010300", "C相电压", 220.3, "V", "AA,xx", false, 1);
-    m_dataItems["0x0201FF00"] = DataItem("0x02010400", "电压数据块", QVariantList(), "-", "AA,xx:AA,xx:AA,xx", false, 1);
+    m_dataItems["0x0201FF00"] = DataItem("0x0201FF00", "电压数据块", QVariantList(), "-", "AA,xx:AA,xx:AA,xx", false, 1);
 
     // 电流
     m_dataItems["0x02020100"] = DataItem("0x02020100", "A相电流", 1.01, "A", "AA,xx,AA", false, 3);
@@ -3336,7 +3336,7 @@ void MeterModel::initializeVariableData()
     m_dataItems["0x02070100"] = DataItem("0x02070100", "A相相角", 0.0, "°", "AA,xx", false, 1);
     m_dataItems["0x02070200"] = DataItem("0x02070200", "B相相角", 0.0, "°", "AA,xx", false, 1);
     m_dataItems["0x02070300"] = DataItem("0x02070300", "C相相角", 0.0, "°", "AA,xx", false, 1);
-    m_dataItems["0x0207FF00"] = DataItem("0x0207FF00", "相角数据块", QVariantList(), "-", "AA,xx:AA,xx:AA,xx:AA,xx", false, 1);
+    m_dataItems["0x0207FF00"] = DataItem("0x0207FF00", "相角数据块", QVariantList(), "-", "AA,xx:AA,xx:AA,xx", false, 1);
 
     // 波形失真度
     m_dataItems["0x02080100"] = DataItem("0x02080100", "A相电压波形失真度", 1.25, "%", "AA,.,AA", false, 2);
