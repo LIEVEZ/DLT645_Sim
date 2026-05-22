@@ -907,11 +907,27 @@ FrameParseSection buildDataSection(const QByteArray &frame, const MeterModel *me
         decodedPayload = dataField.mid(5);
         payloadLabel = QString::fromUtf8("写入状态");
     }
-    else if (dataField.size() > 5)
+    else
     {
-        const int payloadLength = static_cast<quint8>(dataField[4]);
-        decodedPayload = DLT645DataHelper::decodeReversedPayload(dataField.mid(5, payloadLength > 0 ? payloadLength : -1));
-        payloadLabel = QString::fromUtf8("写入数据");
+        const bool hasLegacyPayloadLength =
+            dataField.size() > 5 && static_cast<quint8>(dataField[4]) == dataField.size() - 5;
+
+        if (hasLegacyPayloadLength)
+        {
+            const int payloadLength = static_cast<quint8>(dataField[4]);
+            decodedPayload = DLT645DataHelper::decodeReversedPayload(dataField.mid(5, payloadLength > 0 ? payloadLength : -1));
+            payloadLabel = QString::fromUtf8("写入数据");
+        }
+        else if (dataField.size() >= 12)
+        {
+            const QByteArray authorityBytes = DLT645DataHelper::subtract33(dataField.mid(4, 8));
+            dataText += lineWithValue(QString::fromUtf8("权限："), DLT645FrameFormatter::formatHex(authorityBytes.left(1), false));
+            dataText += lineWithValue(QString::fromUtf8("密码："), DLT645FrameFormatter::formatHex(authorityBytes.mid(1, 3), false));
+            dataText += lineWithValue(QString::fromUtf8("操作代码："), DLT645FrameFormatter::formatHex(authorityBytes.mid(4, 4), false));
+
+            decodedPayload = DLT645DataHelper::decodeReversedPayload(dataField.mid(12));
+            payloadLabel = QString::fromUtf8("写入数据");
+        }
     }
 
     if (!payloadLabel.isEmpty())

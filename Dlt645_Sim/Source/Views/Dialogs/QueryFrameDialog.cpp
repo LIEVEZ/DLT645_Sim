@@ -242,6 +242,10 @@ QueryFrameDialog::QueryFrameDialog(QWidget *parent)
       m_searchEdit(nullptr),
       m_dataItemList(nullptr),
       m_selectedDiLabel(nullptr),
+      m_writeGroup(nullptr),
+      m_writePermissionEdit(nullptr),
+      m_writePasswordEdit(nullptr),
+      m_writeOperatorCodeEdit(nullptr),
       m_writeValueLabel(nullptr),
       m_writeValueEdit(nullptr),
       m_writeHintLabel(nullptr),
@@ -611,23 +615,45 @@ void QueryFrameDialog::setupUI()
 
     mainLayout->addWidget(dataItemGroup, 1);
 
-    QGroupBox *writeGroup = new QGroupBox(QString::fromUtf8("写入数据"), this);
-    QVBoxLayout *writeLayout = new QVBoxLayout(writeGroup);
+    m_writeGroup = new QGroupBox(QString::fromUtf8("写入数据"), this);
+    QVBoxLayout *writeLayout = new QVBoxLayout(m_writeGroup);
 
-    QHBoxLayout *writeValueLayout = new QHBoxLayout();
-    m_writeValueLabel = new QLabel(QString::fromUtf8("写入值:"), writeGroup);
-    m_writeValueEdit = new QLineEdit(writeGroup);
+    QFormLayout *writeFormLayout = new QFormLayout();
+    writeFormLayout->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+    m_writePermissionEdit = new QLineEdit(m_writeGroup);
+    m_writePermissionEdit->setClearButtonEnabled(true);
+    m_writePermissionEdit->setText(QStringLiteral("00"));
+    m_writePermissionEdit->setPlaceholderText(QString::fromUtf8("2 位权限码，例如 00"));
+    m_writePermissionEdit->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("\\d{0,2}")), m_writePermissionEdit));
+    writeFormLayout->addRow(QString::fromUtf8("权限:"), m_writePermissionEdit);
+
+    m_writePasswordEdit = new QLineEdit(m_writeGroup);
+    m_writePasswordEdit->setClearButtonEnabled(true);
+    m_writePasswordEdit->setText(QStringLiteral("000000"));
+    m_writePasswordEdit->setPlaceholderText(QString::fromUtf8("6 位密码，例如 000000"));
+    m_writePasswordEdit->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("\\d{0,6}")), m_writePasswordEdit));
+    writeFormLayout->addRow(QString::fromUtf8("密码:"), m_writePasswordEdit);
+
+    m_writeOperatorCodeEdit = new QLineEdit(m_writeGroup);
+    m_writeOperatorCodeEdit->setClearButtonEnabled(true);
+    m_writeOperatorCodeEdit->setText(QStringLiteral("00000000"));
+    m_writeOperatorCodeEdit->setPlaceholderText(QString::fromUtf8("8 位操作代码，例如 00000000"));
+    m_writeOperatorCodeEdit->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("\\d{0,8}")), m_writeOperatorCodeEdit));
+    writeFormLayout->addRow(QString::fromUtf8("操作代码:"), m_writeOperatorCodeEdit);
+
+    m_writeValueLabel = new QLabel(QString::fromUtf8("数据:"), m_writeGroup);
+    m_writeValueEdit = new QLineEdit(m_writeGroup);
     m_writeValueEdit->setClearButtonEnabled(true);
-    m_writeValueEdit->setPlaceholderText(QString::fromUtf8("输入写入值，非数字字符会自动忽略"));
-    writeValueLayout->addWidget(m_writeValueLabel);
-    writeValueLayout->addWidget(m_writeValueEdit, 1);
-    writeLayout->addLayout(writeValueLayout);
+    m_writeValueEdit->setPlaceholderText(QString::fromUtf8("输入写入数据，非数字字符会自动忽略"));
+    writeFormLayout->addRow(m_writeValueLabel, m_writeValueEdit);
+    writeLayout->addLayout(writeFormLayout);
 
-    m_writeHintLabel = new QLabel(writeGroup);
+    m_writeHintLabel = new QLabel(m_writeGroup);
     m_writeHintLabel->setWordWrap(true);
     writeLayout->addWidget(m_writeHintLabel);
 
-    mainLayout->addWidget(writeGroup);
+    mainLayout->addWidget(m_writeGroup);
 
     QGroupBox *resultGroup = new QGroupBox(QString::fromUtf8("帧生成结果"), this);
     QVBoxLayout *resultLayout = new QVBoxLayout(resultGroup);
@@ -677,6 +703,12 @@ void QueryFrameDialog::setupUI()
     connect(m_addressEdit, &QLineEdit::textChanged,
             this, &QueryFrameDialog::onInputChanged);
     connect(m_includePrefixCheckBox, &QCheckBox::toggled,
+            this, &QueryFrameDialog::onInputChanged);
+    connect(m_writePermissionEdit, &QLineEdit::textChanged,
+            this, &QueryFrameDialog::onInputChanged);
+    connect(m_writePasswordEdit, &QLineEdit::textChanged,
+            this, &QueryFrameDialog::onInputChanged);
+    connect(m_writeOperatorCodeEdit, &QLineEdit::textChanged,
             this, &QueryFrameDialog::onInputChanged);
     connect(m_writeValueEdit, &QLineEdit::textChanged,
             this, &QueryFrameDialog::onInputChanged);
@@ -829,20 +861,50 @@ void QueryFrameDialog::refreshGeneratedFrame()
         return;
     }
 
-    ProtocolParser parser(nullptr);
+    ProtocolParser parser(m_meterModel ? m_meterModel : m_catalogMeterModel);
     ProtocolFrame frame;
 
     if (isWriteMode())
     {
+        const QString permission = m_writePermissionEdit->text().trimmed();
+        const QString password = m_writePasswordEdit->text().trimmed();
+        const QString operatorCode = m_writeOperatorCodeEdit->text().trimmed();
         const QString writeValue = m_writeValueEdit->text().trimmed();
-        if (writeValue.isEmpty())
+        if (permission.length() != 2)
         {
-            m_statusLabel->setText(QString::fromUtf8("请输入写入值后生成写数据帧。"));
+            m_statusLabel->setText(QString::fromUtf8("请输入 2 位权限码后生成写数据帧。"));
             updateActionButtons();
             return;
         }
 
-        frame = parser.buildWriteRequest(ProtocolParser::addressToBytes(address), diCode, QVariant(writeValue), includePrefixFE);
+        if (password.length() != 6)
+        {
+            m_statusLabel->setText(QString::fromUtf8("请输入 6 位密码后生成写数据帧。"));
+            updateActionButtons();
+            return;
+        }
+
+        if (operatorCode.length() != 8)
+        {
+            m_statusLabel->setText(QString::fromUtf8("请输入 8 位操作代码后生成写数据帧。"));
+            updateActionButtons();
+            return;
+        }
+
+        if (writeValue.isEmpty())
+        {
+            m_statusLabel->setText(QString::fromUtf8("请输入数据后生成写数据帧。"));
+            updateActionButtons();
+            return;
+        }
+
+        frame = parser.buildWriteRequest(ProtocolParser::addressToBytes(address),
+                                         diCode,
+                                         QVariant(writeValue),
+                                         permission,
+                                         password,
+                                         operatorCode,
+                                         includePrefixFE);
     }
     else
     {
@@ -870,9 +932,10 @@ void QueryFrameDialog::refreshWriteValueState()
     const bool writeMode = isWriteMode();
     const QString currentDiCode = selectedDiCode();
 
-    m_writeValueLabel->setVisible(writeMode);
-    m_writeValueEdit->setVisible(writeMode);
-    m_writeHintLabel->setVisible(writeMode);
+    m_writeGroup->setVisible(writeMode);
+    m_writePermissionEdit->setEnabled(writeMode);
+    m_writePasswordEdit->setEnabled(writeMode);
+    m_writeOperatorCodeEdit->setEnabled(writeMode);
     m_writeValueEdit->setEnabled(writeMode && !currentDiCode.isEmpty());
 
     if (!writeMode)

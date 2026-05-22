@@ -3,6 +3,41 @@
 #include "Utils/BCDHelper.h"
 #include <algorithm>
 
+namespace
+{
+QString digitsOnly(QString value)
+{
+    value.remove(QRegExp("[^0-9]"));
+    return value;
+}
+
+QByteArray bcdBytesFromDigits(QString digits, int byteCount, bool leastSignificantPairFirst)
+{
+    digits = digitsOnly(digits).rightJustified(byteCount * 2, QChar('0')).right(byteCount * 2);
+
+    QByteArray bytes;
+    bytes.reserve(byteCount);
+    for (int i = 0; i < byteCount; ++i)
+    {
+        const int digitIndex = leastSignificantPairFirst
+                                   ? digits.length() - (i + 1) * 2
+                                   : i * 2;
+        bool ok = false;
+        const quint8 byte = static_cast<quint8>(digits.mid(digitIndex, 2).toUInt(&ok, 16));
+        bytes.append(static_cast<char>(ok ? byte : 0x00));
+    }
+    return bytes;
+}
+
+void add33(QByteArray &data)
+{
+    for (int i = 0; i < data.size(); ++i)
+    {
+        data[i] = static_cast<char>(static_cast<quint8>(data[i]) + 0x33);
+    }
+}
+}
+
 ProtocolParser::ProtocolParser(MeterModel *meterModel, QObject *parent)
     : QObject(parent), m_meterModel(meterModel)
 {
@@ -239,6 +274,83 @@ ProtocolFrame ProtocolParser::buildWriteRequest(const QByteArray &address, const
     std::reverse(valueBytes.begin(), valueBytes.end());
 
     frame.dataField = diBytes + QByteArray(1, static_cast<quint8>(valueBytes.size())) + valueBytes;
+    frame.dataLength = static_cast<quint8>(frame.dataField.size());
+
+    frame.checksum = 0;
+    QByteArray frameData = frame.toByteArray();
+    frame.checksum = ChecksumHelper::calculateChecksum(frameData.left(frameData.size() - 2));
+    frame.endFlag = 0x16;
+
+    return frame;
+}
+
+ProtocolFrame ProtocolParser::buildWriteRequest(const QByteArray &address,
+                                                const QString &diCode,
+                                                const QVariant &value,
+                                                const QString &permission,
+                                                const QString &password,
+                                                const QString &operatorCode,
+                                                bool includePrefixFE)
+{
+    Q_UNUSED(includePrefixFE);
+    ProtocolFrame frame;
+
+    frame.startFlag = 0x68;
+    frame.address = address;
+    frame.startFlag2 = 0x68;
+    frame.controlCode = static_cast<quint8>(ControlCode::WriteData);
+
+    QByteArray diBytes = diCodeToBytes(diCode);
+
+    QByteArray authorityBytes;
+    authorityBytes.append(bcdBytesFromDigits(permission, 1, false));
+    authorityBytes.append(bcdBytesFromDigits(password, 3, false));
+    authorityBytes.append(bcdBytesFromDigits(operatorCode, 4, false));
+    add33(authorityBytes);
+
+    QByteArray valueBytes;
+    QString format;
+    if (m_meterModel)
+    {
+        const DataItem dataItem = m_meterModel->getDataItem(diCode);
+        format = dataItem.format;
+    }
+
+    if (!format.isEmpty())
+    {
+        valueBytes = processDataValue(value, format);
+    }
+    else if (value.type() == QVariant::String)
+    {
+        QString strValue = value.toString();
+        strValue.remove(QRegExp("[^0-9]"));
+        if (strValue.length() % 2 != 0)
+        {
+            strValue.prepend('0');
+        }
+
+        for (int i = 0; i < strValue.length(); i += 2)
+        {
+            const QString byteStr = strValue.mid(i, 2);
+            valueBytes.append(static_cast<char>(byteStr.toInt(nullptr, 16)));
+        }
+    }
+    else if (value.type() == QVariant::Double || value.type() == QVariant::Int)
+    {
+        const double numValue = value.toDouble();
+        const qint64 intValue = static_cast<qint64>(numValue * 100);
+        const QString strValue = QString::number(intValue).rightJustified(12, QChar('0'));
+        for (int i = 0; i < strValue.length(); i += 2)
+        {
+            const QString byteStr = strValue.mid(i, 2);
+            valueBytes.append(static_cast<char>(byteStr.toInt(nullptr, 16)));
+        }
+    }
+
+    add33(valueBytes);
+    std::reverse(valueBytes.begin(), valueBytes.end());
+
+    frame.dataField = diBytes + authorityBytes + valueBytes;
     frame.dataLength = static_cast<quint8>(frame.dataField.size());
 
     frame.checksum = 0;

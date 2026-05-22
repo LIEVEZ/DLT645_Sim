@@ -125,6 +125,13 @@ public:
      * @return 协议帧
      */
     ProtocolFrame buildWriteRequest(const QByteArray &address, const QString &diCode, const QVariant &value, bool includePrefixFE = true);
+    ProtocolFrame buildWriteRequest(const QByteArray &address,
+                                    const QString &diCode,
+                                    const QVariant &value,
+                                    const QString &permission,
+                                    const QString &password,
+                                    const QString &operatorCode,
+                                    bool includePrefixFE = true);
 
     /**
      * @brief 构建读数据应答帧

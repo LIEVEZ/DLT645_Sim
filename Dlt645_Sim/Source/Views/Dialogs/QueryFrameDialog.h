@@ -13,6 +13,7 @@ class QListWidget;
 class QListWidgetItem;
 class MeterModel;
 class QPushButton;
+class QGroupBox;
 class FrameParseDialog;
 struct DataItem;
 
@@ -82,6 +83,10 @@ private:
     QLineEdit *m_searchEdit;
     QListWidget *m_dataItemList;
     QLabel *m_selectedDiLabel;
+    QGroupBox *m_writeGroup;
+    QLineEdit *m_writePermissionEdit;
+    QLineEdit *m_writePasswordEdit;
+    QLineEdit *m_writeOperatorCodeEdit;
     QLabel *m_writeValueLabel;
     QLineEdit *m_writeValueEdit;
     QLabel *m_writeHintLabel;

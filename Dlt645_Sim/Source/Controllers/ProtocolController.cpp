@@ -459,7 +459,10 @@ void ProtocolController::processWriteRequest(const ProtocolFrame &frame, MeterMo
         return;
     }
 
-    QByteArray valueBytes = frame.dataField.mid(5);
+    const bool hasLegacyPayloadLength =
+        frame.dataField.size() > 5 && static_cast<quint8>(frame.dataField[4]) == frame.dataField.size() - 5;
+    const int valueOffset = hasLegacyPayloadLength ? 5 : 12;
+    QByteArray valueBytes = frame.dataField.mid(valueOffset);
     QVariant value;
 
     std::reverse(valueBytes.begin(), valueBytes.end());
