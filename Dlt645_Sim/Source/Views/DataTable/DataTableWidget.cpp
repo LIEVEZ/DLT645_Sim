@@ -259,8 +259,358 @@ namespace
         return convertedValues;
     }
 
-    QString detailValueDescription(const QString &diCode, const QString &value)
+    QString phaseEventName(const QString &diCode)
     {
+        if (diCode.startsWith(QStringLiteral("0x0301")))
+        {
+            return QStringLiteral("失压");
+        }
+        if (diCode.startsWith(QStringLiteral("0x0302")))
+        {
+            return QStringLiteral("欠压");
+        }
+        if (diCode.startsWith(QStringLiteral("0x0303")))
+        {
+            return QStringLiteral("过压");
+        }
+        if (diCode.startsWith(QStringLiteral("0x0304")))
+        {
+            return QStringLiteral("断相");
+        }
+
+        return QStringLiteral("事件");
+    }
+
+    QStringList totalAndPhaseEnergyNames(const QString &prefix, const QStringList &energyTypes, const QString &suffix)
+    {
+        QStringList names;
+        for (const QString &energyType : energyTypes)
+        {
+            names.append(QStringLiteral("%1%2总电能%3").arg(prefix, energyType, suffix));
+        }
+
+        const QStringList phases = {QStringLiteral("A相"), QStringLiteral("B相"), QStringLiteral("C相")};
+        for (const QString &phase : phases)
+        {
+            for (const QString &energyType : energyTypes)
+            {
+                names.append(QStringLiteral("%1%2%3电能%4").arg(prefix, phase, energyType, suffix));
+            }
+        }
+
+        return names;
+    }
+
+    QStringList phaseVoltageEventFieldNames(const QString &eventName)
+    {
+        const QString prefix = eventName + QStringLiteral("期间");
+        const QStringList energyTypes = {
+            QStringLiteral("正向有功"),
+            QStringLiteral("反向有功"),
+            QStringLiteral("组合无功1"),
+            QStringLiteral("组合无功2")};
+        const QStringList phases = {QStringLiteral("A相"), QStringLiteral("B相"), QStringLiteral("C相")};
+
+        QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("结束时刻")};
+        for (const QString &energyType : energyTypes)
+        {
+            names.append(QStringLiteral("%1%2总电能增量").arg(prefix, energyType));
+        }
+
+        for (const QString &phase : phases)
+        {
+            for (const QString &energyType : energyTypes)
+            {
+                names.append(QStringLiteral("%1%2%3电能增量").arg(prefix, phase, energyType));
+            }
+            names.append(QStringLiteral("%1时刻%2电压").arg(eventName, phase));
+            names.append(QStringLiteral("%1时刻%2电流").arg(eventName, phase));
+            names.append(QStringLiteral("%1时刻%2有功功率").arg(eventName, phase));
+            names.append(QStringLiteral("%1时刻%2无功功率").arg(eventName, phase));
+            names.append(QStringLiteral("%1时刻%2功率因数").arg(eventName, phase));
+        }
+
+        names.append(QStringLiteral("%1总安时数").arg(prefix));
+        for (const QString &phase : phases)
+        {
+            names.append(QStringLiteral("%1%2安时数").arg(prefix, phase));
+        }
+
+        return names;
+    }
+
+    QStringList sequenceEventFieldNames(const QString &eventName)
+    {
+        const QStringList energyTypes = {
+            QStringLiteral("正向有功"),
+            QStringLiteral("反向有功"),
+            QStringLiteral("组合无功1"),
+            QStringLiteral("组合无功2")};
+        QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("结束时刻")};
+        names.append(totalAndPhaseEnergyNames(eventName + QStringLiteral("期间"), energyTypes, QStringLiteral("增量")));
+        return names;
+    }
+
+    QStringList unbalanceEventFieldNames(const QString &eventName)
+    {
+        QStringList names = {QStringLiteral("发生时刻"),
+                             QStringLiteral("结束时刻"),
+                             QStringLiteral("最大不平衡率")};
+        names.append(sequenceEventFieldNames(eventName).mid(2));
+        return names;
+    }
+
+    QStringList meterClearFieldNames()
+    {
+        const QStringList energyTypes = {
+            QStringLiteral("正向有功"),
+            QStringLiteral("反向有功"),
+            QStringLiteral("第一象限无功"),
+            QStringLiteral("第二象限无功"),
+            QStringLiteral("第三象限无功"),
+            QStringLiteral("第四象限无功")};
+        QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("操作者代码")};
+        names.append(totalAndPhaseEnergyNames(QStringLiteral("电表清零前"), energyTypes, QString()));
+        return names;
+    }
+
+    QStringList demandClearFieldNames()
+    {
+        const QStringList demandTypes = {
+            QStringLiteral("正向有功"),
+            QStringLiteral("反向有功"),
+            QStringLiteral("第一象限无功"),
+            QStringLiteral("第二象限无功"),
+            QStringLiteral("第三象限无功"),
+            QStringLiteral("第四象限无功")};
+        const QStringList phases = {QStringLiteral("A相"), QStringLiteral("B相"), QStringLiteral("C相")};
+
+        QStringList baseNames;
+        for (const QString &demandType : demandTypes)
+        {
+            baseNames.append(QStringLiteral("需量清零前%1总最大需量").arg(demandType));
+        }
+        for (const QString &phase : phases)
+        {
+            for (const QString &demandType : demandTypes)
+            {
+                baseNames.append(QStringLiteral("需量清零前%1%2最大需量").arg(phase, demandType));
+            }
+        }
+
+        QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("操作者代码")};
+        for (const QString &baseName : baseNames)
+        {
+            names.append(baseName);
+            names.append(baseName + QStringLiteral("发生时间"));
+        }
+
+        return names;
+    }
+
+    QStringList voltageComplianceFieldNames(const QString &phaseName)
+    {
+        const QString prefix = phaseName.isEmpty() ? QStringLiteral("电压") : phaseName + QStringLiteral("电压");
+        return {prefix + QStringLiteral("监测时间"),
+                prefix + QStringLiteral("合格率"),
+                prefix + QStringLiteral("超限率"),
+                prefix + QStringLiteral("超上限时间"),
+                prefix + QStringLiteral("超下限时间"),
+                phaseName + QStringLiteral("最高电压"),
+                phaseName + QStringLiteral("最高电压出现时间"),
+                phaseName + QStringLiteral("最低电压"),
+                phaseName + QStringLiteral("最低电压出现时间")};
+    }
+
+    QStringList scheduleTableProgramFieldNames()
+    {
+        QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("操作者代码")};
+        for (int setIndex = 1; setIndex <= 2; ++setIndex)
+        {
+            for (int tableIndex = 1; tableIndex <= 8; ++tableIndex)
+            {
+                names.append(QStringLiteral("时段表编程前第%1套第%2日时段表数据").arg(setIndex).arg(tableIndex));
+            }
+        }
+
+        return names;
+    }
+
+    QStringList yearZoneProgramFieldNames()
+    {
+        QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("操作者代码")};
+        for (int setIndex = 1; setIndex <= 2; ++setIndex)
+        {
+            for (int zoneIndex = 1; zoneIndex <= 14; ++zoneIndex)
+            {
+                names.append(QStringLiteral("时区表编程前第%1套第%2时区表数据").arg(setIndex).arg(zoneIndex));
+            }
+        }
+
+        return names;
+    }
+
+    QString indexedName(const QStringList &names, int valueIndex)
+    {
+        return valueIndex >= 0 && valueIndex < names.size() ? names.at(valueIndex) : QString();
+    }
+
+    bool isHistoryItem(const QString &diCode)
+    {
+        return diCode.size() >= 10 && diCode.mid(8, 2) != QStringLiteral("00");
+    }
+
+    QString eventDetailValueDescription(const QString &diCode, int valueIndex)
+    {
+        if (!diCode.startsWith(QStringLiteral("0x03")))
+        {
+            return QString();
+        }
+
+        const QString historyByte = diCode.size() >= 10 ? diCode.mid(8, 2) : QString();
+        const QString thirdByte = diCode.size() >= 8 ? diCode.mid(6, 2) : QString();
+
+        const bool isPhaseVoltageFamily = diCode.startsWith(QStringLiteral("0x0301")) ||
+                                          diCode.startsWith(QStringLiteral("0x0302")) ||
+                                          diCode.startsWith(QStringLiteral("0x0303")) ||
+                                          diCode.startsWith(QStringLiteral("0x0304"));
+
+        if (isPhaseVoltageFamily &&
+            thirdByte != QStringLiteral("00") && historyByte != QStringLiteral("00"))
+        {
+            return indexedName(phaseVoltageEventFieldNames(phaseEventName(diCode)), valueIndex);
+        }
+
+        if (((isPhaseVoltageFamily && thirdByte == QStringLiteral("00")) ||
+             diCode == QStringLiteral("0x03050000") ||
+             diCode == QStringLiteral("0x03060000") ||
+             diCode == QStringLiteral("0x03070000") ||
+             diCode == QStringLiteral("0x03080000") ||
+             diCode == QStringLiteral("0x03090000")) &&
+            (!isHistoryItem(diCode) || isPhaseVoltageFamily))
+        {
+            return indexedName({QStringLiteral("总次数"), QStringLiteral("总累计时间")}, valueIndex);
+        }
+
+        if (diCode.startsWith(QStringLiteral("0x030500")) && isHistoryItem(diCode))
+        {
+            return indexedName({QStringLiteral("全失压开始时间"), QStringLiteral("全失压时电流"), QStringLiteral("全失压结束时间")}, valueIndex);
+        }
+
+        if ((diCode.startsWith(QStringLiteral("0x030600")) ||
+             diCode.startsWith(QStringLiteral("0x031100"))) &&
+            isHistoryItem(diCode))
+        {
+            return indexedName({QStringLiteral("事件开始时间"), QStringLiteral("事件结束时间")}, valueIndex);
+        }
+
+        if ((diCode.startsWith(QStringLiteral("0x030700")) ||
+             diCode.startsWith(QStringLiteral("0x030800"))) &&
+            isHistoryItem(diCode))
+        {
+            const QString eventName = diCode.startsWith(QStringLiteral("0x030700"))
+                                          ? QStringLiteral("电压逆相序")
+                                          : QStringLiteral("电流逆相序");
+            return indexedName(sequenceEventFieldNames(eventName), valueIndex);
+        }
+
+        if (diCode.startsWith(QStringLiteral("0x030900")) && isHistoryItem(diCode))
+        {
+            return indexedName(unbalanceEventFieldNames(QStringLiteral("电压不平衡")), valueIndex);
+        }
+
+        if (diCode.startsWith(QStringLiteral("0x0310")))
+        {
+            QString phaseName;
+            if (diCode.startsWith(QStringLiteral("0x031001")))
+            {
+                phaseName = QStringLiteral("A相");
+            }
+            else if (diCode.startsWith(QStringLiteral("0x031002")))
+            {
+                phaseName = QStringLiteral("B相");
+            }
+            else if (diCode.startsWith(QStringLiteral("0x031003")))
+            {
+                phaseName = QStringLiteral("C相");
+            }
+            return indexedName(voltageComplianceFieldNames(phaseName), valueIndex);
+        }
+
+        if (diCode == QStringLiteral("0x03120000"))
+        {
+            const QStringList demandLimitNames = {
+                QStringLiteral("正向有功需量超限总次数"),
+                QStringLiteral("反向有功需量超限总次数"),
+                QStringLiteral("第一象限无功需量超限总次数"),
+                QStringLiteral("第二象限无功需量超限总次数"),
+                QStringLiteral("第三象限无功需量超限总次数"),
+                QStringLiteral("第四象限无功需量超限总次数")};
+            return indexedName(demandLimitNames, valueIndex);
+        }
+
+        if (diCode.startsWith(QStringLiteral("0x0312")) && isHistoryItem(diCode))
+        {
+            return indexedName({QStringLiteral("发生时刻"),
+                                QStringLiteral("结束时刻"),
+                                QStringLiteral("需量超限期间最大需量"),
+                                QStringLiteral("需量超限期间最大需量发生时间")},
+                               valueIndex);
+        }
+
+        if (diCode.startsWith(QStringLiteral("0x033000")) && isHistoryItem(diCode))
+        {
+            QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("操作者代码")};
+            for (int i = 1; i <= 10; ++i)
+            {
+                names.append(QStringLiteral("编程数据标识%1").arg(i));
+            }
+            names.append(QStringLiteral("扩展数据标识1"));
+            names.append(QStringLiteral("扩展数据标识2"));
+            return indexedName(names, valueIndex);
+        }
+
+        if (diCode.startsWith(QStringLiteral("0x033001")) && isHistoryItem(diCode))
+        {
+            return indexedName(meterClearFieldNames(), valueIndex);
+        }
+
+        if (diCode.startsWith(QStringLiteral("0x033002")) && isHistoryItem(diCode))
+        {
+            return indexedName(demandClearFieldNames(), valueIndex);
+        }
+
+        if (diCode.startsWith(QStringLiteral("0x033003")) && isHistoryItem(diCode))
+        {
+            return indexedName({QStringLiteral("发生时刻"), QStringLiteral("操作者代码"), QStringLiteral("事件清零数据标识码")}, valueIndex);
+        }
+
+        if (diCode.startsWith(QStringLiteral("0x033004")) && isHistoryItem(diCode))
+        {
+            return indexedName({QStringLiteral("操作者代码"), QStringLiteral("校时前时间"), QStringLiteral("校时后时间")}, valueIndex);
+        }
+
+        if (diCode.startsWith(QStringLiteral("0x033005")) && isHistoryItem(diCode))
+        {
+            return indexedName(scheduleTableProgramFieldNames(), valueIndex);
+        }
+
+        if (diCode.startsWith(QStringLiteral("0x033006")) && isHistoryItem(diCode))
+        {
+            return indexedName(yearZoneProgramFieldNames(), valueIndex);
+        }
+
+        return QString();
+    }
+
+    QString detailValueDescription(const QString &diCode, const QString &value, int valueIndex)
+    {
+        const QString eventDescription = eventDetailValueDescription(diCode, valueIndex);
+        if (!eventDescription.isEmpty())
+        {
+            return eventDescription;
+        }
+
         bool monthOk = false;
         bool dayOk = false;
         bool indexOk = false;
@@ -1089,7 +1439,7 @@ bool DataTableWidget::showValueDetailDialog(QTableWidgetItem *item)
         valueItem->setTextAlignment(Qt::AlignCenter);
         detailTable->setItem(i, 1, valueItem);
 
-        QTableWidgetItem *descriptionItem = new QTableWidgetItem(detailValueDescription(diCode, values.at(i)));
+        QTableWidgetItem *descriptionItem = new QTableWidgetItem(detailValueDescription(diCode, values.at(i), i));
         descriptionItem->setFlags(descriptionItem->flags() & ~Qt::ItemIsEditable);
         detailTable->setItem(i, 2, descriptionItem);
     }
@@ -1103,7 +1453,7 @@ bool DataTableWidget::showValueDetailDialog(QTableWidgetItem *item)
         QTableWidgetItem *descriptionItem = detailTable->item(changedItem->row(), 2);
         if (descriptionItem)
         {
-            descriptionItem->setText(detailValueDescription(diCode, changedItem->text()));
+            descriptionItem->setText(detailValueDescription(diCode, changedItem->text(), changedItem->row()));
         }
     });
 

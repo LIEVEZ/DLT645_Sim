@@ -17,6 +17,10 @@ constexpr int kDefaultRateCount = 5;
 constexpr int kMaxRateCount = kDefaultRateCount;
 constexpr int kHarmonicOrderCount = 21;
 
+bool isHistoryItem(const QString &diCode);
+QStringList fieldNamesForDecodedValue(const QString &diCode);
+QString decodedValueWithFieldDescriptions(const QString &diCode, const QString &decodedValue);
+
 QString formatByteHex(quint8 value)
 {
     return QStringLiteral("0x%1").arg(value, 2, 16, QChar('0')).toUpper();
@@ -81,6 +85,776 @@ QString appendUnit(const QString &value, const QString &unit, bool withSpace = t
     }
 
     return withSpace ? (value + QStringLiteral(" ") + unit) : (value + unit);
+}
+
+QString hexByte(quint8 value)
+{
+    return QStringLiteral("%1").arg(value, 2, 16, QChar('0')).toUpper();
+}
+
+QString separatorLine(QChar ch)
+{
+    return QString(50, ch);
+}
+
+QString bannerLine(const QString &title, QChar ch)
+{
+    const int sideWidth = qMax(1, (50 - title.length()) / 2);
+    QString line = QString(sideWidth, ch) + title + QString(sideWidth, ch);
+    if (line.length() < 50)
+    {
+        line += QString(50 - line.length(), ch);
+    }
+    return line;
+}
+
+QString annotatedLine(const QString &hex, const QString &label, const QString &value = QString())
+{
+    return value.isEmpty()
+               ? QStringLiteral("%1 --- %2").arg(hex, label)
+               : QStringLiteral("%1 --- %2:%3").arg(hex, label, value);
+}
+
+QString controlCodeDetail(quint8 code)
+{
+    const quint8 functionCode = code & 0x1F;
+    QString functionText;
+    switch (functionCode)
+    {
+    case 0x11:
+        functionText = QStringLiteral("读数据");
+        break;
+    case 0x12:
+        functionText = QStringLiteral("读后续数据");
+        break;
+    case 0x13:
+        functionText = QStringLiteral("读通信地址");
+        break;
+    case 0x14:
+        functionText = QStringLiteral("写数据");
+        break;
+    case 0x15:
+        functionText = QStringLiteral("广播校时");
+        break;
+    case 0x16:
+        functionText = QStringLiteral("写设备地址");
+        break;
+    case 0x17:
+        functionText = QStringLiteral("更改通信速率");
+        break;
+    case 0x18:
+        functionText = QStringLiteral("修改密码");
+        break;
+    case 0x19:
+        functionText = QStringLiteral("最大需量清零");
+        break;
+    case 0x1A:
+        functionText = QStringLiteral("电表清零");
+        break;
+    case 0x1B:
+        functionText = QStringLiteral("事件清零");
+        break;
+    default:
+        functionText = DLT645FrameFormatter::controlCodeName(code);
+        break;
+    }
+
+    QStringList parts;
+    parts.append(functionText);
+    if ((code & 0x80) != 0)
+    {
+        parts.append((code & 0x40) != 0 ? QStringLiteral("异常应答") : QStringLiteral("正常应答"));
+    }
+    else
+    {
+        parts.append(QStringLiteral("请求"));
+    }
+    parts.append((code & 0x20) != 0 ? QStringLiteral("有后续数据") : QStringLiteral("无后续数据"));
+    return parts.join(QStringLiteral("，"));
+}
+
+int bcdByteToInt(quint8 value, bool *ok = nullptr)
+{
+    const int high = (value >> 4) & 0x0F;
+    const int low = value & 0x0F;
+    const bool valid = high <= 9 && low <= 9;
+    if (ok)
+    {
+        *ok = valid;
+    }
+    return high * 10 + low;
+}
+
+QString displayBcdDigits(const QByteArray &bytes, bool reverseBytes)
+{
+    QByteArray normalized = bytes;
+    if (reverseBytes)
+    {
+        std::reverse(normalized.begin(), normalized.end());
+    }
+
+    QString digits;
+    digits.reserve(normalized.size() * 2);
+    for (int i = 0; i < normalized.size(); ++i)
+    {
+        const quint8 byte = static_cast<quint8>(normalized[i]);
+        digits += QStringLiteral("%1").arg(byte, 2, 16, QChar('0')).toUpper();
+    }
+    return digits;
+}
+
+QString displayDateTimeSeconds(const QByteArray &bytes)
+{
+    if (bytes.size() != 6)
+    {
+        return QString();
+    }
+
+    bool ok = true;
+    const int second = bcdByteToInt(static_cast<quint8>(bytes[0]), &ok);
+    const int minute = ok ? bcdByteToInt(static_cast<quint8>(bytes[1]), &ok) : 0;
+    const int hour = ok ? bcdByteToInt(static_cast<quint8>(bytes[2]), &ok) : 0;
+    const int day = ok ? bcdByteToInt(static_cast<quint8>(bytes[3]), &ok) : 0;
+    const int month = ok ? bcdByteToInt(static_cast<quint8>(bytes[4]), &ok) : 0;
+    const int year = ok ? bcdByteToInt(static_cast<quint8>(bytes[5]), &ok) : 0;
+    if (!ok)
+    {
+        return QString();
+    }
+
+    return QStringLiteral("%1年%2月%3日 %4时%5分%6秒")
+        .arg(year, 2, 10, QChar('0'))
+        .arg(month, 2, 10, QChar('0'))
+        .arg(day, 2, 10, QChar('0'))
+        .arg(hour, 2, 10, QChar('0'))
+        .arg(minute, 2, 10, QChar('0'))
+        .arg(second, 2, 10, QChar('0'));
+}
+
+QString displayDateTimeMinutes(const QByteArray &bytes)
+{
+    if (bytes.size() != 5)
+    {
+        return QString();
+    }
+
+    bool ok = true;
+    const int minute = bcdByteToInt(static_cast<quint8>(bytes[0]), &ok);
+    const int hour = ok ? bcdByteToInt(static_cast<quint8>(bytes[1]), &ok) : 0;
+    const int day = ok ? bcdByteToInt(static_cast<quint8>(bytes[2]), &ok) : 0;
+    const int month = ok ? bcdByteToInt(static_cast<quint8>(bytes[3]), &ok) : 0;
+    const int year = ok ? bcdByteToInt(static_cast<quint8>(bytes[4]), &ok) : 0;
+    if (!ok)
+    {
+        return QString();
+    }
+
+    return QStringLiteral("%1年%2月%3日 %4时%5分")
+        .arg(year, 2, 10, QChar('0'))
+        .arg(month, 2, 10, QChar('0'))
+        .arg(day, 2, 10, QChar('0'))
+        .arg(hour, 2, 10, QChar('0'))
+        .arg(minute, 2, 10, QChar('0'));
+}
+
+QString displayDecimalFromBcd(const QByteArray &bytes, int decimalDigits)
+{
+    if (bytes.isEmpty() || !BCDHelper::isValidBCD(bytes))
+    {
+        return QString();
+    }
+
+    QString digits = displayBcdDigits(bytes, true);
+    if (decimalDigits > 0)
+    {
+        if (digits.length() <= decimalDigits)
+        {
+            digits = digits.rightJustified(decimalDigits + 1, QChar('0'));
+        }
+        digits.insert(digits.length() - decimalDigits, QChar('.'));
+    }
+    return digits;
+}
+
+QString displayValueForFormatPart(const QByteArray &bytes, const QString &formatPart)
+{
+    const QString trimmedFormat = formatPart.trimmed();
+    if (trimmedFormat == QStringLiteral("AA,AA,AA,AA,AA,AA"))
+    {
+        const QString dateTime = displayDateTimeSeconds(bytes);
+        if (!dateTime.isEmpty())
+        {
+            return dateTime;
+        }
+    }
+    if (trimmedFormat == QStringLiteral("AA,AA,AA,AA,AA"))
+    {
+        const QString dateTime = displayDateTimeMinutes(bytes);
+        if (!dateTime.isEmpty())
+        {
+            return dateTime;
+        }
+    }
+    if (trimmedFormat == QStringLiteral("AA,AA,AA,.,AA"))
+    {
+        return displayDecimalFromBcd(bytes, 2);
+    }
+    if (trimmedFormat == QStringLiteral("AA,.,AAAA") ||
+        trimmedFormat == QStringLiteral("AA,.,AAA") ||
+        trimmedFormat == QStringLiteral("AA,.,AA") ||
+        trimmedFormat == QStringLiteral("AA,.,A"))
+    {
+        QString decimalPart = trimmedFormat.mid(trimmedFormat.indexOf(QChar('.')) + 1);
+        decimalPart.remove(QChar(','));
+        const int decimalDigits = decimalPart.length();
+        return displayDecimalFromBcd(bytes, qMax(0, decimalDigits));
+    }
+    if (trimmedFormat == QStringLiteral("AA,AA,AA,AA"))
+    {
+        return displayBcdDigits(bytes, true);
+    }
+
+    return displayDecimalFromBcd(bytes, 0);
+}
+
+QString recordIndexText(const QString &diCode)
+{
+    bool ok = false;
+    const int index = diCode.mid(8, 2).toInt(&ok, 16);
+    return ok && index > 0 ? QString::number(index) : QString();
+}
+
+QString inferredDescriptionForDi(const QString &diCode)
+{
+    if (diCode.startsWith(QStringLiteral("0x03300D")) && isHistoryItem(diCode))
+    {
+        const QString index = recordIndexText(diCode);
+        return index.isEmpty()
+                   ? QStringLiteral("开表盖事件记录")
+                   : QStringLiteral("上%1次开表盖事件记录").arg(index);
+    }
+
+    return QString();
+}
+
+QStringList coverOpenEventFieldNames()
+{
+    const QStringList energyTypes = {
+        QStringLiteral("正向有功总电能"),
+        QStringLiteral("反向有功总电能"),
+        QStringLiteral("第一象限无功总电能"),
+        QStringLiteral("第二象限无功总电能"),
+        QStringLiteral("第三象限无功总电能"),
+        QStringLiteral("第四象限无功总电能")};
+
+    QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("结束时刻")};
+    for (const QString &energyType : energyTypes)
+    {
+        names.append(QStringLiteral("开表盖前%1").arg(energyType));
+    }
+    for (const QString &energyType : energyTypes)
+    {
+        names.append(QStringLiteral("开表盖后%1").arg(energyType));
+    }
+    return names;
+}
+
+QString coverOpenEventFormat()
+{
+    const QString timeFormat = QStringLiteral("AA,AA,AA,AA,AA,AA");
+    const QString energyFormat = QStringLiteral("AA,AA,AA,.,AA");
+    QStringList parts = {timeFormat, timeFormat};
+    for (int i = 0; i < 12; ++i)
+    {
+        parts.append(energyFormat);
+    }
+    return parts.join(QStringLiteral(":"));
+}
+
+QString inferredFormatForDi(const QString &diCode)
+{
+    if (diCode.startsWith(QStringLiteral("0x03300D")) && isHistoryItem(diCode))
+    {
+        return coverOpenEventFormat();
+    }
+
+    return QString();
+}
+
+QString inferredUnitForDi(const QString &diCode, int fieldIndex)
+{
+    if (diCode.startsWith(QStringLiteral("0x03300D")) && isHistoryItem(diCode) && fieldIndex >= 2)
+    {
+        const int energyIndex = (fieldIndex - 2) % 6;
+        return energyIndex < 2 ? QStringLiteral("kWh") : QStringLiteral("kvarh");
+    }
+
+    return QString();
+}
+
+QString displayDiCode(const QString &diCode)
+{
+    QString code = diCode;
+    code.remove(QStringLiteral("0x"));
+    return code.toUpper();
+}
+
+QString byteBreakdownLines(const QString &diCode,
+                           const QByteArray &payload,
+                           const QString &format,
+                           const QString &fallbackDecodedValue,
+                           const QString &unit)
+{
+    const QStringList fieldNames = fieldNamesForDecodedValue(diCode);
+    const QStringList formatParts = format.split(QStringLiteral(":"), Qt::SkipEmptyParts);
+    if (formatParts.isEmpty())
+    {
+        return decodedValueWithFieldDescriptions(diCode, appendUnit(fallbackDecodedValue, unit));
+    }
+
+    QStringList lines;
+    int offset = 0;
+    for (int i = 0; i < formatParts.size(); ++i)
+    {
+        const int size = DLT645DataHelper::bytesRequiredForFormat(formatParts.at(i));
+        if (size <= 0 || offset + size > payload.size())
+        {
+            return decodedValueWithFieldDescriptions(diCode, appendUnit(fallbackDecodedValue, unit));
+        }
+
+        const QByteArray fieldBytes = payload.mid(offset, size);
+        const QString fieldName = i < fieldNames.size()
+                                      ? fieldNames.at(i)
+                                      : (formatParts.size() == 1 ? QStringLiteral("数据值") : QStringLiteral("字段%1").arg(i + 1));
+        QString fieldValue = displayValueForFormatPart(fieldBytes, formatParts.at(i));
+        if (fieldValue.isEmpty())
+        {
+            fieldValue = DLT645FrameFormatter::formatHex(fieldBytes);
+        }
+
+        const QString fieldUnit = !inferredUnitForDi(diCode, i).isEmpty()
+                                      ? inferredUnitForDi(diCode, i)
+                                      : unit;
+        lines.append(QStringLiteral("%1 --- %2:%3")
+                         .arg(DLT645FrameFormatter::formatHex(fieldBytes),
+                              fieldName,
+                              appendUnit(fieldValue, fieldUnit)));
+        offset += size;
+    }
+
+    if (offset < payload.size())
+    {
+        lines.append(annotatedLine(DLT645FrameFormatter::formatHex(payload.mid(offset)),
+                                   QStringLiteral("未匹配剩余数据")));
+    }
+
+    return lines.join(QStringLiteral("\n"));
+}
+
+QString phaseEventName(const QString &diCode)
+{
+    if (diCode.startsWith(QStringLiteral("0x0301")))
+    {
+        return QStringLiteral("失压");
+    }
+    if (diCode.startsWith(QStringLiteral("0x0302")))
+    {
+        return QStringLiteral("欠压");
+    }
+    if (diCode.startsWith(QStringLiteral("0x0303")))
+    {
+        return QStringLiteral("过压");
+    }
+    if (diCode.startsWith(QStringLiteral("0x0304")))
+    {
+        return QStringLiteral("断相");
+    }
+
+    return QStringLiteral("事件");
+}
+
+QStringList phaseVoltageEventFieldNames(const QString &eventName)
+{
+    const QString prefix = eventName + QStringLiteral("期间");
+    const QStringList energyTypes = {
+        QStringLiteral("正向有功"),
+        QStringLiteral("反向有功"),
+        QStringLiteral("组合无功1"),
+        QStringLiteral("组合无功2")};
+    const QStringList phases = {QStringLiteral("A相"), QStringLiteral("B相"), QStringLiteral("C相")};
+
+    QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("结束时刻")};
+    for (const QString &energyType : energyTypes)
+    {
+        names.append(QStringLiteral("%1%2总电能增量").arg(prefix, energyType));
+    }
+
+    for (const QString &phase : phases)
+    {
+        for (const QString &energyType : energyTypes)
+        {
+            names.append(QStringLiteral("%1%2%3电能增量").arg(prefix, phase, energyType));
+        }
+        names.append(QStringLiteral("%1时刻%2电压").arg(eventName, phase));
+        names.append(QStringLiteral("%1时刻%2电流").arg(eventName, phase));
+        names.append(QStringLiteral("%1时刻%2有功功率").arg(eventName, phase));
+        names.append(QStringLiteral("%1时刻%2无功功率").arg(eventName, phase));
+        names.append(QStringLiteral("%1时刻%2功率因数").arg(eventName, phase));
+    }
+
+    names.append(QStringLiteral("%1总安时数").arg(prefix));
+    for (const QString &phase : phases)
+    {
+        names.append(QStringLiteral("%1%2安时数").arg(prefix, phase));
+    }
+
+    return names;
+}
+
+QStringList totalAndPhaseEnergyNames(const QString &prefix, const QStringList &energyTypes, const QString &suffix)
+{
+    QStringList names;
+    for (const QString &energyType : energyTypes)
+    {
+        names.append(QStringLiteral("%1%2总电能%3").arg(prefix, energyType, suffix));
+    }
+
+    const QStringList phases = {QStringLiteral("A相"), QStringLiteral("B相"), QStringLiteral("C相")};
+    for (const QString &phase : phases)
+    {
+        for (const QString &energyType : energyTypes)
+        {
+            names.append(QStringLiteral("%1%2%3电能%4").arg(prefix, phase, energyType, suffix));
+        }
+    }
+
+    return names;
+}
+
+QStringList sequenceEventFieldNames(const QString &eventName)
+{
+    const QStringList energyTypes = {
+        QStringLiteral("正向有功"),
+        QStringLiteral("反向有功"),
+        QStringLiteral("组合无功1"),
+        QStringLiteral("组合无功2")};
+    QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("结束时刻")};
+    names.append(totalAndPhaseEnergyNames(eventName + QStringLiteral("期间"), energyTypes, QStringLiteral("增量")));
+    return names;
+}
+
+QStringList unbalanceEventFieldNames(const QString &eventName)
+{
+    QStringList names = {QStringLiteral("发生时刻"),
+                         QStringLiteral("结束时刻"),
+                         QStringLiteral("最大不平衡率")};
+    names.append(sequenceEventFieldNames(eventName).mid(2));
+    return names;
+}
+
+QStringList meterClearFieldNames()
+{
+    const QStringList energyTypes = {
+        QStringLiteral("正向有功"),
+        QStringLiteral("反向有功"),
+        QStringLiteral("第一象限无功"),
+        QStringLiteral("第二象限无功"),
+        QStringLiteral("第三象限无功"),
+        QStringLiteral("第四象限无功")};
+    QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("操作者代码")};
+    names.append(totalAndPhaseEnergyNames(QStringLiteral("电表清零前"), energyTypes, QString()));
+    return names;
+}
+
+QStringList demandClearFieldNames()
+{
+    const QStringList demandTypes = {
+        QStringLiteral("正向有功"),
+        QStringLiteral("反向有功"),
+        QStringLiteral("第一象限无功"),
+        QStringLiteral("第二象限无功"),
+        QStringLiteral("第三象限无功"),
+        QStringLiteral("第四象限无功")};
+    const QStringList phases = {QStringLiteral("A相"), QStringLiteral("B相"), QStringLiteral("C相")};
+
+    QStringList baseNames;
+    for (const QString &demandType : demandTypes)
+    {
+        baseNames.append(QStringLiteral("需量清零前%1总最大需量").arg(demandType));
+    }
+    for (const QString &phase : phases)
+    {
+        for (const QString &demandType : demandTypes)
+        {
+            baseNames.append(QStringLiteral("需量清零前%1%2最大需量").arg(phase, demandType));
+        }
+    }
+
+    QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("操作者代码")};
+    for (const QString &baseName : baseNames)
+    {
+        names.append(baseName);
+        names.append(baseName + QStringLiteral("发生时间"));
+    }
+
+    return names;
+}
+
+QStringList voltageComplianceFieldNames(const QString &phaseName)
+{
+    const QString prefix = phaseName.isEmpty() ? QStringLiteral("电压") : phaseName + QStringLiteral("电压");
+    return {prefix + QStringLiteral("监测时间"),
+            prefix + QStringLiteral("合格率"),
+            prefix + QStringLiteral("超限率"),
+            prefix + QStringLiteral("超上限时间"),
+            prefix + QStringLiteral("超下限时间"),
+            phaseName + QStringLiteral("最高电压"),
+            phaseName + QStringLiteral("最高电压出现时间"),
+            phaseName + QStringLiteral("最低电压"),
+            phaseName + QStringLiteral("最低电压出现时间")};
+}
+
+QStringList scheduleTableProgramFieldNames()
+{
+    QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("操作者代码")};
+    for (int setIndex = 1; setIndex <= 2; ++setIndex)
+    {
+        for (int tableIndex = 1; tableIndex <= 8; ++tableIndex)
+        {
+            names.append(QStringLiteral("时段表编程前第%1套第%2日时段表数据").arg(setIndex).arg(tableIndex));
+        }
+    }
+
+    return names;
+}
+
+QStringList yearZoneProgramFieldNames()
+{
+    QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("操作者代码")};
+    for (int setIndex = 1; setIndex <= 2; ++setIndex)
+    {
+        for (int zoneIndex = 1; zoneIndex <= 14; ++zoneIndex)
+        {
+            names.append(QStringLiteral("时区表编程前第%1套第%2时区表数据").arg(setIndex).arg(zoneIndex));
+        }
+    }
+
+    return names;
+}
+
+bool isHistoryItem(const QString &diCode)
+{
+    return diCode.size() >= 10 && diCode.mid(8, 2) != QStringLiteral("00");
+}
+
+QStringList fieldNamesForDecodedValue(const QString &diCode)
+{
+    const bool isPhaseVoltageFamily = diCode.startsWith(QStringLiteral("0x0301")) ||
+                                      diCode.startsWith(QStringLiteral("0x0302")) ||
+                                      diCode.startsWith(QStringLiteral("0x0303")) ||
+                                      diCode.startsWith(QStringLiteral("0x0304"));
+    const QString thirdByte = diCode.size() >= 8 ? diCode.mid(6, 2) : QString();
+
+    if (isPhaseVoltageFamily && thirdByte != QStringLiteral("00") && isHistoryItem(diCode))
+    {
+        return phaseVoltageEventFieldNames(phaseEventName(diCode));
+    }
+
+    if (((isPhaseVoltageFamily && thirdByte == QStringLiteral("00")) ||
+         diCode == QStringLiteral("0x03050000") ||
+         diCode == QStringLiteral("0x03060000") ||
+         diCode == QStringLiteral("0x03070000") ||
+         diCode == QStringLiteral("0x03080000") ||
+         diCode == QStringLiteral("0x03090000")) &&
+        (!isHistoryItem(diCode) || isPhaseVoltageFamily))
+    {
+        return {QStringLiteral("总次数"), QStringLiteral("总累计时间")};
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x030500")) && isHistoryItem(diCode))
+    {
+        return {QStringLiteral("全失压开始时间"),
+                QStringLiteral("全失压时电流"),
+                QStringLiteral("全失压结束时间")};
+    }
+
+    if ((diCode.startsWith(QStringLiteral("0x030600")) ||
+         diCode.startsWith(QStringLiteral("0x031100"))) &&
+        isHistoryItem(diCode))
+    {
+        return {QStringLiteral("事件开始时间"), QStringLiteral("事件结束时间")};
+    }
+
+    if ((diCode.startsWith(QStringLiteral("0x030700")) ||
+         diCode.startsWith(QStringLiteral("0x030800"))) &&
+        isHistoryItem(diCode))
+    {
+        const QString eventName = diCode.startsWith(QStringLiteral("0x030700"))
+                                      ? QStringLiteral("电压逆相序")
+                                      : QStringLiteral("电流逆相序");
+        return sequenceEventFieldNames(eventName);
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x030900")) && isHistoryItem(diCode))
+    {
+        return unbalanceEventFieldNames(QStringLiteral("电压不平衡"));
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x0310")))
+    {
+        QString phaseName;
+        if (diCode.startsWith(QStringLiteral("0x031001")))
+        {
+            phaseName = QStringLiteral("A相");
+        }
+        else if (diCode.startsWith(QStringLiteral("0x031002")))
+        {
+            phaseName = QStringLiteral("B相");
+        }
+        else if (diCode.startsWith(QStringLiteral("0x031003")))
+        {
+            phaseName = QStringLiteral("C相");
+        }
+        return voltageComplianceFieldNames(phaseName);
+    }
+
+    if (diCode == QStringLiteral("0x03120000"))
+    {
+        return {QStringLiteral("正向有功需量超限总次数"),
+                QStringLiteral("反向有功需量超限总次数"),
+                QStringLiteral("第一象限无功需量超限总次数"),
+                QStringLiteral("第二象限无功需量超限总次数"),
+                QStringLiteral("第三象限无功需量超限总次数"),
+                QStringLiteral("第四象限无功需量超限总次数")};
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x0312")) && isHistoryItem(diCode))
+    {
+        return {QStringLiteral("发生时刻"),
+                QStringLiteral("结束时刻"),
+                QStringLiteral("需量超限期间最大需量"),
+                QStringLiteral("需量超限期间最大需量发生时间")};
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x03300D")) && isHistoryItem(diCode))
+    {
+        return coverOpenEventFieldNames();
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x033000")) && isHistoryItem(diCode))
+    {
+        QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("操作者代码")};
+        for (int i = 1; i <= 10; ++i)
+        {
+            names.append(QStringLiteral("编程数据标识%1").arg(i));
+        }
+        names.append(QStringLiteral("扩展数据标识1"));
+        names.append(QStringLiteral("扩展数据标识2"));
+        return names;
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x033001")) && isHistoryItem(diCode))
+    {
+        return meterClearFieldNames();
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x033002")) && isHistoryItem(diCode))
+    {
+        return demandClearFieldNames();
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x033003")) && isHistoryItem(diCode))
+    {
+        return {QStringLiteral("发生时刻"),
+                QStringLiteral("操作者代码"),
+                QStringLiteral("事件清零数据标识码")};
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x033004")) && isHistoryItem(diCode))
+    {
+        return {QStringLiteral("操作者代码"),
+                QStringLiteral("校时前时间"),
+                QStringLiteral("校时后时间")};
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x033005")) && isHistoryItem(diCode))
+    {
+        return scheduleTableProgramFieldNames();
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x033006")) && isHistoryItem(diCode))
+    {
+        return yearZoneProgramFieldNames();
+    }
+
+    return {};
+}
+
+QString decodedValueWithFieldDescriptions(const QString &diCode, const QString &decodedValue)
+{
+    const QStringList fieldNames = fieldNamesForDecodedValue(diCode);
+    if (fieldNames.isEmpty() || !decodedValue.contains(QStringLiteral(" : ")))
+    {
+        return decodedValue;
+    }
+
+    const QStringList values = decodedValue.split(QStringLiteral(" : "));
+    QStringList lines;
+    lines.reserve(values.size());
+    for (int i = 0; i < values.size(); ++i)
+    {
+        const QString fieldName = i < fieldNames.size()
+                                      ? fieldNames.at(i)
+                                      : QStringLiteral("字段%1").arg(i + 1);
+        lines.append(QStringLiteral("%1：%2").arg(fieldName, values.at(i)));
+    }
+
+    return lines.join(QStringLiteral("\n"));
+}
+
+[[maybe_unused]] QString decodedValueWithByteBreakdown(const QString &diCode,
+                                                       const QByteArray &payload,
+                                                       const QString &format,
+                                                       const QString &decodedValue,
+                                                       const QString &unit)
+{
+    const QStringList fieldNames = fieldNamesForDecodedValue(diCode);
+    const QStringList formatParts = format.split(QStringLiteral(":"), Qt::SkipEmptyParts);
+    if (fieldNames.isEmpty() || formatParts.size() <= 1 || !decodedValue.contains(QStringLiteral(" : ")))
+    {
+        return decodedValueWithFieldDescriptions(diCode, appendUnit(decodedValue, unit));
+    }
+
+    const QStringList values = decodedValue.split(QStringLiteral(" : "));
+    QStringList lines;
+    int offset = 0;
+    for (int i = 0; i < formatParts.size(); ++i)
+    {
+        const int size = DLT645DataHelper::bytesRequiredForFormat(formatParts.at(i));
+        if (size <= 0 || offset + size > payload.size())
+        {
+            return decodedValueWithFieldDescriptions(diCode, appendUnit(decodedValue, unit));
+        }
+
+        const QString fieldName = i < fieldNames.size()
+                                      ? fieldNames.at(i)
+                                      : QStringLiteral("字段%1").arg(i + 1);
+        const QString value = i < values.size() ? values.at(i) : QString();
+        lines.append(QStringLiteral("%1 --- %2：%3")
+                         .arg(DLT645FrameFormatter::formatHex(payload.mid(offset, size)),
+                              fieldName,
+                              appendUnit(value, unit)));
+        offset += size;
+    }
+
+    if (offset < payload.size())
+    {
+        lines.append(QStringLiteral("%1 --- %2")
+                         .arg(DLT645FrameFormatter::formatHex(payload.mid(offset)),
+                              QStringLiteral("未匹配剩余数据")));
+    }
+
+    return lines.join(QStringLiteral("\n"));
 }
 
 bool calculateChecksumValidity(const QByteArray &frame)
@@ -683,7 +1457,7 @@ QList<FrameParseCard> buildBlockDecodeCards(const MeterModel *meterModel, const 
     return cards;
 }
 
-FrameParseSection buildStructureSection(const QByteArray &frame, bool checksumValid, QString *messageOut)
+[[maybe_unused]] FrameParseSection buildStructureSection(const QByteArray &frame, bool checksumValid, QString *messageOut)
 {
     FrameParseSection section;
     section.title = QString::fromUtf8("结构解析");
@@ -781,7 +1555,185 @@ FrameParseSection buildStructureSection(const QByteArray &frame, bool checksumVa
     return section;
 }
 
-FrameParseSection buildDataSection(const QByteArray &frame, const MeterModel *meterModel)
+FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
+                                            const MeterModel *meterModel,
+                                            bool checksumValid,
+                                            QString *messageOut)
+{
+    FrameParseSection section;
+    section.title = QStringLiteral("帧解析明细");
+
+    int leadingCount = 0;
+    const QByteArray protocolFrame = DLT645DataHelper::stripLeadingFE(frame, &leadingCount);
+
+    QString parseMessage;
+    if (frame.isEmpty())
+    {
+        parseMessage = QStringLiteral("空帧，无法解析。");
+    }
+
+    const bool hasStartFlag = protocolFrame.size() >= 1;
+    const bool hasAddress = protocolFrame.size() >= 7;
+    const bool hasSecondStartFlag = protocolFrame.size() >= 8;
+    const bool hasControlCode = protocolFrame.size() >= 9;
+    const bool hasLength = protocolFrame.size() >= 10;
+
+    const QByteArray address = hasAddress ? protocolFrame.mid(1, 6) : QByteArray();
+    const quint8 startFlag = hasStartFlag ? static_cast<quint8>(protocolFrame[0]) : 0;
+    const quint8 secondStartFlag = hasSecondStartFlag ? static_cast<quint8>(protocolFrame[7]) : 0;
+    const quint8 controlCode = hasControlCode ? static_cast<quint8>(protocolFrame[8]) : 0;
+    const quint8 dataLength = hasLength ? static_cast<quint8>(protocolFrame[9]) : 0;
+    const int expectedSize = hasLength ? (12 + dataLength) : 12;
+    const bool hasCompleteFrame = hasLength && protocolFrame.size() >= expectedSize;
+    const int actualDataLength = hasLength ? qMin(static_cast<int>(dataLength), qMax(0, protocolFrame.size() - 12)) : 0;
+    const QByteArray dataField = protocolFrame.mid(10, actualDataLength);
+
+    QString detailText;
+    if (leadingCount > 0)
+    {
+        detailText += annotatedLine(DLT645FrameFormatter::formatHex(frame.left(leadingCount)),
+                                    QStringLiteral("前导码")) + QStringLiteral("\n");
+    }
+    detailText += annotatedLine(hasStartFlag ? hexByte(startFlag) : QStringLiteral("??"),
+                                QStringLiteral("起始字符")) + QStringLiteral("\n");
+    detailText += annotatedLine(hasAddress ? DLT645FrameFormatter::formatHex(address) : QStringLiteral("??"),
+                                QStringLiteral("通信地址"),
+                                hasAddress ? ProtocolParser::bytesToAddress(address) : QStringLiteral("未获取")) + QStringLiteral("\n");
+    detailText += annotatedLine(hasSecondStartFlag ? hexByte(secondStartFlag) : QStringLiteral("??"),
+                                QStringLiteral("第二个68")) + QStringLiteral("\n");
+    detailText += annotatedLine(hasControlCode ? hexByte(controlCode) : QStringLiteral("??"),
+                                QStringLiteral("控制码C"),
+                                hasControlCode ? controlCodeDetail(controlCode) : QStringLiteral("未获取")) + QStringLiteral("\n");
+    detailText += annotatedLine(hasLength ? hexByte(dataLength) : QStringLiteral("??"),
+                                QStringLiteral("长度L"),
+                                hasLength ? QString::number(dataLength) : QStringLiteral("未获取")) + QStringLiteral("\n");
+
+    if (!dataField.isEmpty())
+    {
+        const QByteArray decodedDataField = DLT645DataHelper::subtract33(dataField);
+        detailText += bannerLine(QStringLiteral("原始DATA"), QChar('*')) + QStringLiteral("\n");
+        detailText += DLT645FrameFormatter::formatHex(dataField) + QStringLiteral("\n");
+        detailText += bannerLine(QStringLiteral("-33"), QChar('*')) + QStringLiteral("\n");
+        detailText += DLT645FrameFormatter::formatHex(decodedDataField) + QStringLiteral("\n");
+        detailText += separatorLine(QChar('=')) + QStringLiteral("\n");
+
+        if (dataField.size() >= 4)
+        {
+            const QString diCode = ProtocolParser::extractDIFromDataField(dataField);
+            DataItem diItem;
+            QString description;
+            QString unit;
+            QString format;
+
+            if (meterModel)
+            {
+                diItem = meterModel->getDataItem(diCode);
+                if (!diItem.diCode.isEmpty())
+                {
+                    description = diItem.description;
+                    unit = diItem.unit;
+                    format = diItem.format;
+                }
+            }
+            if (description.isEmpty())
+            {
+                description = inferredDescriptionForDi(diCode);
+            }
+            if (format.isEmpty())
+            {
+                format = inferredFormatForDi(diCode);
+            }
+
+            detailText += annotatedLine(DLT645FrameFormatter::formatHex(decodedDataField.left(4)),
+                                        QStringLiteral("数据标识ID"),
+                                        displayDiCode(diCode) + (description.isEmpty() ? QString() : QStringLiteral(" ") + description)) + QStringLiteral("\n");
+
+            const QByteArray payload = decodedDataField.mid(4);
+            if (!payload.isEmpty())
+            {
+                if (!format.isEmpty())
+                {
+                    const QString decodedValue = decodedValueForItem(meterModel, diCode, payload, &description, &unit);
+                    const QString breakdown = byteBreakdownLines(diCode, payload, format, decodedValue, unit);
+                    if (!breakdown.isEmpty())
+                    {
+                        detailText += breakdown + QStringLiteral("\n");
+                    }
+                }
+                else
+                {
+                    const QList<FrameParseCard> blockCards = buildBlockDecodeCards(meterModel, diCode, payload);
+                    if (!blockCards.isEmpty())
+                    {
+                        for (const FrameParseCard &card : blockCards)
+                        {
+                            detailText += annotatedLine(card.detail.section(QStringLiteral("原始HEX: "), 1, 1).trimmed(),
+                                                        card.title,
+                                                        card.value) + QStringLiteral("\n");
+                        }
+                    }
+                    else
+                    {
+                        QString decodeDescription = description;
+                        QString decodeUnit = unit;
+                        const QString decodedValue = decodedValueForItem(meterModel, diCode, payload, &decodeDescription, &decodeUnit);
+                        detailText += annotatedLine(DLT645FrameFormatter::formatHex(payload),
+                                                    decodeDescription.isEmpty() ? QStringLiteral("数据值") : decodeDescription,
+                                                    appendUnit(decodedValue.isEmpty() ? DLT645FrameFormatter::formatHex(payload) : decodedValue,
+                                                               decodeUnit)) + QStringLiteral("\n");
+                    }
+                }
+            }
+        }
+        else
+        {
+            detailText += annotatedLine(DLT645FrameFormatter::formatHex(decodedDataField),
+                                        QStringLiteral("数据域"),
+                                        QStringLiteral("长度不足，无法提取数据标识")) + QStringLiteral("\n");
+        }
+
+        detailText += separatorLine(QChar('=')) + QStringLiteral("\n");
+    }
+
+    if (hasCompleteFrame)
+    {
+        const quint8 checksum = static_cast<quint8>(protocolFrame[10 + dataLength]);
+        const quint8 endFlag = static_cast<quint8>(protocolFrame[11 + dataLength]);
+        detailText += annotatedLine(hexByte(checksum),
+                                    QStringLiteral("帧校验HCS"),
+                                    QStringLiteral("%1 (%2)").arg(hexByte(checksum), checksumValid ? QStringLiteral("正确") : QStringLiteral("错误"))) + QStringLiteral("\n");
+        detailText += annotatedLine(hexByte(endFlag), QStringLiteral("结束符"));
+        if (protocolFrame.size() > expectedSize)
+        {
+            detailText += QStringLiteral("\n") + annotatedLine(DLT645FrameFormatter::formatHex(protocolFrame.mid(expectedSize)),
+                                                               QStringLiteral("尾随数据"));
+        }
+    }
+    else
+    {
+        if (parseMessage.isEmpty())
+        {
+            parseMessage = hasLength ? QStringLiteral("报文长度与声明的数据长度不一致，当前仅基于已收到字节解析。")
+                                     : QStringLiteral("报文长度不足，尚未取得完整帧头。");
+        }
+        detailText += annotatedLine(QStringLiteral("??"),
+                                    QStringLiteral("帧校验HCS"),
+                                    QStringLiteral("未获取")) + QStringLiteral("\n");
+        detailText += annotatedLine(QStringLiteral("??"), QStringLiteral("结束符"), QStringLiteral("未获取")) + QStringLiteral("\n");
+        detailText += QStringLiteral("提示:") + parseMessage;
+    }
+
+    appendCard(section, section.title, detailText.trimmed(), QString(), true);
+
+    if (messageOut)
+    {
+        *messageOut = parseMessage;
+    }
+
+    return section;
+}
+
+[[maybe_unused]] FrameParseSection buildDataSection(const QByteArray &frame, const MeterModel *meterModel)
 {
     FrameParseSection section;
     section.title = QString::fromUtf8("数据解析");
@@ -937,6 +1889,8 @@ FrameParseSection buildDataSection(const QByteArray &frame, const MeterModel *me
 
     if (!decodedPayload.isEmpty())
     {
+        dataText += lineWithValue(QString::fromUtf8("原始DATA："), DLT645FrameFormatter::formatHex(dataField));
+        dataText += lineWithValue(QString::fromUtf8("-33DATA："), DLT645FrameFormatter::formatHex(DLT645DataHelper::subtract33(dataField)));
         dataText += lineWithValue(QString::fromUtf8("解码字节："), DLT645FrameFormatter::formatHex(decodedPayload));
 
         const QList<FrameParseCard> blockCards = buildBlockDecodeCards(meterModel, diCode, decodedPayload);
@@ -945,13 +1899,23 @@ FrameParseSection buildDataSection(const QByteArray &frame, const MeterModel *me
             QStringList blockLines;
             for (const FrameParseCard &card : blockCards)
             {
-                QString line = QString::fromUtf8("%1：%2").arg(card.title, card.value);
+                QString line;
+                QString explanation = card.title;
                 if (!card.detail.isEmpty())
                 {
                     QString compactDetail = card.detail;
-                    compactDetail.replace(QStringLiteral("\n"), QStringLiteral("，"));
-                    line += QString::fromUtf8("（%1）").arg(compactDetail);
+                    const QString separator(1, QChar(0xFF0C));
+                    compactDetail.replace(QChar(0x000A), separator);
+                    explanation += separator + compactDetail;
                 }
+                const QString valueText = card.value.isEmpty()
+                                              ? QString(1, QChar(0x65E0))
+                                              : card.value;
+                const QString explanationPrefix = QString(1, QChar(0xFF08))
+                                                  + QChar(0x8BF4)
+                                                  + QChar(0x660E)
+                                                  + QChar(0xFF1A);
+                line = valueText + explanationPrefix + explanation + QString(1, QChar(0xFF09));
                 blockLines.append(line);
             }
             dataText += lineWithValue(QString::fromUtf8("解析值："), blockLines.join(QStringLiteral("\n")));
@@ -966,7 +1930,7 @@ FrameParseSection buildDataSection(const QByteArray &frame, const MeterModel *me
 
             if (!decodedValue.isEmpty())
             {
-                dataText += lineWithValue(QString::fromUtf8("解析值："), appendUnit(decodedValue, decodeUnit));
+                dataText += lineWithValue(QString::fromUtf8("解析值："), decodedValueWithFieldDescriptions(diCode, appendUnit(decodedValue, decodeUnit)));
                 if (!decodeDescription.isEmpty() && decodeDescription != description)
                 {
                     dataText += lineWithValue(QString::fromUtf8("解析说明："), decodeDescription);
@@ -1119,8 +2083,7 @@ FrameParseDisplayResult DLT645FrameFormatter::buildParseDisplayResult(const QByt
     result.checksumValid = checksumValid;
 
     QString structureMessage;
-    result.sections.append(buildStructureSection(frame, checksumValid, &structureMessage));
-    result.sections.append(buildDataSection(frame, meterModel));
+    result.sections.append(buildDetailedFrameSection(frame, meterModel, checksumValid, &structureMessage));
 
     if (frame.isEmpty())
     {
