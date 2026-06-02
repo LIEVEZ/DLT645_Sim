@@ -182,6 +182,12 @@ QStringList eventCategoryNames()
         QStringLiteral("电压逆相序"),
         QStringLiteral("电流逆相序"),
         QStringLiteral("电压不平衡"),
+        QStringLiteral("电流不平衡"),
+        QStringLiteral("失流"),
+        QStringLiteral("过流"),
+        QStringLiteral("断流"),
+        QStringLiteral("潮流反向"),
+        QStringLiteral("过载"),
         QStringLiteral("电压合格率"),
         QStringLiteral("掉电"),
         QStringLiteral("需量超限"),
@@ -191,7 +197,17 @@ QStringList eventCategoryNames()
         QStringLiteral("事件清零"),
         QStringLiteral("校时"),
         QStringLiteral("时段表编程"),
-        QStringLiteral("时区表编程")};
+        QStringLiteral("时区表编程"),
+        QStringLiteral("周休日编程"),
+        QStringLiteral("节假日编程"),
+        QStringLiteral("有功组合方式编程"),
+        QStringLiteral("无功组合方式1编程"),
+        QStringLiteral("无功组合方式2编程"),
+        QStringLiteral("结算日编程"),
+        QStringLiteral("开表盖"),
+        QStringLiteral("开端钮盒"),
+        QStringLiteral("购电量记录"),
+        QStringLiteral("购电金额记录")};
 }
 
 QList<EventCategoryDefinition> eventCategoryDefinitions()
@@ -206,6 +222,12 @@ QList<EventCategoryDefinition> eventCategoryDefinitions()
         {QStringLiteral("电压逆相序"), {QStringLiteral("0x0307")}},
         {QStringLiteral("电流逆相序"), {QStringLiteral("0x0308")}},
         {QStringLiteral("电压不平衡"), {QStringLiteral("0x0309")}},
+        {QStringLiteral("电流不平衡"), {QStringLiteral("0x030A")}},
+        {QStringLiteral("失流"), {QStringLiteral("0x030B")}},
+        {QStringLiteral("过流"), {QStringLiteral("0x030C")}},
+        {QStringLiteral("断流"), {QStringLiteral("0x030D")}},
+        {QStringLiteral("潮流反向"), {QStringLiteral("0x030E")}},
+        {QStringLiteral("过载"), {QStringLiteral("0x030F")}},
         {QStringLiteral("电压合格率"), {QStringLiteral("0x0310")}},
         {QStringLiteral("掉电"), {QStringLiteral("0x0311")}},
         {QStringLiteral("需量超限"), {QStringLiteral("0x0312")}},
@@ -215,7 +237,17 @@ QList<EventCategoryDefinition> eventCategoryDefinitions()
         {QStringLiteral("事件清零"), {QStringLiteral("0x033003")}},
         {QStringLiteral("校时"), {QStringLiteral("0x033004")}},
         {QStringLiteral("时段表编程"), {QStringLiteral("0x033005")}},
-        {QStringLiteral("时区表编程"), {QStringLiteral("0x033006")}}};
+        {QStringLiteral("时区表编程"), {QStringLiteral("0x033006")}},
+        {QStringLiteral("周休日编程"), {QStringLiteral("0x033007")}},
+        {QStringLiteral("节假日编程"), {QStringLiteral("0x033008")}},
+        {QStringLiteral("有功组合方式编程"), {QStringLiteral("0x033009")}},
+        {QStringLiteral("无功组合方式1编程"), {QStringLiteral("0x03300A")}},
+        {QStringLiteral("无功组合方式2编程"), {QStringLiteral("0x03300B")}},
+        {QStringLiteral("结算日编程"), {QStringLiteral("0x03300C")}},
+        {QStringLiteral("开表盖"), {QStringLiteral("0x03300D")}},
+        {QStringLiteral("开端钮盒"), {QStringLiteral("0x03300E")}},
+        {QStringLiteral("购电量记录"), {QStringLiteral("0x0332")}},
+        {QStringLiteral("购电金额记录"), {QStringLiteral("0x0333")}}};
 }
 
 QStringList parameterCategoryNames()

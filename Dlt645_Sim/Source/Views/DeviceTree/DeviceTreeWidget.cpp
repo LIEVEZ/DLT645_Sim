@@ -492,6 +492,12 @@ void DeviceTreeWidget::createDataCategoryNodes(QTreeWidgetItem *meterItem)
         QStringLiteral("电压逆相序"),
         QStringLiteral("电流逆相序"),
         QStringLiteral("电压不平衡"),
+        QStringLiteral("电流不平衡"),
+        QStringLiteral("失流"),
+        QStringLiteral("过流"),
+        QStringLiteral("断流"),
+        QStringLiteral("潮流反向"),
+        QStringLiteral("过载"),
         QStringLiteral("电压合格率"),
         QStringLiteral("掉电"),
         QStringLiteral("需量超限"),
@@ -501,7 +507,17 @@ void DeviceTreeWidget::createDataCategoryNodes(QTreeWidgetItem *meterItem)
         QStringLiteral("事件清零"),
         QStringLiteral("校时"),
         QStringLiteral("时段表编程"),
-        QStringLiteral("时区表编程")};
+        QStringLiteral("时区表编程"),
+        QStringLiteral("周休日编程"),
+        QStringLiteral("节假日编程"),
+        QStringLiteral("有功组合方式编程"),
+        QStringLiteral("无功组合方式1编程"),
+        QStringLiteral("无功组合方式2编程"),
+        QStringLiteral("结算日编程"),
+        QStringLiteral("开表盖"),
+        QStringLiteral("开端钮盒"),
+        QStringLiteral("购电量记录"),
+        QStringLiteral("购电金额记录")};
     for (const QString &subCategory : eventSubCategories)
     {
         QTreeWidgetItem *subItem = createCategoryItem(subCategory, ItemType::Category, false);

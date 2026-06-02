@@ -324,20 +324,35 @@ QString recordIndexText(const QString &diCode)
     return ok && index > 0 ? QString::number(index) : QString();
 }
 
-QString inferredDescriptionForDi(const QString &diCode)
+QString coverEventNameForDi(const QString &diCode)
 {
-    if (diCode.startsWith(QStringLiteral("0x03300D")) && isHistoryItem(diCode))
+    if (diCode.startsWith(QStringLiteral("0x03300D")))
     {
-        const QString index = recordIndexText(diCode);
-        return index.isEmpty()
-                   ? QStringLiteral("开表盖事件记录")
-                   : QStringLiteral("上%1次开表盖事件记录").arg(index);
+        return QStringLiteral("开表盖");
+    }
+    if (diCode.startsWith(QStringLiteral("0x03300E")))
+    {
+        return QStringLiteral("开端钮盒");
     }
 
     return QString();
 }
 
-QStringList coverOpenEventFieldNames()
+QString inferredDescriptionForDi(const QString &diCode)
+{
+    const QString eventName = coverEventNameForDi(diCode);
+    if (!eventName.isEmpty() && isHistoryItem(diCode))
+    {
+        const QString index = recordIndexText(diCode);
+        return index.isEmpty()
+                   ? QStringLiteral("%1事件记录").arg(eventName)
+                   : QStringLiteral("上%1次%2事件记录").arg(index, eventName);
+    }
+
+    return QString();
+}
+
+QStringList coverEventFieldNames(const QString &eventName)
 {
     const QStringList energyTypes = {
         QStringLiteral("正向有功总电能"),
@@ -350,13 +365,18 @@ QStringList coverOpenEventFieldNames()
     QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("结束时刻")};
     for (const QString &energyType : energyTypes)
     {
-        names.append(QStringLiteral("开表盖前%1").arg(energyType));
+        names.append(QStringLiteral("%1前%2").arg(eventName, energyType));
     }
     for (const QString &energyType : energyTypes)
     {
-        names.append(QStringLiteral("开表盖后%1").arg(energyType));
+        names.append(QStringLiteral("%1后%2").arg(eventName, energyType));
     }
     return names;
+}
+
+[[maybe_unused]] QStringList coverOpenEventFieldNames()
+{
+    return coverEventFieldNames(QStringLiteral("开表盖"));
 }
 
 QString coverOpenEventFormat()
@@ -373,7 +393,7 @@ QString coverOpenEventFormat()
 
 QString inferredFormatForDi(const QString &diCode)
 {
-    if (diCode.startsWith(QStringLiteral("0x03300D")) && isHistoryItem(diCode))
+    if (!coverEventNameForDi(diCode).isEmpty() && isHistoryItem(diCode))
     {
         return coverOpenEventFormat();
     }
@@ -383,10 +403,71 @@ QString inferredFormatForDi(const QString &diCode)
 
 QString inferredUnitForDi(const QString &diCode, int fieldIndex)
 {
-    if (diCode.startsWith(QStringLiteral("0x03300D")) && isHistoryItem(diCode) && fieldIndex >= 2)
+    if (!coverEventNameForDi(diCode).isEmpty() && isHistoryItem(diCode) && fieldIndex >= 2)
     {
         const int energyIndex = (fieldIndex - 2) % 6;
         return energyIndex < 2 ? QStringLiteral("kWh") : QStringLiteral("kvarh");
+    }
+
+    const bool isPhasePowerEvent = (diCode.startsWith(QStringLiteral("0x0301")) ||
+                                    diCode.startsWith(QStringLiteral("0x0302")) ||
+                                    diCode.startsWith(QStringLiteral("0x0303")) ||
+                                    diCode.startsWith(QStringLiteral("0x0304")) ||
+                                    diCode.startsWith(QStringLiteral("0x030B")) ||
+                                    diCode.startsWith(QStringLiteral("0x030C")) ||
+                                    diCode.startsWith(QStringLiteral("0x030D"))) &&
+                                   diCode.mid(6, 2) != QStringLiteral("00") &&
+                                   isHistoryItem(diCode);
+    if (isPhasePowerEvent)
+    {
+        if (fieldIndex >= 2 && fieldIndex < 6)
+        {
+            const int energyIndex = fieldIndex - 2;
+            return energyIndex < 2 ? QStringLiteral("kWh") : QStringLiteral("kvarh");
+        }
+        if (fieldIndex >= 6)
+        {
+            const int blockIndex = (fieldIndex - 6) % 9;
+            if (blockIndex < 4)
+            {
+                return blockIndex < 2 ? QStringLiteral("kWh") : QStringLiteral("kvarh");
+            }
+            if (blockIndex == 4)
+            {
+                return QStringLiteral("V");
+            }
+            if (blockIndex == 5)
+            {
+                return QStringLiteral("A");
+            }
+            if (blockIndex == 6)
+            {
+                return QStringLiteral("kW");
+            }
+            if (blockIndex == 7)
+            {
+                return QStringLiteral("kvar");
+            }
+        }
+    }
+
+    const bool isUnbalanceEvent = (diCode.startsWith(QStringLiteral("0x030900")) ||
+                                   diCode.startsWith(QStringLiteral("0x030A00"))) &&
+                                  isHistoryItem(diCode);
+    const bool isSequenceEvent = (diCode.startsWith(QStringLiteral("0x030700")) ||
+                                  diCode.startsWith(QStringLiteral("0x030800")) ||
+                                  ((diCode.startsWith(QStringLiteral("0x030E")) ||
+                                    diCode.startsWith(QStringLiteral("0x030F"))) &&
+                                   diCode.mid(6, 2) != QStringLiteral("00"))) &&
+                                 isHistoryItem(diCode);
+    if (isUnbalanceEvent || isSequenceEvent)
+    {
+        const int firstEnergyField = isUnbalanceEvent ? 3 : 2;
+        if (fieldIndex >= firstEnergyField)
+        {
+            const int energyIndex = (fieldIndex - firstEnergyField) % 4;
+            return energyIndex < 2 ? QStringLiteral("kWh") : QStringLiteral("kvarh");
+        }
     }
 
     return QString();
@@ -403,7 +484,8 @@ QString byteBreakdownLines(const QString &diCode,
                            const QByteArray &payload,
                            const QString &format,
                            const QString &fallbackDecodedValue,
-                           const QString &unit)
+                           const QString &unit,
+                           const QString &fallbackFieldName = QString())
 {
     const QStringList fieldNames = fieldNamesForDecodedValue(diCode);
     const QStringList formatParts = format.split(QStringLiteral(":"), Qt::SkipEmptyParts);
@@ -425,7 +507,9 @@ QString byteBreakdownLines(const QString &diCode,
         const QByteArray fieldBytes = payload.mid(offset, size);
         const QString fieldName = i < fieldNames.size()
                                       ? fieldNames.at(i)
-                                      : (formatParts.size() == 1 ? QStringLiteral("数据值") : QStringLiteral("字段%1").arg(i + 1));
+                                      : (formatParts.size() == 1
+                                             ? (fallbackFieldName.isEmpty() ? QStringLiteral("数据值") : fallbackFieldName)
+                                             : QStringLiteral("字段%1").arg(i + 1));
         QString fieldValue = displayValueForFormatPart(fieldBytes, formatParts.at(i));
         if (fieldValue.isEmpty())
         {
@@ -506,6 +590,38 @@ QStringList phaseVoltageEventFieldNames(const QString &eventName)
     for (const QString &phase : phases)
     {
         names.append(QStringLiteral("%1%2安时数").arg(prefix, phase));
+    }
+
+    return names;
+}
+
+QStringList phaseElectricalEventFieldNames(const QString &eventName)
+{
+    const QString prefix = eventName + QStringLiteral("期间");
+    const QStringList energyTypes = {
+        QStringLiteral("正向有功"),
+        QStringLiteral("反向有功"),
+        QStringLiteral("组合无功1"),
+        QStringLiteral("组合无功2")};
+    const QStringList phases = {QStringLiteral("A相"), QStringLiteral("B相"), QStringLiteral("C相")};
+
+    QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("结束时刻")};
+    for (const QString &energyType : energyTypes)
+    {
+        names.append(QStringLiteral("%1%2总电能增量").arg(prefix, energyType));
+    }
+
+    for (const QString &phase : phases)
+    {
+        for (const QString &energyType : energyTypes)
+        {
+            names.append(QStringLiteral("%1%2%3电能增量").arg(prefix, phase, energyType));
+        }
+        names.append(QStringLiteral("%1时刻%2电压").arg(eventName, phase));
+        names.append(QStringLiteral("%1时刻%2电流").arg(eventName, phase));
+        names.append(QStringLiteral("%1时刻%2有功功率").arg(eventName, phase));
+        names.append(QStringLiteral("%1时刻%2无功功率").arg(eventName, phase));
+        names.append(QStringLiteral("%1时刻%2功率因数").arg(eventName, phase));
     }
 
     return names;
@@ -642,6 +758,61 @@ QStringList yearZoneProgramFieldNames()
     return names;
 }
 
+QStringList holidayProgramFieldNames()
+{
+    QStringList names = {QStringLiteral("发生时刻"), QStringLiteral("操作者代码")};
+    for (int i = 1; i <= 254; ++i)
+    {
+        names.append(QStringLiteral("节假日编程前第%1公共假日日期及日时段表号").arg(i));
+    }
+    return names;
+}
+
+QStringList settlementDayProgramFieldNames()
+{
+    return {QStringLiteral("发生时刻"),
+            QStringLiteral("操作者代码"),
+            QStringLiteral("结算日编程前每月第1结算日"),
+            QStringLiteral("结算日编程前每月第2结算日"),
+            QStringLiteral("结算日编程前每月第3结算日")};
+}
+
+QString purchaseRecordFieldName(const QString &diCode)
+{
+    bool ok = false;
+    const int itemIndex = diCode.mid(6, 2).toInt(&ok, 16);
+    if (!ok)
+    {
+        return QString();
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x0332")))
+    {
+        const QStringList names = {
+            QStringLiteral("购电日期"),
+            QStringLiteral("购电后总购电次数"),
+            QStringLiteral("购电量"),
+            QStringLiteral("购电前剩余电量"),
+            QStringLiteral("购电后剩余电量"),
+            QStringLiteral("购电后累计购电量")};
+        return itemIndex >= 1 && itemIndex <= names.size() ? names.at(itemIndex - 1) : QString();
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x0333")))
+    {
+        const QStringList names = {
+            QStringLiteral("购电日期"),
+            QStringLiteral("购电后总购电次数"),
+            QStringLiteral("购电金额"),
+            QStringLiteral("购电前剩余金额"),
+            QStringLiteral("购电后剩余金额"),
+            QStringLiteral("购电后累计购电金额")};
+        return itemIndex >= 1 && itemIndex <= names.size() ? names.at(itemIndex - 1) : QString();
+    }
+
+    return QString();
+}
+
 bool isHistoryItem(const QString &diCode)
 {
     return diCode.size() >= 10 && diCode.mid(8, 2) != QStringLiteral("00");
@@ -653,6 +824,11 @@ QStringList fieldNamesForDecodedValue(const QString &diCode)
                                       diCode.startsWith(QStringLiteral("0x0302")) ||
                                       diCode.startsWith(QStringLiteral("0x0303")) ||
                                       diCode.startsWith(QStringLiteral("0x0304"));
+    const bool isPhaseElectricalFamily = diCode.startsWith(QStringLiteral("0x030B")) ||
+                                         diCode.startsWith(QStringLiteral("0x030C")) ||
+                                         diCode.startsWith(QStringLiteral("0x030D"));
+    const bool isPhaseSequenceFamily = diCode.startsWith(QStringLiteral("0x030E")) ||
+                                       diCode.startsWith(QStringLiteral("0x030F"));
     const QString thirdByte = diCode.size() >= 8 ? diCode.mid(6, 2) : QString();
 
     if (isPhaseVoltageFamily && thirdByte != QStringLiteral("00") && isHistoryItem(diCode))
@@ -665,8 +841,10 @@ QStringList fieldNamesForDecodedValue(const QString &diCode)
          diCode == QStringLiteral("0x03060000") ||
          diCode == QStringLiteral("0x03070000") ||
          diCode == QStringLiteral("0x03080000") ||
-         diCode == QStringLiteral("0x03090000")) &&
-        (!isHistoryItem(diCode) || isPhaseVoltageFamily))
+         diCode == QStringLiteral("0x03090000") ||
+         diCode == QStringLiteral("0x030A0000") ||
+         ((isPhaseElectricalFamily || isPhaseSequenceFamily) && thirdByte == QStringLiteral("00"))) &&
+        (!isHistoryItem(diCode) || isPhaseVoltageFamily || isPhaseElectricalFamily || isPhaseSequenceFamily))
     {
         return {QStringLiteral("总次数"), QStringLiteral("总累计时间")};
     }
@@ -698,6 +876,33 @@ QStringList fieldNamesForDecodedValue(const QString &diCode)
     if (diCode.startsWith(QStringLiteral("0x030900")) && isHistoryItem(diCode))
     {
         return unbalanceEventFieldNames(QStringLiteral("电压不平衡"));
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x030A00")) && isHistoryItem(diCode))
+    {
+        return unbalanceEventFieldNames(QStringLiteral("电流不平衡"));
+    }
+
+    if (isPhaseElectricalFamily && thirdByte != QStringLiteral("00") && isHistoryItem(diCode))
+    {
+        QString eventName = QStringLiteral("失流");
+        if (diCode.startsWith(QStringLiteral("0x030C")))
+        {
+            eventName = QStringLiteral("过流");
+        }
+        else if (diCode.startsWith(QStringLiteral("0x030D")))
+        {
+            eventName = QStringLiteral("断流");
+        }
+        return phaseElectricalEventFieldNames(eventName);
+    }
+
+    if (isPhaseSequenceFamily && thirdByte != QStringLiteral("00") && isHistoryItem(diCode))
+    {
+        const QString eventName = diCode.startsWith(QStringLiteral("0x030E"))
+                                      ? QStringLiteral("潮流反向")
+                                      : QStringLiteral("过载");
+        return sequenceEventFieldNames(eventName);
     }
 
     if (diCode.startsWith(QStringLiteral("0x0310")))
@@ -738,7 +943,12 @@ QStringList fieldNamesForDecodedValue(const QString &diCode)
 
     if (diCode.startsWith(QStringLiteral("0x03300D")) && isHistoryItem(diCode))
     {
-        return coverOpenEventFieldNames();
+        return coverEventFieldNames(QStringLiteral("开表盖"));
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x03300E")) && isHistoryItem(diCode))
+    {
+        return coverEventFieldNames(QStringLiteral("开端钮盒"));
     }
 
     if (diCode.startsWith(QStringLiteral("0x033000")) && isHistoryItem(diCode))
@@ -785,6 +995,44 @@ QStringList fieldNamesForDecodedValue(const QString &diCode)
     if (diCode.startsWith(QStringLiteral("0x033006")) && isHistoryItem(diCode))
     {
         return yearZoneProgramFieldNames();
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x033007")) && isHistoryItem(diCode))
+    {
+        return {QStringLiteral("发生时刻"),
+                QStringLiteral("操作者代码"),
+                QStringLiteral("周休日编程前采用的日时段表号")};
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x033008")) && isHistoryItem(diCode))
+    {
+        return holidayProgramFieldNames();
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x033009")) && isHistoryItem(diCode))
+    {
+        return {QStringLiteral("发生时刻"), QStringLiteral("操作者代码"), QStringLiteral("有功组合方式编程前特征字")};
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x03300A")) && isHistoryItem(diCode))
+    {
+        return {QStringLiteral("发生时刻"), QStringLiteral("操作者代码"), QStringLiteral("无功组合方式1编程前特征字")};
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x03300B")) && isHistoryItem(diCode))
+    {
+        return {QStringLiteral("发生时刻"), QStringLiteral("操作者代码"), QStringLiteral("无功组合方式2编程前特征字")};
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x03300C")) && isHistoryItem(diCode))
+    {
+        return settlementDayProgramFieldNames();
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x0332")) || diCode.startsWith(QStringLiteral("0x0333")))
+    {
+        const QString fieldName = purchaseRecordFieldName(diCode);
+        return fieldName.isEmpty() ? QStringList{} : QStringList{fieldName};
     }
 
     return {};
@@ -1457,6 +1705,65 @@ QList<FrameParseCard> buildBlockDecodeCards(const MeterModel *meterModel, const 
     return cards;
 }
 
+QString blockByteBreakdownLines(const MeterModel *meterModel, const QString &blockDiCode, const QByteArray &payload)
+{
+    if (!meterModel || blockDiCode.isEmpty() || payload.isEmpty())
+    {
+        return QString();
+    }
+
+    int rateCountOverride = -1;
+    const QStringList payloadCodes = selectPayloadOrderCodesForBlock(meterModel, blockDiCode, payload, &rateCountOverride);
+    Q_UNUSED(rateCountOverride);
+    if (payloadCodes.isEmpty())
+    {
+        return QString();
+    }
+
+    QStringList lines;
+    int offset = 0;
+    for (const QString &code : payloadCodes)
+    {
+        DataItem item = meterModel->getDataItem(code);
+        if (item.diCode.isEmpty())
+        {
+            return QString();
+        }
+
+        const int size = DLT645DataHelper::bytesRequiredForFormat(item.format);
+        if (size <= 0 || offset + size > payload.size())
+        {
+            return QString();
+        }
+
+        QString description;
+        QString unit;
+        const QByteArray fieldBytes = payload.mid(offset, size);
+        const QString value = blockDisplayValueForItem(meterModel, code, fieldBytes, &description, &unit);
+        if (description.isEmpty())
+        {
+            description = item.description;
+        }
+        if (unit.isEmpty())
+        {
+            unit = item.unit;
+        }
+
+        lines.append(QStringLiteral("%1 --- %2:%3")
+                         .arg(DLT645FrameFormatter::formatHex(fieldBytes),
+                              description.isEmpty() ? code : description,
+                              appendUnit(value.isEmpty() ? DLT645FrameFormatter::formatHex(fieldBytes) : value, unit)));
+        offset += size;
+    }
+
+    if (offset != payload.size())
+    {
+        return QString();
+    }
+
+    return lines.join(QStringLiteral("\n"));
+}
+
 [[maybe_unused]] FrameParseSection buildStructureSection(const QByteArray &frame, bool checksumValid, QString *messageOut)
 {
     FrameParseSection section;
@@ -1651,10 +1958,15 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
             const QByteArray payload = decodedDataField.mid(4);
             if (!payload.isEmpty())
             {
-                if (!format.isEmpty())
+                const QString blockBreakdown = blockByteBreakdownLines(meterModel, diCode, payload);
+                if (!blockBreakdown.isEmpty())
+                {
+                    detailText += blockBreakdown + QStringLiteral("\n");
+                }
+                else if (!format.isEmpty())
                 {
                     const QString decodedValue = decodedValueForItem(meterModel, diCode, payload, &description, &unit);
-                    const QString breakdown = byteBreakdownLines(diCode, payload, format, decodedValue, unit);
+                    const QString breakdown = byteBreakdownLines(diCode, payload, format, decodedValue, unit, description);
                     if (!breakdown.isEmpty())
                     {
                         detailText += breakdown + QStringLiteral("\n");
