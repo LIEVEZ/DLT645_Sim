@@ -830,7 +830,7 @@ void CommunicationDialog::updateMessageDetail(int row)
         {
             if (isResponse)
             {
-                decodedPayload = DLT645DataHelper::decodeReversedPayload(dataField.mid(4));
+                decodedPayload = DLT645DataHelper::subtract33(dataField.mid(4));
                 payloadLabel = QString::fromUtf8("应答数据");
             }
             else
@@ -849,7 +849,7 @@ void CommunicationDialog::updateMessageDetail(int row)
             else if (dataField.size() > 5)
             {
                 const int payloadLength = static_cast<quint8>(dataField[4]);
-                decodedPayload = DLT645DataHelper::decodeReversedPayload(dataField.mid(5, payloadLength > 0 ? payloadLength : -1));
+                decodedPayload = DLT645DataHelper::subtract33(dataField.mid(5, payloadLength > 0 ? payloadLength : -1));
                 payloadLabel = QString::fromUtf8("写入数据");
             }
         }

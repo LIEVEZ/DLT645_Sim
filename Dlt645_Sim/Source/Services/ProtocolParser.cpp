@@ -309,6 +309,7 @@ ProtocolFrame ProtocolParser::buildWriteRequest(const QByteArray &address,
     add33(authorityBytes);
 
     QByteArray valueBytes;
+
     QString format;
     if (m_meterModel)
     {
@@ -319,6 +320,7 @@ ProtocolFrame ProtocolParser::buildWriteRequest(const QByteArray &address,
     if (!format.isEmpty())
     {
         valueBytes = processDataValue(value, format);
+        std::reverse(valueBytes.begin(), valueBytes.end());
     }
     else if (value.type() == QVariant::String)
     {
@@ -347,8 +349,11 @@ ProtocolFrame ProtocolParser::buildWriteRequest(const QByteArray &address,
         }
     }
 
+    if (format.isEmpty())
+    {
+        std::reverse(valueBytes.begin(), valueBytes.end());
+    }
     add33(valueBytes);
-    std::reverse(valueBytes.begin(), valueBytes.end());
 
     frame.dataField = diBytes + authorityBytes + valueBytes;
     frame.dataLength = static_cast<quint8>(frame.dataField.size());
@@ -389,6 +394,23 @@ ProtocolFrame ProtocolParser::buildReadResponse(const ProtocolFrame &requestFram
     QByteArray valueBytes;
 
     // 从MeterModel中获取DataItem的format字段
+    if ((requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::ReadAddress) &&
+        dataValue.canConvert<QByteArray>())
+    {
+        valueBytes = dataValue.toByteArray();
+        add33(valueBytes);
+
+        frame.dataField = valueBytes;
+        frame.dataLength = static_cast<quint8>(frame.dataField.size());
+
+        frame.checksum = 0;
+        QByteArray frameData = frame.toByteArray();
+        frame.checksum = ChecksumHelper::calculateChecksum(frameData.left(frameData.size() - 2));
+        frame.endFlag = 0x16;
+
+        return frame;
+    }
+
     QString format = "";
     if (m_meterModel && !diCode.isEmpty())
     {
@@ -425,6 +447,7 @@ ProtocolFrame ProtocolParser::buildReadResponse(const ProtocolFrame &requestFram
 
         // 使用新的processDataValue方法处理数据值
         QByteArray processedBytes = processDataValue(value, currentFormat);
+        std::reverse(processedBytes.begin(), processedBytes.end());
         valueBytes.append(processedBytes);
     }
     // DLT645协议：数据域需要倒序处理
@@ -433,8 +456,6 @@ ProtocolFrame ProtocolParser::buildReadResponse(const ProtocolFrame &requestFram
     {
         valueBytes[i] = static_cast<char>(valueBytes[i] + 0x33);
     }
-
-    std::reverse(valueBytes.begin(), valueBytes.end());
 
     frame.dataField = diBytes + valueBytes;
     frame.dataLength = static_cast<quint8>(frame.dataField.size());

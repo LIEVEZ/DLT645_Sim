@@ -815,10 +815,9 @@ namespace
             return QString();
         }
 
-        const int rateCount = qMax(0, valueCount - 1);
-        const QString targetCode = valueIndex < rateCount
-                                       ? prefix + upperHexByte(rateCount - valueIndex) + QStringLiteral("00")
-                                       : prefix + QStringLiteral("0000");
+        const QString targetCode = valueIndex == 0
+                                       ? prefix + QStringLiteral("0000")
+                                       : prefix + upperHexByte(valueIndex) + QStringLiteral("00");
         const DataItem targetItem = meterModel->getDataItem(targetCode);
         return targetItem.diCode.isEmpty() ? QString() : targetItem.description;
     }
@@ -845,16 +844,20 @@ namespace
 
         const int rateCount = qMax(0, valueCount / 2 - 1);
         QString targetCode;
-        if (valueIndex < rateCount * 2)
+        if (valueIndex < 2)
         {
-            const int rateIndex = rateCount - valueIndex / 2;
-            const bool timeField = (valueIndex % 2 == 0);
-            targetCode = prefix + upperHexByte(rateIndex) + (timeField ? QStringLiteral("01") : QStringLiteral("00"));
+            const bool timeField = valueIndex == 1;
+            targetCode = prefix + (timeField ? QStringLiteral("0001") : QStringLiteral("0000"));
         }
         else
         {
-            const bool timeField = ((valueIndex - rateCount * 2) == 0);
-            targetCode = prefix + (timeField ? QStringLiteral("0001") : QStringLiteral("0000"));
+            const int rateIndex = (valueIndex - 2) / 2 + 1;
+            if (rateIndex > rateCount)
+            {
+                return QString();
+            }
+            const bool timeField = (valueIndex % 2 == 1);
+            targetCode = prefix + upperHexByte(rateIndex) + (timeField ? QStringLiteral("01") : QStringLiteral("00"));
         }
 
         const DataItem targetItem = meterModel->getDataItem(targetCode);
@@ -865,39 +868,39 @@ namespace
     {
         if (diCode == QStringLiteral("0x0201FF00"))
         {
-            return {QStringLiteral("0x02010300"), QStringLiteral("0x02010200"), QStringLiteral("0x02010100")};
+            return {QStringLiteral("0x02010100"), QStringLiteral("0x02010200"), QStringLiteral("0x02010300")};
         }
         if (diCode == QStringLiteral("0x0202FF00"))
         {
-            return {QStringLiteral("0x02020300"), QStringLiteral("0x02020200"), QStringLiteral("0x02020100")};
+            return {QStringLiteral("0x02020100"), QStringLiteral("0x02020200"), QStringLiteral("0x02020300")};
         }
         if (diCode == QStringLiteral("0x0203FF00"))
         {
-            return {QStringLiteral("0x02030300"), QStringLiteral("0x02030200"), QStringLiteral("0x02030100"), QStringLiteral("0x02030000")};
+            return {QStringLiteral("0x02030000"), QStringLiteral("0x02030100"), QStringLiteral("0x02030200"), QStringLiteral("0x02030300")};
         }
         if (diCode == QStringLiteral("0x0204FF00"))
         {
-            return {QStringLiteral("0x02040300"), QStringLiteral("0x02040200"), QStringLiteral("0x02040100"), QStringLiteral("0x02040000")};
+            return {QStringLiteral("0x02040000"), QStringLiteral("0x02040100"), QStringLiteral("0x02040200"), QStringLiteral("0x02040300")};
         }
         if (diCode == QStringLiteral("0x0205FF00"))
         {
-            return {QStringLiteral("0x02050300"), QStringLiteral("0x02050200"), QStringLiteral("0x02050100"), QStringLiteral("0x02050000")};
+            return {QStringLiteral("0x02050000"), QStringLiteral("0x02050100"), QStringLiteral("0x02050200"), QStringLiteral("0x02050300")};
         }
         if (diCode == QStringLiteral("0x0206FF00"))
         {
-            return {QStringLiteral("0x02060300"), QStringLiteral("0x02060200"), QStringLiteral("0x02060100"), QStringLiteral("0x02060000")};
+            return {QStringLiteral("0x02060000"), QStringLiteral("0x02060100"), QStringLiteral("0x02060200"), QStringLiteral("0x02060300")};
         }
         if (diCode == QStringLiteral("0x0207FF00"))
         {
-            return {QStringLiteral("0x02070300"), QStringLiteral("0x02070200"), QStringLiteral("0x02070100")};
+            return {QStringLiteral("0x02070100"), QStringLiteral("0x02070200"), QStringLiteral("0x02070300")};
         }
         if (diCode == QStringLiteral("0x0208FF00"))
         {
-            return {QStringLiteral("0x02080300"), QStringLiteral("0x02080200"), QStringLiteral("0x02080100")};
+            return {QStringLiteral("0x02080100"), QStringLiteral("0x02080200"), QStringLiteral("0x02080300")};
         }
         if (diCode == QStringLiteral("0x0209FF00"))
         {
-            return {QStringLiteral("0x02090300"), QStringLiteral("0x02090200"), QStringLiteral("0x02090100")};
+            return {QStringLiteral("0x02090100"), QStringLiteral("0x02090200"), QStringLiteral("0x02090300")};
         }
         if ((diCode.startsWith(QStringLiteral("0x020A")) || diCode.startsWith(QStringLiteral("0x020B"))) &&
             diCode.size() == 10 &&
@@ -906,7 +909,7 @@ namespace
             const QString prefix = diCode.left(8);
             QStringList codes;
             codes.reserve(21);
-            for (int harmonicOrder = 21; harmonicOrder >= 1; --harmonicOrder)
+            for (int harmonicOrder = 1; harmonicOrder <= 21; ++harmonicOrder)
             {
                 codes.append(prefix + upperHexByte(harmonicOrder));
             }
@@ -914,14 +917,14 @@ namespace
         }
         if (diCode == QStringLiteral("0x230100FF"))
         {
-            return {QStringLiteral("0x23010008"),
-                    QStringLiteral("0x23010007"),
-                    QStringLiteral("0x23010006"),
-                    QStringLiteral("0x23010005"),
-                    QStringLiteral("0x23010004"),
-                    QStringLiteral("0x23010003"),
+            return {QStringLiteral("0x23010001"),
                     QStringLiteral("0x23010002"),
-                    QStringLiteral("0x23010001")};
+                    QStringLiteral("0x23010003"),
+                    QStringLiteral("0x23010004"),
+                    QStringLiteral("0x23010005"),
+                    QStringLiteral("0x23010006"),
+                    QStringLiteral("0x23010007"),
+                    QStringLiteral("0x23010008")};
         }
 
         return {};

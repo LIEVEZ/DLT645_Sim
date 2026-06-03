@@ -147,6 +147,11 @@ namespace
                 }
             }
 
+            if (spec.allowNegative)
+            {
+                totalDigits += 2;
+            }
+
             spec.valid = true;
             spec.decimalDigits = digitsAfterXx + 1;
             spec.integerDigits = qMax(0, totalDigits - spec.decimalDigits);
@@ -1055,11 +1060,11 @@ namespace
         const int rateCount = currentRateCount(items);
         QStringList codes;
         codes.reserve(rateCount + 1);
-        for (int rateIndex = rateCount; rateIndex >= 1; --rateIndex)
+        codes.append(diPrefix + QStringLiteral("00"));
+        for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
         {
             codes.append(diPrefix + upperHexByte(rateIndex + 1));
         }
-        codes.append(diPrefix + QStringLiteral("00"));
         return codes;
     }
 
@@ -1171,16 +1176,16 @@ namespace
 
         QVariantList values;
         values.reserve((rateCount + 1) * 2);
-        for (int rateIndex = rateCount; rateIndex >= 1; --rateIndex)
+        values.append(totalValue);
+        values.append(compactDateTimeToMinutes(freezeTime.addSecs(-7 * 60)));
+
+        for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
         {
             const int weightIndex = qMin(rateIndex - 1, weights.size() - 1);
             const QDateTime eventTime = freezeTime.addSecs(-(rateIndex * 37 + 11) * 60);
-            values.append(compactDateTimeToMinutes(eventTime));
             values.append(roundToDecimals(totalValue * weights.at(weightIndex), 4));
+            values.append(compactDateTimeToMinutes(eventTime));
         }
-
-        values.append(compactDateTimeToMinutes(freezeTime.addSecs(-7 * 60)));
-        values.append(totalValue);
         return values;
     }
 
@@ -1228,12 +1233,12 @@ namespace
                                                 QStringLiteral("上1次%1%2最大需量及发生时间数据块").arg(category.description, family.description),
                                                 QVariantList(),
                                                 QStringLiteral("-"),
-                                                repeatedFormat(QStringLiteral("AA,AA,AA,AA,AA:AA,.,AA,AA"), rateCount + 1),
+                                                repeatedFormat(QStringLiteral("AA,.,AA,AA:AA,AA,AA,AA,AA"), rateCount + 1),
                                                 false,
                                                 0);
                 }
 
-                items[blockCode].format = repeatedFormat(QStringLiteral("AA,AA,AA,AA,AA:AA,.,AA,AA"), rateCount + 1);
+                items[blockCode].format = repeatedFormat(QStringLiteral("AA,.,AA,AA:AA,AA,AA,AA,AA"), rateCount + 1);
                 items[blockCode].value = buildFreezeDemandBlockValue(family, freezeTime, category.valueBias, rateCount);
             }
 
@@ -1369,7 +1374,7 @@ namespace
         const QString prefix = blockCode.left(8);
         QStringList codes;
         codes.reserve(kHarmonicOrderCount);
-        for (int harmonicOrder = kHarmonicOrderCount; harmonicOrder >= 1; --harmonicOrder)
+        for (int harmonicOrder = 1; harmonicOrder <= kHarmonicOrderCount; ++harmonicOrder)
         {
             codes.append(prefix + upperHexByte(harmonicOrder));
         }
@@ -1570,11 +1575,11 @@ namespace
         const int rateCount = currentRateCount(items);
         QStringList codes;
         codes.reserve(rateCount + 1);
-        for (int rateIndex = rateCount; rateIndex >= 1; --rateIndex)
+        codes.append(prefix + QStringLiteral("0000"));
+        for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
         {
             codes.append(prefix + upperHexByte(rateIndex) + QStringLiteral("00"));
         }
-        codes.append(prefix + QStringLiteral("0000"));
         return codes;
     }
 
@@ -1606,14 +1611,14 @@ namespace
         const int rateCount = currentRateCount(items);
         QStringList codes;
         codes.reserve((rateCount + 1) * 2);
-        for (int rateIndex = rateCount; rateIndex >= 1; --rateIndex)
+        codes.append(diPrefix + QStringLiteral("0000"));
+        codes.append(diPrefix + QStringLiteral("0001"));
+        for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
         {
             const QString rateHex = upperHexByte(rateIndex);
-            codes.append(diPrefix + rateHex + QStringLiteral("01"));
             codes.append(diPrefix + rateHex + QStringLiteral("00"));
+            codes.append(diPrefix + rateHex + QStringLiteral("01"));
         }
-        codes.append(diPrefix + QStringLiteral("0001"));
-        codes.append(diPrefix + QStringLiteral("0000"));
         return codes;
     }
 
@@ -1655,7 +1660,7 @@ namespace
                                                           QStringLiteral("(当前)%1总最大需量").arg(family.description),
                                                           0.0,
                                                           family.unit,
-                                                          QStringLiteral("AA,AA,.,AA,AA"),
+                                                          QStringLiteral("AA,.,AA,AA"),
                                                           false,
                                                           4);
         items[prefix + QStringLiteral("0001")] = DataItem(prefix + QStringLiteral("0001"),
@@ -1691,7 +1696,7 @@ namespace
                                                           QStringLiteral("(当前)%1最大需量及发生时间数据块").arg(family.description),
                                                           QVariantList(),
                                                           QStringLiteral("-"),
-                                                          repeatedFormat(QStringLiteral("AA,AA,AA,AA,AA:AA,.,AA,AA"), kDefaultRateCount + 1),
+                                                          repeatedFormat(QStringLiteral("AA,.,AA,AA:AA,AA,AA,AA,AA"), kDefaultRateCount + 1),
                                                           false,
                                                           0);
     }
@@ -1843,7 +1848,7 @@ namespace
             }
         }
 
-        const QString demandSegmentFormat = QStringLiteral("AA,AA,AA,AA,AA:AA,.,AA,AA");
+        const QString demandSegmentFormat = QStringLiteral("AA,.,AA,AA:AA,AA,AA,AA,AA");
         for (const QString &blockCode : blockCodes)
         {
             if (!blockCode.endsWith(QStringLiteral("FF00")) || !isDemandDataCode(blockCode))
@@ -2462,7 +2467,7 @@ namespace
 
             if (item.diCode.startsWith("0x0202") || item.diCode == "0x02800001")
             {
-                item.value = rng->bounded(0, 10000) / 1000.0;
+                item.value = rng->bounded(-10000, 10001) / 1000.0;
                 variableValueHandled = true;
             }
             else if (item.diCode.startsWith("0x0203"))
@@ -2753,96 +2758,96 @@ QVariant MeterModel::getDataValue(const QString &diCode) const
             if (diCode == "0x0201FF00")
             {
                 // 电压数据块，包含A相、B相、C相电压
-                if (m_dataItems.contains("0x02010300"))
-                    values.append(m_dataItems["0x02010300"].value);
-                if (m_dataItems.contains("0x02010200"))
-                    values.append(m_dataItems["0x02010200"].value);
                 if (m_dataItems.contains("0x02010100"))
                     values.append(m_dataItems["0x02010100"].value);
+                if (m_dataItems.contains("0x02010200"))
+                    values.append(m_dataItems["0x02010200"].value);
+                if (m_dataItems.contains("0x02010300"))
+                    values.append(m_dataItems["0x02010300"].value);
             }
             else if (diCode == "0x0202FF00")
             {
                 // 电流数据块，包含A相、B相、C相电流
-                if (m_dataItems.contains("0x02020300"))
-                    values.append(m_dataItems["0x02020300"].value);
-                if (m_dataItems.contains("0x02020200"))
-                    values.append(m_dataItems["0x02020200"].value);
                 if (m_dataItems.contains("0x02020100"))
                     values.append(m_dataItems["0x02020100"].value);
+                if (m_dataItems.contains("0x02020200"))
+                    values.append(m_dataItems["0x02020200"].value);
+                if (m_dataItems.contains("0x02020300"))
+                    values.append(m_dataItems["0x02020300"].value);
             }
             else if (diCode == "0x0203FF00")
             {
                 // 功率数据块，包含A相、B相、C相功率
-                if (m_dataItems.contains("0x02030300"))
-                    values.append(m_dataItems["0x02030300"].value);
-                if (m_dataItems.contains("0x02030200"))
-                    values.append(m_dataItems["0x02030200"].value);
-                if (m_dataItems.contains("0x02030100"))
-                    values.append(m_dataItems["0x02030100"].value);
                 if (m_dataItems.contains("0x02030000"))
                     values.append(m_dataItems["0x02030000"].value);
+                if (m_dataItems.contains("0x02030100"))
+                    values.append(m_dataItems["0x02030100"].value);
+                if (m_dataItems.contains("0x02030200"))
+                    values.append(m_dataItems["0x02030200"].value);
+                if (m_dataItems.contains("0x02030300"))
+                    values.append(m_dataItems["0x02030300"].value);
             }
             else if (diCode == "0x0204FF00")
             {
-                if (m_dataItems.contains("0x02040300"))
-                    values.append(m_dataItems["0x02040300"].value);
-                if (m_dataItems.contains("0x02040200"))
-                    values.append(m_dataItems["0x02040200"].value);
-                if (m_dataItems.contains("0x02040100"))
-                    values.append(m_dataItems["0x02040100"].value);
                 if (m_dataItems.contains("0x02040000"))
                     values.append(m_dataItems["0x02040000"].value);
+                if (m_dataItems.contains("0x02040100"))
+                    values.append(m_dataItems["0x02040100"].value);
+                if (m_dataItems.contains("0x02040200"))
+                    values.append(m_dataItems["0x02040200"].value);
+                if (m_dataItems.contains("0x02040300"))
+                    values.append(m_dataItems["0x02040300"].value);
             }
             else if (diCode == "0x0205FF00")
             {
-                if (m_dataItems.contains("0x02050300"))
-                    values.append(m_dataItems["0x02050300"].value);
-                if (m_dataItems.contains("0x02050200"))
-                    values.append(m_dataItems["0x02050200"].value);
-                if (m_dataItems.contains("0x02050100"))
-                    values.append(m_dataItems["0x02050100"].value);
                 if (m_dataItems.contains("0x02050000"))
                     values.append(m_dataItems["0x02050000"].value);
+                if (m_dataItems.contains("0x02050100"))
+                    values.append(m_dataItems["0x02050100"].value);
+                if (m_dataItems.contains("0x02050200"))
+                    values.append(m_dataItems["0x02050200"].value);
+                if (m_dataItems.contains("0x02050300"))
+                    values.append(m_dataItems["0x02050300"].value);
             }
             else if (diCode == "0x0206FF00")
             {
                 // 功率因数数据块，包含总功率因数
-                if (m_dataItems.contains("0x02060300"))
-                    values.append(m_dataItems["0x02060300"].value);
-                if (m_dataItems.contains("0x02060200"))
-                    values.append(m_dataItems["0x02060200"].value);
-                if (m_dataItems.contains("0x02060100"))
-                    values.append(m_dataItems["0x02060100"].value);
                 if (m_dataItems.contains("0x02060000"))
                     values.append(m_dataItems["0x02060000"].value);
+                if (m_dataItems.contains("0x02060100"))
+                    values.append(m_dataItems["0x02060100"].value);
+                if (m_dataItems.contains("0x02060200"))
+                    values.append(m_dataItems["0x02060200"].value);
+                if (m_dataItems.contains("0x02060300"))
+                    values.append(m_dataItems["0x02060300"].value);
             }
             else if (diCode == "0x0207FF00")
             {
                 // 相角数据块，包含A相、B相、C相相角
-                if (m_dataItems.contains("0x02070300"))
-                    values.append(m_dataItems["0x02070300"].value);
-                if (m_dataItems.contains("0x02070200"))
-                    values.append(m_dataItems["0x02070200"].value);
                 if (m_dataItems.contains("0x02070100"))
                     values.append(m_dataItems["0x02070100"].value);
+                if (m_dataItems.contains("0x02070200"))
+                    values.append(m_dataItems["0x02070200"].value);
+                if (m_dataItems.contains("0x02070300"))
+                    values.append(m_dataItems["0x02070300"].value);
             }
             else if (diCode == "0x0208FF00")
             {
-                if (m_dataItems.contains("0x02080300"))
-                    values.append(m_dataItems["0x02080300"].value);
-                if (m_dataItems.contains("0x02080200"))
-                    values.append(m_dataItems["0x02080200"].value);
                 if (m_dataItems.contains("0x02080100"))
                     values.append(m_dataItems["0x02080100"].value);
+                if (m_dataItems.contains("0x02080200"))
+                    values.append(m_dataItems["0x02080200"].value);
+                if (m_dataItems.contains("0x02080300"))
+                    values.append(m_dataItems["0x02080300"].value);
             }
             else if (diCode == "0x0209FF00")
             {
-                if (m_dataItems.contains("0x02090300"))
-                    values.append(m_dataItems["0x02090300"].value);
-                if (m_dataItems.contains("0x02090200"))
-                    values.append(m_dataItems["0x02090200"].value);
                 if (m_dataItems.contains("0x02090100"))
                     values.append(m_dataItems["0x02090100"].value);
+                if (m_dataItems.contains("0x02090200"))
+                    values.append(m_dataItems["0x02090200"].value);
+                if (m_dataItems.contains("0x02090300"))
+                    values.append(m_dataItems["0x02090300"].value);
             }
             else if (isHarmonicFamilyCode(diCode, QStringLiteral("0x020A"), nullptr, nullptr, nullptr) ||
                      isHarmonicFamilyCode(diCode, QStringLiteral("0x020B"), nullptr, nullptr, nullptr))
@@ -2852,14 +2857,14 @@ QVariant MeterModel::getDataValue(const QString &diCode) const
             else if (diCode == "0x230100FF")
             {
                 appendValuesForCodes(m_dataItems,
-                                     {QStringLiteral("0x23010008"),
-                                      QStringLiteral("0x23010007"),
-                                      QStringLiteral("0x23010006"),
-                                      QStringLiteral("0x23010005"),
-                                      QStringLiteral("0x23010004"),
-                                      QStringLiteral("0x23010003"),
+                                     {QStringLiteral("0x23010001"),
                                       QStringLiteral("0x23010002"),
-                                      QStringLiteral("0x23010001")},
+                                      QStringLiteral("0x23010003"),
+                                      QStringLiteral("0x23010004"),
+                                      QStringLiteral("0x23010005"),
+                                      QStringLiteral("0x23010006"),
+                                      QStringLiteral("0x23010007"),
+                                      QStringLiteral("0x23010008")},
                                      values);
             }
             else if (diCode.endsWith("FF00") && isMultiRateEnergyCode(diCode))
@@ -3320,10 +3325,10 @@ void MeterModel::initializeVariableData()
     m_dataItems["0x0201FF00"] = DataItem("0x0201FF00", "电压数据块", QVariantList(), "-", "AA,xx:AA,xx:AA,xx", false, 1);
 
     // 电流
-    m_dataItems["0x02020100"] = DataItem("0x02020100", "A相电流", 1.01, "A", "AA,xx,AA", false, 3);
-    m_dataItems["0x02020200"] = DataItem("0x02020200", "B相电流", 1.023, "A", "AA,xx,AA", false, 3);
-    m_dataItems["0x02020300"] = DataItem("0x02020300", "C相电流", 1.1, "A", "AA,xx,AA", false, 3);
-    m_dataItems["0x0202FF00"] = DataItem("0x0202FF00", "电流数据块", QVariantList(), "-", "AA,xx,AA:AA,xx,AA:AA,xx,AA", false, 3);
+    m_dataItems["0x02020100"] = DataItem("0x02020100", "A相电流", 1.01, "A", "F9,xx,AA", false, 3);
+    m_dataItems["0x02020200"] = DataItem("0x02020200", "B相电流", 1.023, "A", "F9,xx,AA", false, 3);
+    m_dataItems["0x02020300"] = DataItem("0x02020300", "C相电流", 1.1, "A", "F9,xx,AA", false, 3);
+    m_dataItems["0x0202FF00"] = DataItem("0x0202FF00", "电流数据块", QVariantList(), "-", "F9,xx,AA:F9,xx,AA:F9,xx,AA", false, 3);
 
     // 功率
     m_dataItems["0x02030000"] = DataItem("0x02030000", "瞬时总有功功率", 0.0, "kW", "F9,.,AA,AA", false, 4);
@@ -3375,7 +3380,7 @@ void MeterModel::initializeVariableData()
     }
 
     // 零相电流
-    m_dataItems["0x02800001"] = DataItem("0x02800001", "零相电流", 0.0, "A", "AA,xx,AA", false, 3);
+    m_dataItems["0x02800001"] = DataItem("0x02800001", "零相电流", 0.0, "A", "F9,xx,AA", false, 3);
     // 频率
     m_dataItems["0x02800002"] = DataItem("0x02800002", "电网频率", 50.0, "Hz", "AA,.,AA", false, 2);
     m_dataItems["0x02800003"] = DataItem("0x02800003", "一分钟有功总平均功率", 12.3456, "kW", "AA,.,AA,AA", false, 4);

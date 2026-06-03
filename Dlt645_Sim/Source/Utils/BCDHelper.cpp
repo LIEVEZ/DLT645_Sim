@@ -29,7 +29,22 @@ int countFormatDecimalDigits(const QStringList &tokens)
     const int decimalIndex = tokens.indexOf(QStringLiteral("."));
     if (decimalIndex < 0)
     {
-        return 0;
+        const int xxIndex = tokens.indexOf(QStringLiteral("xx"));
+        if (xxIndex < 0)
+        {
+            return 0;
+        }
+
+        int digitsAfterXx = 0;
+        for (int i = xxIndex + 1; i < tokens.size(); ++i)
+        {
+            const QString token = tokens[i].trimmed();
+            if (token != QStringLiteral(".") && token != QStringLiteral("F9"))
+            {
+                digitsAfterXx += 2;
+            }
+        }
+        return digitsAfterXx + 1;
     }
 
     int digits = 0;
@@ -408,7 +423,7 @@ QString BCDHelper::formatValueToString(const QVariant &value, const QString &for
         }
 
         // 格式化小数部分
-        int decimalInt = static_cast<int>(decimalValue * std::pow(10.0, decimalDigits));
+        int decimalInt = static_cast<int>(qRound64(decimalValue * std::pow(10.0, decimalDigits)));
         QString decimalStr = QString::number(decimalInt);
         QString formattedDecimal = decimalStr.rightJustified(decimalDigits, '0');
         if (formattedDecimal.length() > decimalDigits)
@@ -470,7 +485,7 @@ QString BCDHelper::formatValueToString(const QVariant &value, const QString &for
             // 乘数 = 10^(后面位数 + 1)
             double multiplier = std::pow(10.0, digitsAfterXx + 1);
             double multipliedValue = numValue * multiplier;
-            qint64 intValue = static_cast<qint64>(multipliedValue);
+            qint64 intValue = qRound64(multipliedValue);
 
             // 计算总位数
             int totalElements = 0;
@@ -553,7 +568,7 @@ QString BCDHelper::formatValueToString(const QVariant &value, const QString &for
 
             // 计算总位数
             int totalDigits = totalElements * 2;
-            qint64 intValue = static_cast<qint64>(numValue);
+            qint64 intValue = qRound64(numValue);
 
             // 转换为字符串并右对齐
             QString numStr = QString::number(intValue);

@@ -48,7 +48,7 @@ QStringList harmonicPayloadOrderCodes(const QString &blockCode)
     const QString prefix = blockCode.left(8);
     QStringList codes;
     codes.reserve(kHarmonicOrderCount);
-    for (int harmonicOrder = kHarmonicOrderCount; harmonicOrder >= 1; --harmonicOrder)
+    for (int harmonicOrder = 1; harmonicOrder <= kHarmonicOrderCount; ++harmonicOrder)
     {
         codes.append(prefix + upperHexByte(harmonicOrder));
     }
@@ -276,9 +276,122 @@ QString displayDecimalFromBcd(const QByteArray &bytes, int decimalDigits)
     return digits;
 }
 
+int decimalDigitsForFormat(const QString &format)
+{
+    const QStringList tokens = format.split(QStringLiteral(","), Qt::SkipEmptyParts);
+    int decimalIndex = -1;
+    for (int i = 0; i < tokens.size(); ++i)
+    {
+        if (tokens.at(i).trimmed() == QStringLiteral("."))
+        {
+            decimalIndex = i;
+            break;
+        }
+    }
+    if (decimalIndex < 0)
+    {
+        return 0;
+    }
+
+    int digits = 0;
+    for (int i = decimalIndex + 1; i < tokens.size(); ++i)
+    {
+        if (tokens.at(i).trimmed() != QStringLiteral("."))
+        {
+            digits += 2;
+        }
+    }
+    return digits;
+}
+
+int decimalDigitsForXxFormat(const QString &format)
+{
+    const QStringList tokens = format.split(QStringLiteral(","), Qt::SkipEmptyParts);
+    int xxIndex = -1;
+    for (int i = 0; i < tokens.size(); ++i)
+    {
+        if (tokens.at(i).trimmed() == QStringLiteral("xx"))
+        {
+            xxIndex = i;
+            break;
+        }
+    }
+    if (xxIndex < 0)
+    {
+        return -1;
+    }
+
+    int digitsAfterXx = 0;
+    for (int i = xxIndex + 1; i < tokens.size(); ++i)
+    {
+        if (tokens.at(i).trimmed() != QStringLiteral("."))
+        {
+            digitsAfterXx += 2;
+        }
+    }
+    return digitsAfterXx + 1;
+}
+
+QString displaySignedF9DecimalFromLittleEndianBcd(const QByteArray &bytes, const QString &format)
+{
+    if (bytes.isEmpty())
+    {
+        return QString();
+    }
+
+    QByteArray normalized = bytes;
+    std::reverse(normalized.begin(), normalized.end());
+
+    bool negative = false;
+    quint8 signByte = static_cast<quint8>(normalized[0]);
+    if (signByte >= 0x80)
+    {
+        negative = true;
+        signByte = static_cast<quint8>(signByte - 0x80);
+        normalized[0] = static_cast<char>(signByte);
+    }
+
+    if (!BCDHelper::isValidBCD(normalized))
+    {
+        return QString();
+    }
+
+    QString digits = displayBcdDigits(normalized, false);
+    int decimalDigits = decimalDigitsForFormat(format);
+    if (decimalDigits <= 0 && format.contains(QStringLiteral("xx")))
+    {
+        decimalDigits = decimalDigitsForXxFormat(format);
+    }
+    if (decimalDigits > 0)
+    {
+        if (digits.length() <= decimalDigits)
+        {
+            digits = digits.rightJustified(decimalDigits + 1, QChar('0'));
+        }
+        digits.insert(digits.length() - decimalDigits, QChar('.'));
+    }
+
+    if (format.contains(QStringLiteral("xx")))
+    {
+        bool ok = false;
+        const double value = digits.toDouble(&ok);
+        if (ok)
+        {
+            const double signedValue = negative ? -value : value;
+            return QString::number(signedValue, 'f', qMax(0, decimalDigits));
+        }
+    }
+
+    return negative ? QStringLiteral("-%1").arg(digits) : digits;
+}
+
 QString displayValueForFormatPart(const QByteArray &bytes, const QString &formatPart)
 {
     const QString trimmedFormat = formatPart.trimmed();
+    if (trimmedFormat.startsWith(QStringLiteral("F9")))
+    {
+        return displaySignedF9DecimalFromLittleEndianBcd(bytes, trimmedFormat);
+    }
     if (trimmedFormat == QStringLiteral("AA,AA,AA,AA,AA,AA"))
     {
         const QString dateTime = displayDateTimeSeconds(bytes);
@@ -295,19 +408,14 @@ QString displayValueForFormatPart(const QByteArray &bytes, const QString &format
             return dateTime;
         }
     }
-    if (trimmedFormat == QStringLiteral("AA,AA,AA,.,AA"))
+    if (trimmedFormat.contains(QStringLiteral("xx")))
     {
-        return displayDecimalFromBcd(bytes, 2);
+        const int decimalDigits = decimalDigitsForXxFormat(trimmedFormat);
+        return decimalDigits >= 0 ? displayDecimalFromBcd(bytes, decimalDigits) : QString();
     }
-    if (trimmedFormat == QStringLiteral("AA,.,AAAA") ||
-        trimmedFormat == QStringLiteral("AA,.,AAA") ||
-        trimmedFormat == QStringLiteral("AA,.,AA") ||
-        trimmedFormat == QStringLiteral("AA,.,A"))
+    if (trimmedFormat.contains(QChar('.')))
     {
-        QString decimalPart = trimmedFormat.mid(trimmedFormat.indexOf(QChar('.')) + 1);
-        decimalPart.remove(QChar(','));
-        const int decimalDigits = decimalPart.length();
-        return displayDecimalFromBcd(bytes, qMax(0, decimalDigits));
+        return displayDecimalFromBcd(bytes, qMax(0, decimalDigitsForFormat(trimmedFormat)));
     }
     if (trimmedFormat == QStringLiteral("AA,AA,AA,AA"))
     {
@@ -1240,11 +1348,11 @@ QStringList dynamicEnergyPayloadOrderCodes(const MeterModel *meterModel, const Q
 
     QStringList codes;
     codes.reserve(rateCount + 1);
-    for (int rateIndex = rateCount; rateIndex >= 1; --rateIndex)
+    codes.append(prefix + QStringLiteral("0000"));
+    for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
     {
         codes.append(prefix + upperHexByte(rateIndex) + QStringLiteral("00"));
     }
-    codes.append(prefix + QStringLiteral("0000"));
     return codes;
 }
 
@@ -1270,14 +1378,14 @@ QStringList dynamicDemandPayloadOrderCodes(const MeterModel *meterModel, const Q
 
     QStringList codes;
     codes.reserve((rateCount + 1) * 2);
-    for (int rateIndex = rateCount; rateIndex >= 1; --rateIndex)
+    codes.append(prefix + QStringLiteral("0000"));
+    codes.append(prefix + QStringLiteral("0001"));
+    for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
     {
         const QString rateHex = upperHexByte(rateIndex);
-        codes.append(prefix + rateHex + QStringLiteral("01"));
         codes.append(prefix + rateHex + QStringLiteral("00"));
+        codes.append(prefix + rateHex + QStringLiteral("01"));
     }
-    codes.append(prefix + QStringLiteral("0001"));
-    codes.append(prefix + QStringLiteral("0000"));
     return codes;
 }
 
@@ -1306,11 +1414,11 @@ QStringList dynamicFreezeEnergyPayloadOrderCodes(const MeterModel *meterModel, c
 
     QStringList codes;
     codes.reserve(rateCount + 1);
-    for (int rateIndex = rateCount; rateIndex >= 1; --rateIndex)
+    codes.append(prefix + QStringLiteral("00"));
+    for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
     {
         codes.append(prefix + upperHexByte(rateIndex + 1));
     }
-    codes.append(prefix + QStringLiteral("00"));
     return codes;
 }
 
@@ -1362,60 +1470,60 @@ QStringList payloadOrderCodesForBlock(const MeterModel *meterModel, const QStrin
 
     if (diCode == QStringLiteral("0x0201FF00"))
     {
-        return {QStringLiteral("0x02010300"), QStringLiteral("0x02010200"), QStringLiteral("0x02010100")};
+        return {QStringLiteral("0x02010100"), QStringLiteral("0x02010200"), QStringLiteral("0x02010300")};
     }
 
     if (diCode == QStringLiteral("0x0202FF00"))
     {
-        return {QStringLiteral("0x02020300"), QStringLiteral("0x02020200"), QStringLiteral("0x02020100")};
+        return {QStringLiteral("0x02020100"), QStringLiteral("0x02020200"), QStringLiteral("0x02020300")};
     }
 
     if (diCode == QStringLiteral("0x0203FF00"))
     {
-        return {QStringLiteral("0x02030300"), QStringLiteral("0x02030200"), QStringLiteral("0x02030100"), QStringLiteral("0x02030000")};
+        return {QStringLiteral("0x02030000"), QStringLiteral("0x02030100"), QStringLiteral("0x02030200"), QStringLiteral("0x02030300")};
     }
 
     if (diCode == QStringLiteral("0x0204FF00"))
     {
-        return {QStringLiteral("0x02040300"), QStringLiteral("0x02040200"), QStringLiteral("0x02040100"), QStringLiteral("0x02040000")};
+        return {QStringLiteral("0x02040000"), QStringLiteral("0x02040100"), QStringLiteral("0x02040200"), QStringLiteral("0x02040300")};
     }
 
     if (diCode == QStringLiteral("0x0205FF00"))
     {
-        return {QStringLiteral("0x02050300"), QStringLiteral("0x02050200"), QStringLiteral("0x02050100"), QStringLiteral("0x02050000")};
+        return {QStringLiteral("0x02050000"), QStringLiteral("0x02050100"), QStringLiteral("0x02050200"), QStringLiteral("0x02050300")};
     }
 
     if (diCode == QStringLiteral("0x0206FF00"))
     {
-        return {QStringLiteral("0x02060300"), QStringLiteral("0x02060200"), QStringLiteral("0x02060100"), QStringLiteral("0x02060000")};
+        return {QStringLiteral("0x02060000"), QStringLiteral("0x02060100"), QStringLiteral("0x02060200"), QStringLiteral("0x02060300")};
     }
 
     if (diCode == QStringLiteral("0x0207FF00"))
     {
-        return {QStringLiteral("0x02070300"), QStringLiteral("0x02070200"), QStringLiteral("0x02070100")};
+        return {QStringLiteral("0x02070100"), QStringLiteral("0x02070200"), QStringLiteral("0x02070300")};
     }
 
     if (diCode == QStringLiteral("0x0208FF00"))
     {
-        return {QStringLiteral("0x02080300"), QStringLiteral("0x02080200"), QStringLiteral("0x02080100")};
+        return {QStringLiteral("0x02080100"), QStringLiteral("0x02080200"), QStringLiteral("0x02080300")};
     }
 
     if (diCode == QStringLiteral("0x0209FF00"))
     {
-        return {QStringLiteral("0x02090300"), QStringLiteral("0x02090200"), QStringLiteral("0x02090100")};
+        return {QStringLiteral("0x02090100"), QStringLiteral("0x02090200"), QStringLiteral("0x02090300")};
     }
 
     if (diCode == QStringLiteral("0x230100FF"))
     {
         return {
-            QStringLiteral("0x23010008"),
-            QStringLiteral("0x23010007"),
-            QStringLiteral("0x23010006"),
-            QStringLiteral("0x23010005"),
-            QStringLiteral("0x23010004"),
-            QStringLiteral("0x23010003"),
+            QStringLiteral("0x23010001"),
             QStringLiteral("0x23010002"),
-            QStringLiteral("0x23010001")};
+            QStringLiteral("0x23010003"),
+            QStringLiteral("0x23010004"),
+            QStringLiteral("0x23010005"),
+            QStringLiteral("0x23010006"),
+            QStringLiteral("0x23010007"),
+            QStringLiteral("0x23010008")};
     }
 
     if (isLatestHourlyFreezeCompositeBlock(diCode))
@@ -1554,6 +1662,12 @@ QString blockDisplayValueForItem(const MeterModel *meterModel,
         if (unitOut)
         {
             *unitOut = item.unit;
+        }
+
+        const QString formattedValue = displayValueForFormatPart(payload, item.format);
+        if (!formattedValue.isEmpty())
+        {
+            return formattedValue;
         }
     }
 
@@ -2157,7 +2271,7 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
     {
         if (isResponse)
         {
-            decodedPayload = DLT645DataHelper::decodeReversedPayload(dataField.mid(4));
+            decodedPayload = DLT645DataHelper::subtract33(dataField.mid(4));
             payloadLabel = QString::fromUtf8("应答数据");
         }
         else
@@ -2179,7 +2293,7 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
         if (hasLegacyPayloadLength)
         {
             const int payloadLength = static_cast<quint8>(dataField[4]);
-            decodedPayload = DLT645DataHelper::decodeReversedPayload(dataField.mid(5, payloadLength > 0 ? payloadLength : -1));
+            decodedPayload = DLT645DataHelper::subtract33(dataField.mid(5, payloadLength > 0 ? payloadLength : -1));
             payloadLabel = QString::fromUtf8("写入数据");
         }
         else if (dataField.size() >= 12)
@@ -2189,7 +2303,7 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
             dataText += lineWithValue(QString::fromUtf8("密码："), DLT645FrameFormatter::formatHex(authorityBytes.mid(1, 3), false));
             dataText += lineWithValue(QString::fromUtf8("操作代码："), DLT645FrameFormatter::formatHex(authorityBytes.mid(4, 4), false));
 
-            decodedPayload = DLT645DataHelper::decodeReversedPayload(dataField.mid(12));
+            decodedPayload = DLT645DataHelper::subtract33(dataField.mid(12));
             payloadLabel = QString::fromUtf8("写入数据");
         }
     }
