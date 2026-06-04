@@ -190,6 +190,7 @@ private:
     QString formatMessage(const CommunicationMessage &message, DisplayFormat format) const;
     QString formatHex(const QByteArray &data) const;
     QString formatAscii(const QByteArray &data) const;
+    QString getMessageDiDescription(const QByteArray &fullFrame) const;
     QString getControlCodeName(quint8 code) const;
     QString getMessageTypeIcon(MessageType type) const;
     QString getDirectionIcon(MessageDirection direction) const;

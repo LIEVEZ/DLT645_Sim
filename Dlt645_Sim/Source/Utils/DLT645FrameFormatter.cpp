@@ -257,6 +257,133 @@ QString displayDateTimeMinutes(const QByteArray &bytes)
         .arg(minute, 2, 10, QChar('0'));
 }
 
+QString displayTimeSeconds(const QByteArray &bytes)
+{
+    if (bytes.size() != 3)
+    {
+        return QString();
+    }
+
+    bool ok = true;
+    const int second = bcdByteToInt(static_cast<quint8>(bytes[0]), &ok);
+    const int minute = ok ? bcdByteToInt(static_cast<quint8>(bytes[1]), &ok) : 0;
+    const int hour = ok ? bcdByteToInt(static_cast<quint8>(bytes[2]), &ok) : 0;
+    if (!ok || hour > 23 || minute > 59 || second > 59)
+    {
+        return QString();
+    }
+
+    return QStringLiteral("%1时%2分%3秒")
+        .arg(hour, 2, 10, QChar('0'))
+        .arg(minute, 2, 10, QChar('0'))
+        .arg(second, 2, 10, QChar('0'));
+}
+
+QString displayTimeMinutes(const QByteArray &bytes)
+{
+    if (bytes.size() != 2)
+    {
+        return QString();
+    }
+
+    bool ok = true;
+    const int minute = bcdByteToInt(static_cast<quint8>(bytes[0]), &ok);
+    const int hour = ok ? bcdByteToInt(static_cast<quint8>(bytes[1]), &ok) : 0;
+    if (!ok || hour > 23 || minute > 59)
+    {
+        return QString();
+    }
+
+    return QStringLiteral("%1时%2分")
+        .arg(hour, 2, 10, QChar('0'))
+        .arg(minute, 2, 10, QChar('0'));
+}
+
+QString displayDateWithWeek(const QByteArray &bytes)
+{
+    if (bytes.size() != 4)
+    {
+        return QString();
+    }
+
+    bool ok = true;
+    const int week = bcdByteToInt(static_cast<quint8>(bytes[0]), &ok);
+    const int day = ok ? bcdByteToInt(static_cast<quint8>(bytes[1]), &ok) : 0;
+    const int month = ok ? bcdByteToInt(static_cast<quint8>(bytes[2]), &ok) : 0;
+    const int year = ok ? bcdByteToInt(static_cast<quint8>(bytes[3]), &ok) : 0;
+    if (!ok || month < 1 || month > 12 || day < 1 || day > 31 || week > 6)
+    {
+        return QString();
+    }
+
+    const QStringList weekNames = {
+        QStringLiteral("日"),
+        QStringLiteral("一"),
+        QStringLiteral("二"),
+        QStringLiteral("三"),
+        QStringLiteral("四"),
+        QStringLiteral("五"),
+        QStringLiteral("六")};
+
+    return QStringLiteral("%1年%2月%3日 星期%4")
+        .arg(year, 2, 10, QChar('0'))
+        .arg(month, 2, 10, QChar('0'))
+        .arg(day, 2, 10, QChar('0'))
+        .arg(weekNames.at(week));
+}
+
+QString displayMonthDayTime(const QByteArray &bytes)
+{
+    if (bytes.size() != 4)
+    {
+        return QString();
+    }
+
+    bool ok = true;
+    const int minute = bcdByteToInt(static_cast<quint8>(bytes[0]), &ok);
+    const int hour = ok ? bcdByteToInt(static_cast<quint8>(bytes[1]), &ok) : 0;
+    const int day = ok ? bcdByteToInt(static_cast<quint8>(bytes[2]), &ok) : 0;
+    const int month = ok ? bcdByteToInt(static_cast<quint8>(bytes[3]), &ok) : 0;
+    if (!ok || month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59)
+    {
+        return QString();
+    }
+
+    return QStringLiteral("%1月%2日 %3时%4分")
+        .arg(month, 2, 10, QChar('0'))
+        .arg(day, 2, 10, QChar('0'))
+        .arg(hour, 2, 10, QChar('0'))
+        .arg(minute, 2, 10, QChar('0'));
+}
+
+QString displaySettlementDay(const QByteArray &bytes)
+{
+    if (bytes.size() != 2)
+    {
+        return QString();
+    }
+
+    bool ok = true;
+    const int hour = bcdByteToInt(static_cast<quint8>(bytes[0]), &ok);
+    const int day = ok ? bcdByteToInt(static_cast<quint8>(bytes[1]), &ok) : 0;
+    if (!ok)
+    {
+        return QString();
+    }
+    if (day == 99 && hour == 99)
+    {
+        return QStringLiteral("不启用");
+    }
+    if (day < 1 || day > 31 || hour > 23)
+    {
+        return QString();
+    }
+
+    return QStringLiteral("%1日%2时")
+        .arg(day, 2, 10, QChar('0'))
+        .arg(hour, 2, 10, QChar('0'));
+}
+
 QString displayDecimalFromBcd(const QByteArray &bytes, int decimalDigits)
 {
     if (bytes.isEmpty() || !BCDHelper::isValidBCD(bytes))
@@ -423,6 +550,42 @@ QString displayValueForFormatPart(const QByteArray &bytes, const QString &format
     }
 
     return displayDecimalFromBcd(bytes, 0);
+}
+
+QString displayParameterValueForItem(const QString &diCode, const QByteArray &bytes)
+{
+    if (diCode == QStringLiteral("0x04000101"))
+    {
+        return displayDateWithWeek(bytes);
+    }
+    if (diCode == QStringLiteral("0x04000102"))
+    {
+        return displayTimeSeconds(bytes);
+    }
+    if (diCode == QStringLiteral("0x04000106") ||
+        diCode == QStringLiteral("0x04000107") ||
+        diCode == QStringLiteral("0x04000108") ||
+        diCode == QStringLiteral("0x04000109") ||
+        diCode == QStringLiteral("0x04001201"))
+    {
+        return displayDateTimeMinutes(bytes);
+    }
+    if (diCode == QStringLiteral("0x04000A01"))
+    {
+        return displayMonthDayTime(bytes);
+    }
+    if (diCode == QStringLiteral("0x04001203"))
+    {
+        return displayTimeMinutes(bytes);
+    }
+    if (diCode == QStringLiteral("0x04000B01") ||
+        diCode == QStringLiteral("0x04000B02") ||
+        diCode == QStringLiteral("0x04000B03"))
+    {
+        return displaySettlementDay(bytes);
+    }
+
+    return QString();
 }
 
 QString recordIndexText(const QString &diCode)
@@ -618,7 +781,11 @@ QString byteBreakdownLines(const QString &diCode,
                                       : (formatParts.size() == 1
                                              ? (fallbackFieldName.isEmpty() ? QStringLiteral("数据值") : fallbackFieldName)
                                              : QStringLiteral("字段%1").arg(i + 1));
-        QString fieldValue = displayValueForFormatPart(fieldBytes, formatParts.at(i));
+        QString fieldValue = displayParameterValueForItem(diCode, fieldBytes);
+        if (fieldValue.isEmpty())
+        {
+            fieldValue = displayValueForFormatPart(fieldBytes, formatParts.at(i));
+        }
         if (fieldValue.isEmpty())
         {
             fieldValue = DLT645FrameFormatter::formatHex(fieldBytes);

@@ -1,5 +1,6 @@
 #include "CommunicationDialog.h"
 #include "Models/DataItem.h"
+#include "Models/MeterModel.h"
 #include "Services/ProtocolParser.h"
 #include "Utils/DLT645FrameFormatter.h"
 #include "Utils/DLT645DataHelper.h"
@@ -7,16 +8,66 @@
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QMessageBox>
-#include <QTextStream>
 #include <QSplitter>
 #include <QDateTime>
 #include <QCloseEvent>
+
+namespace
+{
+QString displayMessageDiCode(const QByteArray &fullFrame)
+{
+    const QByteArray protocolFrame = DLT645DataHelper::stripLeadingFE(fullFrame);
+    if (protocolFrame.size() < 12)
+    {
+        return QStringLiteral("-");
+    }
+
+    const quint8 controlCode = static_cast<quint8>(protocolFrame[8]);
+    const quint8 baseControlCode = controlCode & 0x7F;
+    const bool hasDataIdentifier = baseControlCode == 0x11 ||
+                                   baseControlCode == 0x12 ||
+                                   baseControlCode == 0x14 ||
+                                   baseControlCode == 0x18 ||
+                                   baseControlCode == 0x19;
+    if (!hasDataIdentifier)
+    {
+        return QStringLiteral("-");
+    }
+
+    const int declaredDataLength = static_cast<quint8>(protocolFrame[9]);
+    const int availableDataLength = protocolFrame.size() - 12;
+    const int actualDataLength = qMin(declaredDataLength, qMax(0, availableDataLength));
+    if (actualDataLength < 4)
+    {
+        return QStringLiteral("-");
+    }
+
+    const QString diCode = ProtocolParser::extractDIFromDataField(protocolFrame.mid(10, actualDataLength));
+    if (diCode.isEmpty())
+    {
+        return QStringLiteral("-");
+    }
+
+    QString display = diCode;
+    display.remove(QStringLiteral("0x"), Qt::CaseInsensitive);
+    return display.toUpper();
+}
+}
+
 CommunicationDialog::CommunicationDialog(const QString &connectionName, QWidget *parent)
     : QDialog(parent), m_connectionName(connectionName), m_portName(""), m_baudRate(2400), m_isConnected(false), m_meterModel(nullptr), m_connectionInfoBar(nullptr), m_filterBar(nullptr), m_isPaused(false), m_autoScroll(true), m_displayFormat(DisplayFormat::Hex), m_filterRequest(true), m_filterResponse(true), m_filterError(true), m_filterText("")
 {
     setupUI();
     setWindowTitle(QString("通信交互 - %1").arg(connectionName));
-    resize(800, 600);
+    setMinimumSize(1100, 720);
+    if (parentWidget())
+    {
+        resize(parentWidget()->width() * 9 / 10, parentWidget()->height() * 9 / 10);
+    }
+    else
+    {
+        resize(1280, 820);
+    }
     setWindowTitle(QStringLiteral("通信交互 - %1").arg(connectionName));
     // 不设置WA_DeleteOnClose，由主窗口管理窗口生命周期
 }
@@ -28,6 +79,7 @@ CommunicationDialog::~CommunicationDialog()
 void CommunicationDialog::setMeterModel(MeterModel *meterModel)
 {
     m_meterModel = meterModel;
+    refreshMessageList();
 }
 
 void CommunicationDialog::setupUI()
@@ -185,9 +237,11 @@ void CommunicationDialog::setupFilterBar()
 void CommunicationDialog::setupMessageTable()
 {
     m_tableMessages = new QTableWidget(this);
-    m_tableMessages->setColumnCount(3);
+    m_tableMessages->setColumnCount(5);
     m_tableMessages->setHorizontalHeaderLabels({QString::fromUtf8("时间"),
                                                 QString::fromUtf8("方向"),
+                                                QString::fromUtf8("数据标识"),
+                                                QString::fromUtf8("标识说明"),
                                                 QString::fromUtf8("完整报文")});
     m_tableMessages->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_tableMessages->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -198,13 +252,12 @@ void CommunicationDialog::setupMessageTable()
     // 设置列宽
     m_tableMessages->setColumnWidth(0, 120); // 时间
     m_tableMessages->setColumnWidth(1, 80);  // 方向
-    m_tableMessages->setColumnWidth(2, 400); // 完整报文
+    m_tableMessages->setColumnWidth(2, 120); // 数据标识
+    m_tableMessages->setColumnWidth(3, 220); // 标识说明
+    m_tableMessages->setColumnWidth(4, 850); // 完整报文
 
     // 表头样式
     m_tableMessages->horizontalHeader()->setStretchLastSection(true);
-    m_tableMessages->setHorizontalHeaderLabels({QStringLiteral("时间"),
-                                                QStringLiteral("方向"),
-                                                QStringLiteral("完整报文")});
 
     connect(m_tableMessages, &QTableWidget::itemSelectionChanged,
             this, &CommunicationDialog::onMessageSelectionChanged);
@@ -315,11 +368,20 @@ void CommunicationDialog::addMessage(const CommunicationMessage &message)
         dirItem->setTextAlignment(Qt::AlignCenter);
         m_tableMessages->setItem(row, 1, dirItem);
 
+        QTableWidgetItem *diItem = new QTableWidgetItem(displayMessageDiCode(message.fullFrame));
+        diItem->setTextAlignment(Qt::AlignCenter);
+        diItem->setFont(QFont("Consolas", 9));
+        m_tableMessages->setItem(row, 2, diItem);
+
+        QTableWidgetItem *descriptionItem = new QTableWidgetItem(getMessageDiDescription(message.fullFrame));
+        descriptionItem->setTextAlignment(Qt::AlignCenter);
+        m_tableMessages->setItem(row, 3, descriptionItem);
+
         // 完整报文
         QTableWidgetItem *frameItem = new QTableWidgetItem(
             formatMessage(message, m_displayFormat));
         frameItem->setFont(QFont("Consolas", 9));
-        m_tableMessages->setItem(row, 2, frameItem);
+        m_tableMessages->setItem(row, 4, frameItem);
 
         // 设置行颜色
         if (message.type == MessageType::Error)
@@ -360,31 +422,50 @@ CommunicationStatistics CommunicationDialog::getStatistics() const
 bool CommunicationDialog::exportMessages(const QString &filePath)
 {
     QFile file(filePath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
     {
         QMessageBox::warning(this, "导出失败", "无法打开文件进行写入");
         return false;
     }
 
-    QTextStream out(&file);
-    out.setCodec("UTF-8");
+    auto exportField = [](QString value) {
+        value.replace(QChar('\t'), QChar(' '));
+        value.replace(QChar('\r'), QChar(' '));
+        value.replace(QChar('\n'), QChar(' '));
+        return value;
+    };
+    auto excelTextField = [&exportField](QString value) {
+        value = exportField(value);
+        value.replace(QStringLiteral("\""), QStringLiteral("\"\""));
+        return QStringLiteral("=\"%1\"").arg(value);
+    };
 
-    // 写入表头
-    out << "时间,方向,控制码,数据长度,完整报文,类型\n";
-
-    // 写入数据
+    const QString separator = QStringLiteral("\t");
+    QString exportText;
+    exportText += QStringLiteral("时间\t方向\t数据标识\t标识说明\t控制码\t数据长度\t完整报文\t类型\r\n");
     for (const auto &message : m_messages)
     {
-        out << message.timestamp.toString("HH:mm:ss.zzz") << ","
-            << (message.direction == MessageDirection::Transmit ? "发送" : "接收") << ","
-            << QString("0x%1").arg(message.controlCode, 2, 16, QChar('0')) << ","
-            << message.dataLength << ","
-            << formatHex(message.fullFrame) << ","
-            << (message.type == MessageType::Request ? "请求" : message.type == MessageType::Response ? "应答"
-                                                                                                      : "错误")
-            << "\n";
+        const QString directionText = message.direction == MessageDirection::Transmit
+                                          ? QStringLiteral("发送")
+                                          : QStringLiteral("接收");
+        const QString typeText = message.type == MessageType::Request
+                                     ? QStringLiteral("请求")
+                                     : (message.type == MessageType::Response
+                                            ? QStringLiteral("应答")
+                                            : QStringLiteral("错误"));
+
+        exportText += excelTextField(message.timestamp.toString(QStringLiteral("HH:mm:ss.zzz"))) + separator +
+                      exportField(directionText) + separator +
+                      exportField(displayMessageDiCode(message.fullFrame)) + separator +
+                      exportField(getMessageDiDescription(message.fullFrame)) + separator +
+                      exportField(QStringLiteral("0x%1").arg(message.controlCode, 2, 16, QChar('0'))) + separator +
+                      exportField(QString::number(message.dataLength)) + separator +
+                      exportField(formatHex(message.fullFrame)) + separator +
+                      exportField(typeText) + QStringLiteral("\r\n");
     }
 
+    file.write("\xFF\xFE", 2);
+    file.write(reinterpret_cast<const char *>(exportText.utf16()), exportText.size() * static_cast<int>(sizeof(ushort)));
     file.close();
     return true;
 }
@@ -417,10 +498,19 @@ void CommunicationDialog::refreshMessageList()
             dirItem->setTextAlignment(Qt::AlignCenter);
             m_tableMessages->setItem(row, 1, dirItem);
 
+            QTableWidgetItem *diItem = new QTableWidgetItem(displayMessageDiCode(message.fullFrame));
+            diItem->setTextAlignment(Qt::AlignCenter);
+            diItem->setFont(QFont("Consolas", 9));
+            m_tableMessages->setItem(row, 2, diItem);
+
+            QTableWidgetItem *descriptionItem = new QTableWidgetItem(getMessageDiDescription(message.fullFrame));
+            descriptionItem->setTextAlignment(Qt::AlignCenter);
+            m_tableMessages->setItem(row, 3, descriptionItem);
+
             QTableWidgetItem *frameItem = new QTableWidgetItem(
                 formatMessage(message, m_displayFormat));
             frameItem->setFont(QFont("Consolas", 9));
-            m_tableMessages->setItem(row, 2, frameItem);
+            m_tableMessages->setItem(row, 4, frameItem);
 
             if (message.type == MessageType::Error)
             {
@@ -681,6 +771,32 @@ QString CommunicationDialog::formatAscii(const QByteArray &data) const
         }
     }
     return result;
+}
+
+QString CommunicationDialog::getMessageDiDescription(const QByteArray &fullFrame) const
+{
+    QString diCode = displayMessageDiCode(fullFrame);
+    if (diCode == QStringLiteral("-") || diCode.isEmpty())
+    {
+        return QStringLiteral("-");
+    }
+
+    diCode.remove(QStringLiteral("0x"), Qt::CaseInsensitive);
+    diCode = QStringLiteral("0x") + diCode.toUpper().rightJustified(8, QChar('0'));
+
+    QString description;
+    if (m_meterModel)
+    {
+        description = m_meterModel->getDataName(diCode);
+    }
+
+    if (description.isEmpty())
+    {
+        static MeterModel defaultMeterModel;
+        description = defaultMeterModel.getDataName(diCode);
+    }
+
+    return description.isEmpty() ? QStringLiteral("-") : description;
 }
 
 QString CommunicationDialog::getControlCodeName(quint8 code) const
