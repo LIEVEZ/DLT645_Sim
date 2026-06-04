@@ -2052,6 +2052,20 @@ namespace
         return date.toString(QStringLiteral("yyMMdd")) + QStringLiteral("%1").arg(weekCode, 2, 10, QChar('0'));
     }
 
+    QVariant currentDateTimeParameterValue(const QString &diCode)
+    {
+        const QDateTime now = QDateTime::currentDateTime();
+        if (diCode == QStringLiteral("0x04000101"))
+        {
+            return compactDateWithWeek(now.date());
+        }
+        if (diCode == QStringLiteral("0x04000102"))
+        {
+            return now.time().toString(QStringLiteral("HHmmss"));
+        }
+        return QVariant();
+    }
+
     [[maybe_unused]] QString eventHistoryCode(const QString &baseCode, int historyIndex)
     {
         return baseCode + upperHexByte(historyIndex);
@@ -2740,7 +2754,18 @@ bool MeterModel::isDataItemSupportedUnlocked(const QString &diCode) const
 DataItem MeterModel::getDataItem(const QString &diCode) const
 {
     QMutexLocker locker(&m_mutex);
-    return isDataItemSupportedUnlocked(diCode) ? m_dataItems.value(diCode, DataItem()) : DataItem();
+    if (!isDataItemSupportedUnlocked(diCode))
+    {
+        return DataItem();
+    }
+
+    DataItem item = m_dataItems.value(diCode, DataItem());
+    const QVariant currentValue = currentDateTimeParameterValue(diCode);
+    if (currentValue.isValid())
+    {
+        item.value = currentValue;
+    }
+    return item;
 }
 
 QVariant MeterModel::getDataValue(const QString &diCode) const
@@ -2748,6 +2773,12 @@ QVariant MeterModel::getDataValue(const QString &diCode) const
     QMutexLocker locker(&m_mutex);
     if (isDataItemSupportedUnlocked(diCode))
     {
+        const QVariant currentValue = currentDateTimeParameterValue(diCode);
+        if (currentValue.isValid())
+        {
+            return currentValue;
+        }
+
         // 检查是否为数据块
         if (m_dataItems[diCode].unit == "-")
         {
