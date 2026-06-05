@@ -134,24 +134,27 @@ QString controlCodeDetail(quint8 code)
         functionText = QStringLiteral("写数据");
         break;
     case 0x15:
-        functionText = QStringLiteral("广播校时");
+        functionText = QStringLiteral("写通信地址");
         break;
     case 0x16:
-        functionText = QStringLiteral("写设备地址");
+        functionText = QStringLiteral("广播校时");
         break;
     case 0x17:
-        functionText = QStringLiteral("更改通信速率");
+        functionText = QStringLiteral("冻结");
         break;
     case 0x18:
-        functionText = QStringLiteral("修改密码");
+        functionText = QStringLiteral("更改通信速率");
         break;
     case 0x19:
-        functionText = QStringLiteral("最大需量清零");
+        functionText = QStringLiteral("修改密码");
         break;
     case 0x1A:
-        functionText = QStringLiteral("电表清零");
+        functionText = QStringLiteral("最大需量清零");
         break;
     case 0x1B:
+        functionText = QStringLiteral("电表清零");
+        break;
+    case 0x1C:
         functionText = QStringLiteral("事件清零");
         break;
     default:
@@ -2621,18 +2624,20 @@ QString DLT645FrameFormatter::controlCodeName(quint8 code)
     case 0x14:
         return QString::fromUtf8("写数据");
     case 0x15:
-        return QString::fromUtf8("广播校时");
+        return QString::fromUtf8("写通信地址");
     case 0x16:
-        return QString::fromUtf8("写设备地址");
+        return QString::fromUtf8("广播校时");
     case 0x17:
-        return QString::fromUtf8("更改通信速率");
+        return QString::fromUtf8("冻结");
     case 0x18:
-        return QString::fromUtf8("修改密码");
+        return QString::fromUtf8("更改通信速率");
     case 0x19:
-        return QString::fromUtf8("最大需量清零");
+        return QString::fromUtf8("修改密码");
     case 0x1A:
-        return QString::fromUtf8("电表清零");
+        return QString::fromUtf8("最大需量清零");
     case 0x1B:
+        return QString::fromUtf8("电表清零");
+    case 0x1C:
         return QString::fromUtf8("事件清零");
     case 0x91:
         return QString::fromUtf8("正常应答");

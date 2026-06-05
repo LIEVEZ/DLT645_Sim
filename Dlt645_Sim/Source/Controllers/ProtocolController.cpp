@@ -11,8 +11,7 @@ ProtocolController::ProtocolController(QObject *parent)
       m_autoResponseEnabled(true),
       m_responseDelay(100),
       m_hasMeter(false),
-      m_responseTimer(new QTimer(this)),
-      m_lastRequestMeterModel(nullptr)
+      m_responseTimer(new QTimer(this))
 {
     connect(m_protocolParser, &ProtocolParser::frameParsed, this, &ProtocolController::onProtocolFrameParsed);
     connect(m_protocolParser, &ProtocolParser::parseError, this, &ProtocolController::onProtocolParseError);
@@ -58,10 +57,19 @@ void ProtocolController::unregisterMeterModel(const QString &address)
     }
 
     MeterModel *removedModel = m_meterModelsByAddress.take(address);
-    if (m_lastRequestMeterModel == removedModel)
+
+    // 移除队列中属于该电表的待响应请求
+    QQueue<PendingResponse> remaining;
+    for (const PendingResponse &pending : m_pendingResponses)
     {
-        m_lastRequestMeterModel = nullptr;
-        m_lastRequestFrame = ProtocolFrame();
+        if (pending.meterModel != removedModel)
+        {
+            remaining.enqueue(pending);
+        }
+    }
+    m_pendingResponses = remaining;
+    if (m_pendingResponses.isEmpty())
+    {
         m_responseTimer->stop();
     }
 }
@@ -267,9 +275,9 @@ bool ProtocolController::tryTakeNextReceivedFrame(ProtocolFrame &frame, QByteArr
 
         rawFrame = m_receiveBuffer.left(expectedFrameSize);
         frame = m_protocolParser->parseFrame(rawFrame);
-        if (!frame.isValid())
+        if (!frame.isValid() || !frame.checksumValid)
         {
-            LOG_WARNING(QString("Failed to parse complete DLT645 frame, resynchronizing buffer"));
+            LOG_WARNING(QString("Failed to parse complete DLT645 frame (invalid structure or checksum), resynchronizing buffer"));
             m_receiveBuffer.remove(0, startIndex + 1);
             continue;
         }
@@ -406,46 +414,57 @@ void ProtocolController::onProtocolParseError(const QString &errorMessage)
 
 void ProtocolController::onResponseTimerTimeout()
 {
-    if (!m_lastRequestFrame.isValid() || !m_lastRequestMeterModel)
+    if (m_pendingResponses.isEmpty())
     {
         return;
     }
 
-    const QString diCode = ProtocolParser::extractDIFromDataField(m_lastRequestFrame.dataField);
-    m_protocolParser->setMeterModel(m_lastRequestMeterModel);
+    const PendingResponse pending = m_pendingResponses.dequeue();
+    const ProtocolFrame &requestFrame = pending.frame;
+    MeterModel *meterModel = pending.meterModel;
 
-    if ((m_lastRequestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::ReadData))
+    if (meterModel)
     {
-        if (!m_lastRequestMeterModel->isDataItemSupported(diCode))
+        const QString diCode = ProtocolParser::extractDIFromDataField(requestFrame.dataField);
+        m_protocolParser->setMeterModel(meterModel);
+
+        if ((requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::ReadData))
         {
-            ProtocolFrame response = m_protocolParser->buildErrorResponse(m_lastRequestFrame, 0x01);
-            sendResponse(response, m_lastRequestMeterModel);
-            emit protocolError(0x01, QStringLiteral("当前电表不支持数据项: %1").arg(diCode));
-            return;
+            if (meterModel->isDataItemSupported(diCode))
+            {
+                QVariant value = meterModel->getDataValue(diCode);
+                ProtocolFrame response = m_protocolParser->buildReadResponse(requestFrame, value, diCode);
+                sendResponse(response, meterModel);
+                emit dataRead(diCode, value);
+            }
+            else
+            {
+                ProtocolFrame response = m_protocolParser->buildErrorResponse(requestFrame, 0x01);
+                sendResponse(response, meterModel);
+                emit protocolError(0x01, QStringLiteral("当前电表不支持数据项: %1").arg(diCode));
+            }
         }
+        else if ((requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::WriteData))
+        {
+            ProtocolFrame response = m_protocolParser->buildWriteResponse(requestFrame, true);
+            sendResponse(response, meterModel);
+            emit dataWritten(diCode, QVariant(), true);
+        }
+    }
 
-        QVariant value = m_lastRequestMeterModel->getDataValue(diCode);
-        ProtocolFrame response = m_protocolParser->buildReadResponse(m_lastRequestFrame, value, diCode);
-        sendResponse(response, m_lastRequestMeterModel);
-        emit dataRead(diCode, value);
-    }
-    else if ((m_lastRequestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::WriteData))
-    {
-        ProtocolFrame response = m_protocolParser->buildWriteResponse(m_lastRequestFrame, true);
-        sendResponse(response, m_lastRequestMeterModel);
-        emit dataWritten(diCode, QVariant(), true);
-    }
+    // 队列中仍有待处理请求时，继续调度下一个响应
+    scheduleNextResponse();
 }
 
 void ProtocolController::processReadRequest(const ProtocolFrame &frame, MeterModel *meterModel)
 {
-    m_lastRequestFrame = frame;
-    m_lastRequestMeterModel = meterModel;
-
-    if (m_autoResponseEnabled)
+    if (!m_autoResponseEnabled)
     {
-        m_responseTimer->start(m_responseDelay);
+        return;
     }
+
+    m_pendingResponses.enqueue({frame, meterModel});
+    scheduleNextResponse();
 }
 
 void ProtocolController::processWriteRequest(const ProtocolFrame &frame, MeterModel *meterModel)
@@ -502,11 +521,10 @@ void ProtocolController::processWriteRequest(const ProtocolFrame &frame, MeterMo
 
         LOG_INFO(QString("Data written: %1 = %2").arg(diCode).arg(value.toString()));
 
-        m_lastRequestFrame = frame;
-        m_lastRequestMeterModel = meterModel;
         if (m_autoResponseEnabled)
         {
-            m_responseTimer->start(m_responseDelay);
+            m_pendingResponses.enqueue({frame, meterModel});
+            scheduleNextResponse();
         }
     }
     else
@@ -601,6 +619,18 @@ void ProtocolController::resetTransportState()
 {
     m_receiveBuffer.clear();
     m_responseTimer->stop();
-    m_lastRequestMeterModel = nullptr;
-    m_lastRequestFrame = ProtocolFrame();
+    m_pendingResponses.clear();
+}
+
+void ProtocolController::scheduleNextResponse()
+{
+    if (!m_autoResponseEnabled || m_pendingResponses.isEmpty())
+    {
+        return;
+    }
+
+    if (!m_responseTimer->isActive())
+    {
+        m_responseTimer->start(m_responseDelay);
+    }
 }

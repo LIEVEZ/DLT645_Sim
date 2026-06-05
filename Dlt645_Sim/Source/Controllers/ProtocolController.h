@@ -148,6 +148,13 @@ private:
     bool hasActiveTransport() const;
     bool sendTransportData(const QByteArray &data);
     void resetTransportState();
+    void scheduleNextResponse();
+
+    struct PendingResponse
+    {
+        ProtocolFrame frame;
+        MeterModel *meterModel = nullptr;
+    };
 
     MeterModel *m_meterModel;
     SerialController *m_serialController;
@@ -158,8 +165,7 @@ private:
     bool m_hasMeter;
     QStringList m_knownMeterAddresses;
     QTimer *m_responseTimer;
-    ProtocolFrame m_lastRequestFrame;
-    MeterModel *m_lastRequestMeterModel;
+    QQueue<PendingResponse> m_pendingResponses;
     QMap<QString, MeterModel *> m_meterModelsByAddress;
     QByteArray m_receiveBuffer;
 };

@@ -359,7 +359,7 @@ MasterQueryController::FrameExtractState MasterQueryController::tryTakeNextFrame
         frame = m_protocolParser->parseFrame(rawFrame);
         m_receiveBuffer.remove(0, expectedFrameSize);
 
-        if (!frame.isValid())
+        if (!frame.isValid() || !frame.checksumValid)
         {
             errorText = QString::fromUtf8("收到校验失败或格式异常的完整帧。");
             return FrameExtractState::InvalidFrame;

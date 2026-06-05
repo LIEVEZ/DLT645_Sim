@@ -161,7 +161,8 @@ ProtocolFrame ProtocolParser::parseFrame(const QByteArray &data)
     QByteArray frameWithoutChecksum = data.mid(startIndex, checksumIndex - startIndex);
     quint8 calculatedChecksum = ChecksumHelper::calculateChecksum(frameWithoutChecksum);
 
-    if (calculatedChecksum != frame.checksum)
+    frame.checksumValid = (calculatedChecksum == frame.checksum);
+    if (!frame.checksumValid)
     {
         emit parseError(QString("Checksum mismatch: expected 0x%1, got 0x%2")
                             .arg(calculatedChecksum, 2, 16, QChar('0'))

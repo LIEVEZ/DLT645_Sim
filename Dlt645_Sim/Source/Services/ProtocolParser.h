@@ -21,6 +21,7 @@ struct ProtocolFrame
     quint8 checksum;      // 校验和
     quint8 endFlag;       // 结束符 (0x16)
     int parsedSize;       // 实际解析的字节数（不包括前导码）
+    bool checksumValid = false; // 校验和是否通过（仅 parseFrame 接收解析时设置）
 
     bool isValid() const;
     QByteArray toByteArray() const;
