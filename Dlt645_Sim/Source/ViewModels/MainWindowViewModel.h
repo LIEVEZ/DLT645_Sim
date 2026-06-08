@@ -14,6 +14,7 @@ public:
     explicit MainWindowViewModel(QObject *parent = nullptr);
 
     bool isConnected() const;
+    bool isConnecting() const;
     bool isConnectionSelected() const;
     bool isDarkTheme() const;
     bool hasMeter() const;
@@ -36,6 +37,7 @@ public:
     void removeConnectionConfig(const QString &alias);
 
     void setConnected(bool connected);
+    void setConnecting(bool connecting);
     void setConnectionSelected(bool selected);
     void setDarkTheme(bool darkTheme);
     void setHasMeter(bool hasMeter);
@@ -48,6 +50,7 @@ signals:
 
 private:
     bool m_connected;
+    bool m_connecting;
     bool m_connectionSelected;
     bool m_darkTheme;
     bool m_hasMeter;

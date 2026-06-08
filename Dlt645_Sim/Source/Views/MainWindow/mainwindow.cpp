@@ -12,6 +12,7 @@
 #include "Views/Dialogs/FrameParseDialog.h"
 #include "Views/Dialogs/QueryFrameDialog.h"
 #include "Views/CommunicationBar/CommunicationBarWidget.h"
+#include "Services/ConfigurationSerializer.h"
 #include "Services/MeterDataStore.h"
 #include "Services/ProtocolParser.h"
 #include <QSerialPortInfo>
@@ -31,16 +32,9 @@
 #include <QSize>
 #include <QStackedWidget>
 #include <QStyle>
-#include <QTreeWidget>
-#include <QTreeWidgetItem>
-#include <QFile>
 #include <QFileDialog>
-#include <QJsonArray>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QSet>
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), ui(new Ui::MainWindow), m_serialController(new SerialController(this)), m_tcpController(new TcpController(this)), m_protocolController(new ProtocolController(this)), m_dataGenerator(new DataGenerator(this)), m_viewModel(new MainWindowViewModel(this)), m_operationLogWidget(nullptr), m_dataTableWidget(nullptr), m_mainSplitter(nullptr), m_bottomSplitter(nullptr), m_connectionButtonStack(nullptr), m_connectionStatusLabel(nullptr), m_meterAddressLabel(nullptr), m_realTimeBarWidget(nullptr), m_realTimeDataLabel(nullptr), m_realTimeDataTimer(nullptr), m_realTimePhaseIndex(0), m_newConnectionAction(nullptr), m_newMeterAction(nullptr), m_batchNewMeterAction(nullptr), m_openConnectionAction(nullptr), m_openConnectionSeparatorAction(nullptr), m_closeConnectionAction(nullptr), m_closeConnectionSeparatorAction(nullptr), m_commInteractionAction(nullptr), m_masterQueryAction(nullptr), m_queryFrameAction(nullptr), m_frameParseAction(nullptr), m_darkThemeAction(nullptr), m_lightThemeAction(nullptr), m_communicationDialog(nullptr), m_masterQueryDialog(nullptr), m_queryFrameDialog(nullptr), m_frameParseDialog(nullptr), m_meterDataStore(new MeterDataStore(this)), m_currentMeterModel(nullptr)
+    : QMainWindow(parent), ui(new Ui::MainWindow), m_serialController(new SerialController(this)), m_tcpController(new TcpController(this)), m_connectionManager(new ConnectionManager(m_serialController, m_tcpController, this)), m_protocolController(new ProtocolController(this)), m_dataGenerator(new DataGenerator(this)), m_viewModel(new MainWindowViewModel(this)), m_operationLogWidget(nullptr), m_dataTableWidget(nullptr), m_mainSplitter(nullptr), m_bottomSplitter(nullptr), m_connectionButtonStack(nullptr), m_connectionStatusLabel(nullptr), m_meterAddressLabel(nullptr), m_realTimeBarWidget(nullptr), m_realTimeDataLabel(nullptr), m_realTimeDataTimer(nullptr), m_realTimePhaseIndex(0), m_newConnectionAction(nullptr), m_newMeterAction(nullptr), m_batchNewMeterAction(nullptr), m_openConnectionAction(nullptr), m_openConnectionSeparatorAction(nullptr), m_closeConnectionAction(nullptr), m_closeConnectionSeparatorAction(nullptr), m_commInteractionAction(nullptr), m_masterQueryAction(nullptr), m_queryFrameAction(nullptr), m_frameParseAction(nullptr), m_darkThemeAction(nullptr), m_lightThemeAction(nullptr), m_communicationDialog(nullptr), m_masterQueryDialog(nullptr), m_queryFrameDialog(nullptr), m_frameParseDialog(nullptr), m_meterDataStore(new MeterDataStore(this)), m_currentMeterModel(nullptr)
 {
     ui->setupUi(this);
     setupUI();
@@ -74,14 +68,6 @@ MainWindow::~MainWindow()
         m_operationLogWidget->addInfo(QString("连接已关闭: %1").arg(m_viewModel->currentConnectionAlias()));
     }
     LOG_INFO(QString("Connection closed: %1").arg(m_viewModel->currentConnectionAlias()));
-    if (m_serialController && m_serialController->isOpen())
-    {
-        m_serialController->closePort();
-    }
-    if (m_tcpController && m_tcpController->isOpen())
-    {
-        m_tcpController->closeConnection();
-    }
     delete ui;
 }
 
@@ -209,10 +195,21 @@ void MainWindow::setupConnections()
     m_protocolController->setTcpController(m_tcpController);
 
     // 连接通信状态信号
-    connect(m_serialController, &SerialController::connectionStateChanged,
+    connect(m_connectionManager, &ConnectionManager::connectionStateChanged,
             this, &MainWindow::onConnectionStateChanged);
-    connect(m_tcpController, &TcpController::connectionStateChanged,
-            this, &MainWindow::onConnectionStateChanged);
+    connect(m_connectionManager, &ConnectionManager::errorOccurred,
+            this, [this](const QString &errorString)
+            {
+                if (m_operationLogWidget)
+                {
+                    m_operationLogWidget->addError(errorString);
+                }
+                QMessageBox::warning(this, QStringLiteral("Connection Error"), errorString);
+                m_viewModel->setConnecting(false);
+                m_viewModel->setConnected(false);
+                updateConnectionStatus(false);
+                updateCommunicationDialogState();
+            });
 
     // 连接协议控制器信号
     connect(m_protocolController, &ProtocolController::frameReceived,
@@ -1075,22 +1072,7 @@ void MainWindow::onNewConnection()
     DeviceTreeWidget *deviceTree = deviceTreeWidget();
     if (deviceTree)
     {
-        QStringList connectedPorts;
-        // 遍历所有连接节点，收集已经连接的串口
-        for (int i = 0; i < deviceTree->getTreeWidget()->topLevelItemCount(); ++i)
-        {
-            QTreeWidgetItem *item = deviceTree->getTreeWidget()->topLevelItem(i);
-            if (item)
-            {
-                const QString port = item->data(0, Qt::UserRole + 3).toString();
-                const bool isConnected = item->data(0, Qt::UserRole + 2).toBool();
-                if (isConnected)
-                {
-                    connectedPorts.append(port);
-                }
-            }
-        }
-        dialog.setConnectedPorts(connectedPorts);
+        dialog.setConnectedPorts(deviceTree->connectedPortsExcept(QString()));
     }
     if (dialog.exec() == QDialog::Accepted)
     {
@@ -1262,7 +1244,7 @@ void MainWindow::onBatchNewMeterRequested(const QString &connectionAlias)
 
 void MainWindow::onOpenConnection()
 {
-    if (m_viewModel->isConnected())
+    if (m_viewModel->isCloseConnectionVisible())
     {
         QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("已经有连接打开，请先关闭现有连接"));
         return;
@@ -1282,7 +1264,7 @@ void MainWindow::onOpenConnection()
 }
 void MainWindow::onCloseConnection()
 {
-    if (!m_viewModel->isConnected())
+    if (!m_viewModel->isCloseConnectionVisible())
     {
         QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("连接已经关闭"));
         return;
@@ -1313,7 +1295,15 @@ void MainWindow::onRealTimeDataRotationTimeout()
 
 void MainWindow::onConnectionStateChanged(bool connected)
 {
-    m_viewModel->setConnected(connected);
+    if (connected)
+    {
+        m_viewModel->setConnected(true);
+    }
+    else
+    {
+        m_viewModel->setConnecting(false);
+        m_viewModel->setConnected(false);
+    }
     updateConnectionStatus(connected);
 
     // 更新设备树中当前连接节点的状态
@@ -1422,7 +1412,7 @@ void MainWindow::updateConnectionStatus(bool connected)
 void MainWindow::updateToolBarButtons()
 {
     // 更新连接按钮状态（互斥显示）
-    if (m_viewModel->isConnected())
+    if (m_viewModel->isCloseConnectionVisible())
     {
         m_openConnectionAction->setVisible(false);
         if (m_openConnectionSeparatorAction)
@@ -1437,10 +1427,10 @@ void MainWindow::updateToolBarButtons()
     }
     else
     {
-        m_openConnectionAction->setVisible(true);
+        m_openConnectionAction->setVisible(m_viewModel->isOpenConnectionVisible());
         if (m_openConnectionSeparatorAction)
         {
-            m_openConnectionSeparatorAction->setVisible(true);
+            m_openConnectionSeparatorAction->setVisible(m_viewModel->isOpenConnectionVisible());
         }
         m_closeConnectionAction->setVisible(false);
         if (m_closeConnectionSeparatorAction)
@@ -1540,11 +1530,7 @@ DeviceTreeWidget *MainWindow::deviceTreeWidget() const
 
 QString MainWindow::connectionEndpoint(const ConnectionConfig &config) const
 {
-    if (config.type == ConnectionType::Serial)
-    {
-        return config.serialPort;
-    }
-    return QString("%1:%2").arg(config.tcpAddress).arg(config.tcpPort);
+    return ConnectionManager::endpoint(config);
 }
 ConnectionInfo MainWindow::buildConnectionInfo(const ConnectionConfig &config, bool connected) const
 {
@@ -1572,40 +1558,12 @@ bool MainWindow::openConnectionInternal(const QString &connectionAlias, const Co
         QMessageBox::warning(this, "Error", QString("Connection %1 is already in use").arg(endpoint));
         return false;
     }
-    bool opened = false;
-    if (config.type == ConnectionType::Serial)
+    const ConnectionOpenResult openResult = m_connectionManager->openConnection(config);
+    if (!openResult.started)
     {
-        if (!m_serialController)
-        {
-            QMessageBox::warning(this, "Warning", "Serial controller is not initialized");
-            return false;
-        }
-        SerialConfig serialConfig;
-        serialConfig.portName = config.serialPort;
-        serialConfig.baudRate = config.baudRate;
-        serialConfig.dataBits = static_cast<QSerialPort::DataBits>(config.dataBits);
-        serialConfig.stopBits = static_cast<QSerialPort::StopBits>(config.stopBits);
-        serialConfig.parity = static_cast<QSerialPort::Parity>(config.parity);
-        serialConfig.flowControl = static_cast<QSerialPort::FlowControl>(config.flowControl);
-        opened = m_serialController->openPort(serialConfig);
-    }
-    else
-    {
-        if (!m_tcpController)
-        {
-            QMessageBox::warning(this, "Warning", "TCP controller is not initialized");
-            return false;
-        }
-        TcpConfig tcpConfig;
-        tcpConfig.hostAddress = config.tcpAddress;
-        tcpConfig.port = static_cast<quint16>(config.tcpPort);
-        opened = m_tcpController->openConnection(tcpConfig);
-    }
-    if (!opened)
-    {
-        const QString errorText = (config.type == ConnectionType::Serial)
-                                      ? QString("Failed to open serial port: %1").arg(endpoint)
-                                      : QString("Failed to open TCP connection: %1").arg(endpoint);
+        const QString errorText = openResult.errorMessage.isEmpty()
+                                      ? QString("Failed to open connection: %1").arg(endpoint)
+                                      : openResult.errorMessage;
         QMessageBox::critical(this, "Error", errorText);
         if (m_operationLogWidget)
         {
@@ -1613,21 +1571,25 @@ bool MainWindow::openConnectionInternal(const QString &connectionAlias, const Co
         }
         return false;
     }
+
+    const bool connectedNow = openResult.connected;
     if (deviceTree)
     {
         if (addConnectionNode)
         {
-            deviceTree->addConnection(buildConnectionInfo(config, true));
+            deviceTree->addConnection(buildConnectionInfo(config, connectedNow));
         }
         else
         {
-            deviceTree->setConnectionStatus(alias, true);
+            deviceTree->setConnectionStatus(alias, connectedNow);
         }
     }
     m_viewModel->upsertConnectionConfig(config);
     m_viewModel->setCurrentConnectionAlias(alias);
     m_viewModel->setConnectionSelected(true);
-    m_viewModel->setConnected(true);
+    m_viewModel->setConnected(connectedNow);
+    m_viewModel->setConnecting(!connectedNow);
+    updateConnectionStatus(connectedNow);
     updateCommunicationDialogState();
     if (m_communicationDialog)
     {
@@ -1635,11 +1597,20 @@ bool MainWindow::openConnectionInternal(const QString &connectionAlias, const Co
     }
     if (m_operationLogWidget)
     {
-        m_operationLogWidget->addSuccess(QString("Connection opened: %1 (%2)")
-                                             .arg(alias)
-                                             .arg(endpoint));
+        const QString message = connectedNow
+                                    ? QString("Connection opened: %1 (%2)").arg(alias, endpoint)
+                                    : QString("Connecting: %1 (%2)").arg(alias, endpoint);
+        if (connectedNow)
+        {
+            m_operationLogWidget->addSuccess(message);
+        }
+        else
+        {
+            m_operationLogWidget->addInfo(message);
+        }
     }
-    LOG_INFO(QString("Connection opened: %1, Endpoint: %2")
+    LOG_INFO(QString("%1: %2, Endpoint: %3")
+                 .arg(connectedNow ? QStringLiteral("Connection opened") : QStringLiteral("Connection started"))
                  .arg(alias)
                  .arg(endpoint));
     return true;
@@ -1647,16 +1618,13 @@ bool MainWindow::openConnectionInternal(const QString &connectionAlias, const Co
 void MainWindow::closeConnectionInternal(const QString &connectionAlias)
 {
     const QString alias = connectionAlias.isEmpty() ? m_viewModel->currentConnectionAlias() : connectionAlias;
-    if (m_serialController && m_serialController->isOpen())
+    if (m_connectionManager)
     {
-        m_serialController->closePort();
-    }
-    if (m_tcpController && m_tcpController->isOpen())
-    {
-        m_tcpController->closeConnection();
+        m_connectionManager->closeConnection();
     }
     m_viewModel->setCurrentConnectionAlias(alias);
     m_viewModel->setConnectionSelected(!alias.isEmpty());
+    m_viewModel->setConnecting(false);
     m_viewModel->setConnected(false);
     DeviceTreeWidget *deviceTree = deviceTreeWidget();
     if (deviceTree && !alias.isEmpty())
@@ -1675,28 +1643,12 @@ QStringList MainWindow::collectMeterAddresses() const
         return addresses;
     }
 
-    QTreeWidget *tree = deviceTree->getTreeWidget();
-    for (int i = 0; i < tree->topLevelItemCount(); ++i)
+    const QList<MeterInfo> meters = deviceTree->allMeterInfos();
+    for (const MeterInfo &meterInfo : meters)
     {
-        QTreeWidgetItem *connectionItem = tree->topLevelItem(i);
-        if (!connectionItem)
+        if (!meterInfo.address.isEmpty())
         {
-            continue;
-        }
-
-        for (int j = 0; j < connectionItem->childCount(); ++j)
-        {
-            QTreeWidgetItem *meterItem = connectionItem->child(j);
-            if (!meterItem)
-            {
-                continue;
-            }
-
-            const QString address = meterItem->data(0, Qt::UserRole + 2).toString();
-            if (!address.isEmpty())
-            {
-                addresses.append(address);
-            }
+            addresses.append(meterInfo.address);
         }
     }
 
@@ -1713,30 +1665,13 @@ QStringList MainWindow::collectMeterAddressesForConnection(const QString &connec
         return addresses;
     }
 
-    QTreeWidget *tree = deviceTree->getTreeWidget();
-    for (int i = 0; i < tree->topLevelItemCount(); ++i)
+    const QList<MeterInfo> meters = deviceTree->meterInfosForConnection(connectionAlias);
+    for (const MeterInfo &meterInfo : meters)
     {
-        QTreeWidgetItem *connectionItem = tree->topLevelItem(i);
-        if (!connectionItem || connectionItem->data(0, Qt::UserRole).toString() != connectionAlias)
+        if (!meterInfo.address.isEmpty())
         {
-            continue;
+            addresses.append(meterInfo.address);
         }
-
-        for (int j = 0; j < connectionItem->childCount(); ++j)
-        {
-            QTreeWidgetItem *meterItem = connectionItem->child(j);
-            if (!meterItem)
-            {
-                continue;
-            }
-
-            const QString address = meterItem->data(0, Qt::UserRole + 2).toString();
-            if (!address.isEmpty())
-            {
-                addresses.append(address);
-            }
-        }
-        break;
     }
 
     addresses.removeDuplicates();
@@ -1752,34 +1687,30 @@ MeterInfo MainWindow::findMeterInfo(const QString &connectionAlias, const QStrin
         return meterInfo;
     }
 
-    QTreeWidget *tree = deviceTree->getTreeWidget();
-    for (int i = 0; i < tree->topLevelItemCount(); ++i)
+    return deviceTree->meterInfo(connectionAlias, meterAlias);
+}
+
+void MainWindow::removeMeterModel(const QString &address)
+{
+    if (address.isEmpty())
     {
-        QTreeWidgetItem *connectionItem = tree->topLevelItem(i);
-        if (!connectionItem || connectionItem->data(0, Qt::UserRole).toString() != connectionAlias)
-        {
-            continue;
-        }
-
-        for (int j = 0; j < connectionItem->childCount(); ++j)
-        {
-            QTreeWidgetItem *meterItem = connectionItem->child(j);
-            if (!meterItem || meterItem->data(0, Qt::UserRole).toString() != meterAlias)
-            {
-                continue;
-            }
-
-            meterInfo.alias = meterItem->data(0, Qt::UserRole).toString();
-            meterInfo.address = meterItem->data(0, Qt::UserRole + 2).toString();
-            meterInfo.operatorCode = meterItem->data(0, Qt::UserRole + 3).toString();
-            meterInfo.password = meterItem->data(0, Qt::UserRole + 4).toString();
-            meterInfo.includeLeadingFE = meterItem->data(0, Qt::UserRole + 5).toBool();
-            meterInfo.phaseType = static_cast<MeterPhaseType>(meterItem->data(0, Qt::UserRole + 6).toInt());
-            return meterInfo;
-        }
+        return;
     }
 
-    return meterInfo;
+    MeterModel *meterModel = m_meterModelsByAddress.take(address);
+    m_protocolController->unregisterMeterModel(address);
+    if (meterModel)
+    {
+        meterModel->deleteLater();
+    }
+}
+
+void MainWindow::clearMeterModels(const QStringList &addresses)
+{
+    for (const QString &address : addresses)
+    {
+        removeMeterModel(address);
+    }
 }
 
 void MainWindow::attachMeterPersistence(MeterModel *meterModel)
@@ -2177,261 +2108,105 @@ void MainWindow::onExportConfiguration()
     DeviceTreeWidget *deviceTree = deviceTreeWidget();
     if (!deviceTree)
     {
-        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("未找到设备树"));
+        QMessageBox::warning(this, QStringLiteral("Notice"), QStringLiteral("Device tree is not available"));
         return;
     }
 
     const QString fileName = QFileDialog::getSaveFileName(
         this,
-        QStringLiteral("导出配置"),
+        QStringLiteral("Export configuration"),
         QStringLiteral("dlt645_config.json"),
-        QStringLiteral("JSON 配置文件 (*.json)"));
+        QStringLiteral("JSON config file (*.json)"));
     if (fileName.isEmpty())
     {
         return;
     }
 
-    QJsonArray connectionArray;
-    QTreeWidget *tree = deviceTree->getTreeWidget();
-    for (int i = 0; i < tree->topLevelItemCount(); ++i)
+    ConfigurationSnapshot snapshot;
+    const QStringList connectionAliases = deviceTree->connectionAliases();
+    for (const QString &alias : connectionAliases)
     {
-        QTreeWidgetItem *connectionItem = tree->topLevelItem(i);
-        if (!connectionItem)
-        {
-            continue;
-        }
-
-        const QString alias = connectionItem->data(0, Qt::UserRole).toString();
         if (!m_viewModel->hasConnectionConfig(alias))
         {
             continue;
         }
 
-        const ConnectionConfig config = m_viewModel->connectionConfig(alias);
-        QJsonObject connectionObject;
-        connectionObject.insert(QStringLiteral("type"), config.type == ConnectionType::Serial ? QStringLiteral("serial") : QStringLiteral("tcp"));
-        connectionObject.insert(QStringLiteral("alias"), config.alias);
-        connectionObject.insert(QStringLiteral("serialPort"), config.serialPort);
-        connectionObject.insert(QStringLiteral("baudRate"), config.baudRate);
-        connectionObject.insert(QStringLiteral("dataBits"), config.dataBits);
-        connectionObject.insert(QStringLiteral("stopBits"), config.stopBits);
-        connectionObject.insert(QStringLiteral("parity"), config.parity);
-        connectionObject.insert(QStringLiteral("flowControl"), config.flowControl);
-        connectionObject.insert(QStringLiteral("tcpAddress"), config.tcpAddress);
-        connectionObject.insert(QStringLiteral("tcpPort"), config.tcpPort);
+        ConnectionConfigSnapshot connectionSnapshot;
+        connectionSnapshot.config = m_viewModel->connectionConfig(alias);
 
-        QJsonArray meterArray;
-        for (int j = 0; j < connectionItem->childCount(); ++j)
+        const QList<MeterInfo> meters = deviceTree->meterInfosForConnection(alias);
+        for (const MeterInfo &meterInfo : meters)
         {
-            QTreeWidgetItem *meterItem = connectionItem->child(j);
-            if (!meterItem)
-            {
-                continue;
-            }
-
-            const ItemType itemType = static_cast<ItemType>(meterItem->data(0, Qt::UserRole + 1).toInt());
-            if (itemType != ItemType::Meter)
-            {
-                continue;
-            }
-
-            QJsonObject meterObject;
-            meterObject.insert(QStringLiteral("alias"), meterItem->data(0, Qt::UserRole).toString());
-            meterObject.insert(QStringLiteral("address"), meterItem->data(0, Qt::UserRole + 2).toString());
-            meterObject.insert(QStringLiteral("operatorCode"), meterItem->data(0, Qt::UserRole + 3).toString());
-            meterObject.insert(QStringLiteral("password"), meterItem->data(0, Qt::UserRole + 4).toString());
-            meterObject.insert(QStringLiteral("includeLeadingFE"), meterItem->data(0, Qt::UserRole + 5).toBool());
-            meterObject.insert(QStringLiteral("phaseType"), meterItem->data(0, Qt::UserRole + 6).toInt());
-            meterArray.append(meterObject);
+            MeterConfigSnapshot meterSnapshot;
+            meterSnapshot.alias = meterInfo.alias;
+            meterSnapshot.address = meterInfo.address;
+            meterSnapshot.operatorCode = meterInfo.operatorCode;
+            meterSnapshot.password = meterInfo.password;
+            meterSnapshot.includeLeadingFE = meterInfo.includeLeadingFE;
+            meterSnapshot.phaseType = meterInfo.phaseType;
+            connectionSnapshot.meters.append(meterSnapshot);
         }
 
-        connectionObject.insert(QStringLiteral("meters"), meterArray);
-        connectionArray.append(connectionObject);
+        snapshot.connections.append(connectionSnapshot);
     }
 
-    QJsonObject rootObject;
-    rootObject.insert(QStringLiteral("version"), 1);
-    rootObject.insert(QStringLiteral("exportedAt"), QDateTime::currentDateTime().toString(Qt::ISODate));
-    rootObject.insert(QStringLiteral("connections"), connectionArray);
-
-    QFile file(fileName);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    QString errorMessage;
+    if (!ConfigurationSerializer::writeToFile(fileName, snapshot, &errorMessage))
     {
-        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("无法写入配置文件：%1").arg(file.errorString()));
+        QMessageBox::warning(this, QStringLiteral("Error"), errorMessage);
         return;
     }
 
-    const QByteArray configData = QJsonDocument(rootObject).toJson(QJsonDocument::Indented);
-    if (file.write(configData) != configData.size())
-    {
-        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("配置文件写入不完整：%1").arg(file.errorString()));
-        return;
-    }
-    QMessageBox::information(this, QStringLiteral("成功"), QStringLiteral("配置已导出"));
+    QMessageBox::information(this, QStringLiteral("Success"), QStringLiteral("Configuration exported"));
 }
 
 void MainWindow::onImportConfiguration()
 {
     const QString fileName = QFileDialog::getOpenFileName(
         this,
-        QStringLiteral("导入配置"),
+        QStringLiteral("Import configuration"),
         QString(),
-        QStringLiteral("JSON 配置文件 (*.json)"));
+        QStringLiteral("JSON config file (*.json)"));
     if (fileName.isEmpty())
     {
         return;
     }
 
-    QFile file(fileName);
-    if (!file.open(QIODevice::ReadOnly))
-    {
-        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("无法读取配置文件：%1").arg(file.errorString()));
-        return;
-    }
-
-    QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
-    if (parseError.error != QJsonParseError::NoError || !document.isObject())
-    {
-        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("配置文件格式错误：%1").arg(parseError.errorString()));
-        return;
-    }
-
-    const QJsonArray connectionArray = document.object().value(QStringLiteral("connections")).toArray();
-    if (connectionArray.isEmpty())
-    {
-        QMessageBox::warning(this, QStringLiteral("错误"), QStringLiteral("配置文件中没有连接配置"));
-        return;
-    }
-
-    struct ImportedConnection
-    {
-        ConnectionConfig config;
-        QList<MeterInfo> meters;
-    };
-
-    QList<ImportedConnection> importedConnections;
-    QSet<QString> importedConnectionAliases;
-    QSet<QString> importedMeterAddresses;
+    ConfigurationSnapshot snapshot;
     QStringList validationErrors;
-
-    auto appendValidationError = [&validationErrors](const QString &message)
+    QString errorMessage;
+    if (!ConfigurationSerializer::readFromFile(fileName, &snapshot, &validationErrors, &errorMessage))
     {
-        if (validationErrors.size() < 10)
+        if (!validationErrors.isEmpty())
         {
-            validationErrors.append(message);
-        }
-    };
-
-    for (int connectionIndex = 0; connectionIndex < connectionArray.size(); ++connectionIndex)
-    {
-        const QJsonValue connectionValue = connectionArray.at(connectionIndex);
-        if (!connectionValue.isObject())
-        {
-            appendValidationError(QStringLiteral("第 %1 个连接不是有效对象").arg(connectionIndex + 1));
-            continue;
+            QMessageBox::warning(this,
+                                 QStringLiteral("Import failed"),
+                                 QStringLiteral("Configuration validation failed. Current configuration was not changed:\n%1")
+                                     .arg(validationErrors.join(QLatin1Char('\n'))));
+            return;
         }
 
-        const QJsonObject connectionObject = connectionValue.toObject();
-        ConnectionConfig config;
-        config.type = connectionObject.value(QStringLiteral("type")).toString() == QStringLiteral("tcp")
-                          ? ConnectionType::TCP
-                          : ConnectionType::Serial;
-        config.alias = connectionObject.value(QStringLiteral("alias")).toString().trimmed();
-        config.serialPort = connectionObject.value(QStringLiteral("serialPort")).toString();
-        config.baudRate = connectionObject.value(QStringLiteral("baudRate")).toInt(config.baudRate);
-        config.dataBits = connectionObject.value(QStringLiteral("dataBits")).toInt(config.dataBits);
-        config.stopBits = connectionObject.value(QStringLiteral("stopBits")).toInt(config.stopBits);
-        config.parity = connectionObject.value(QStringLiteral("parity")).toInt(config.parity);
-        config.flowControl = connectionObject.value(QStringLiteral("flowControl")).toInt(config.flowControl);
-        config.tcpAddress = connectionObject.value(QStringLiteral("tcpAddress")).toString();
-        config.tcpPort = connectionObject.value(QStringLiteral("tcpPort")).toInt(config.tcpPort);
-
-        if (config.alias.isEmpty())
-        {
-            appendValidationError(QStringLiteral("第 %1 个连接别名为空").arg(connectionIndex + 1));
-            continue;
-        }
-
-        if (importedConnectionAliases.contains(config.alias))
-        {
-            appendValidationError(QStringLiteral("连接别名重复：%1").arg(config.alias));
-            continue;
-        }
-        importedConnectionAliases.insert(config.alias);
-
-        ImportedConnection importedConnection;
-        importedConnection.config = config;
-
-        const QJsonArray meterArray = connectionObject.value(QStringLiteral("meters")).toArray();
-        for (int meterIndex = 0; meterIndex < meterArray.size(); ++meterIndex)
-        {
-            const QJsonValue meterValue = meterArray.at(meterIndex);
-            if (!meterValue.isObject())
-            {
-                appendValidationError(QStringLiteral("连接 %1 的第 %2 个电表不是有效对象").arg(config.alias).arg(meterIndex + 1));
-                continue;
-            }
-
-            const QJsonObject meterObject = meterValue.toObject();
-            MeterInfo meterInfo;
-            meterInfo.alias = meterObject.value(QStringLiteral("alias")).toString().trimmed();
-            meterInfo.address = meterObject.value(QStringLiteral("address")).toString().trimmed();
-            meterInfo.operatorCode = meterObject.value(QStringLiteral("operatorCode")).toString();
-            meterInfo.password = meterObject.value(QStringLiteral("password")).toString();
-            meterInfo.includeLeadingFE = meterObject.value(QStringLiteral("includeLeadingFE")).toBool();
-            meterInfo.phaseType = static_cast<MeterPhaseType>(meterObject.value(QStringLiteral("phaseType")).toInt(static_cast<int>(MeterPhaseType::ThreePhase)));
-
-            if (meterInfo.alias.isEmpty())
-            {
-                appendValidationError(QStringLiteral("连接 %1 的第 %2 个电表别名为空").arg(config.alias).arg(meterIndex + 1));
-                continue;
-            }
-
-            if (!ProtocolParser::isValidAddress(meterInfo.address))
-            {
-                appendValidationError(QStringLiteral("电表 %1 地址无效：%2").arg(meterInfo.alias, meterInfo.address));
-                continue;
-            }
-
-            if (importedMeterAddresses.contains(meterInfo.address))
-            {
-                appendValidationError(QStringLiteral("电表地址重复：%1").arg(meterInfo.address));
-                continue;
-            }
-
-            importedMeterAddresses.insert(meterInfo.address);
-            importedConnection.meters.append(meterInfo);
-        }
-
-        importedConnections.append(importedConnection);
-    }
-
-    if (!validationErrors.isEmpty())
-    {
-        QMessageBox::warning(this,
-                             QStringLiteral("导入失败"),
-                             QStringLiteral("配置文件校验未通过，当前配置未改变：\n%1").arg(validationErrors.join(QLatin1Char('\n'))));
+        QMessageBox::warning(this, QStringLiteral("Error"), errorMessage);
         return;
     }
 
-    if (importedConnections.isEmpty())
+    if (snapshot.connections.isEmpty())
     {
-        QMessageBox::warning(this, QStringLiteral("导入失败"), QStringLiteral("配置文件中没有可导入的连接配置"));
+        QMessageBox::warning(this, QStringLiteral("Import failed"), QStringLiteral("No importable connection configs"));
         return;
     }
 
     const QMessageBox::StandardButton reply = QMessageBox::question(
         this,
-        QStringLiteral("确认导入"),
-        QStringLiteral("导入会替换当前所有连接和电表配置，是否继续？"),
+        QStringLiteral("Confirm import"),
+        QStringLiteral("Importing will replace all current connections and meters. Continue?"),
         QMessageBox::Yes | QMessageBox::No);
     if (reply != QMessageBox::Yes)
     {
         return;
     }
 
-    if (m_viewModel->isConnected())
+    if (m_viewModel->isCloseConnectionVisible())
     {
         closeConnectionInternal(m_viewModel->currentConnectionAlias());
     }
@@ -2439,48 +2214,38 @@ void MainWindow::onImportConfiguration()
     DeviceTreeWidget *deviceTree = deviceTreeWidget();
     if (!deviceTree)
     {
-        QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("未找到设备树"));
+        QMessageBox::warning(this, QStringLiteral("Notice"), QStringLiteral("Device tree is not available"));
         return;
     }
 
-    QStringList existingConnectionAliases;
-    QTreeWidget *tree = deviceTree->getTreeWidget();
-    for (int i = 0; i < tree->topLevelItemCount(); ++i)
-    {
-        QTreeWidgetItem *connectionItem = tree->topLevelItem(i);
-        if (connectionItem)
-        {
-            existingConnectionAliases.append(connectionItem->data(0, Qt::UserRole).toString());
-        }
-    }
+    const QStringList existingConnectionAliases = deviceTree->connectionAliases();
 
     for (const QString &alias : existingConnectionAliases)
     {
         m_viewModel->removeConnectionConfig(alias);
     }
 
-    const QStringList existingAddresses = collectMeterAddresses();
-    for (const QString &address : existingAddresses)
-    {
-        MeterModel *meterModel = m_meterModelsByAddress.take(address);
-        m_protocolController->unregisterMeterModel(address);
-        if (meterModel)
-        {
-            meterModel->deleteLater();
-        }
-    }
+    clearMeterModels(collectMeterAddresses());
 
     deviceTree->clearTree();
     clearCurrentMeter();
 
     MeterInfo lastMeterInfo;
-    for (const ImportedConnection &importedConnection : importedConnections)
+    for (const ConnectionConfigSnapshot &importedConnection : snapshot.connections)
     {
         m_viewModel->upsertConnectionConfig(importedConnection.config);
         deviceTree->addConnection(buildConnectionInfo(importedConnection.config, false));
 
-        for (const MeterInfo &meterInfo : importedConnection.meters)
+        for (const MeterConfigSnapshot &meterSnapshot : importedConnection.meters)
         {
+            MeterInfo meterInfo;
+            meterInfo.alias = meterSnapshot.alias;
+            meterInfo.address = meterSnapshot.address;
+            meterInfo.operatorCode = meterSnapshot.operatorCode;
+            meterInfo.password = meterSnapshot.password;
+            meterInfo.includeLeadingFE = meterSnapshot.includeLeadingFE;
+            meterInfo.phaseType = meterSnapshot.phaseType;
+
             if (deviceTree->addMeter(importedConnection.config.alias, meterInfo))
             {
                 createMeterModel(meterInfo);
@@ -2495,7 +2260,7 @@ void MainWindow::onImportConfiguration()
         applyCurrentMeter(lastMeterInfo);
     }
     updateToolBarButtons();
-    QMessageBox::information(this, QStringLiteral("成功"), QStringLiteral("配置已导入"));
+    QMessageBox::information(this, QStringLiteral("Success"), QStringLiteral("Configuration imported"));
 }
 
 void MainWindow::onSearchTextChanged(const QString &text)
@@ -2531,7 +2296,7 @@ void MainWindow::onMeterInfoSelected(const MeterInfo &meterInfo)
 
 void MainWindow::onOpenConnectionRequested(const QString &connectionAlias)
 {
-    if (m_viewModel->isConnected())
+    if (m_viewModel->isCloseConnectionVisible())
     {
         QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("已经有连接打开，请先关闭现有连接"));
         return;
@@ -2547,7 +2312,7 @@ void MainWindow::onOpenConnectionRequested(const QString &connectionAlias)
 
 void MainWindow::onCloseConnectionRequested(const QString &connectionAlias)
 {
-    if (!m_viewModel->isConnected())
+    if (!m_viewModel->isCloseConnectionVisible())
     {
         QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("连接已经关闭"));
         return;
@@ -2566,7 +2331,7 @@ void MainWindow::onDeleteConnectionRequested(const QString &connectionAlias)
     {
         const QStringList connectionMeterAddresses = collectMeterAddressesForConnection(connectionAlias);
 
-        if (m_viewModel->isConnected())
+        if (m_viewModel->isCloseConnectionVisible())
         {
             closeConnectionInternal(connectionAlias);
         }
@@ -2578,15 +2343,7 @@ void MainWindow::onDeleteConnectionRequested(const QString &connectionAlias)
             deviceTree->deleteConnection(connectionAlias);
         }
 
-        for (const QString &address : connectionMeterAddresses)
-        {
-            MeterModel *meterModel = m_meterModelsByAddress.take(address);
-            m_protocolController->unregisterMeterModel(address);
-            if (meterModel)
-            {
-                meterModel->deleteLater();
-            }
-        }
+        clearMeterModels(connectionMeterAddresses);
 
         m_viewModel->removeConnectionConfig(connectionAlias);
         refreshMeterPresence();
@@ -2605,41 +2362,7 @@ void MainWindow::onDeleteAllMetersRequested(const QString &connectionAlias)
         return;
     }
 
-    QList<MeterInfo> metersToDelete;
-    QTreeWidget *tree = deviceTree->getTreeWidget();
-    for (int i = 0; i < tree->topLevelItemCount(); ++i)
-    {
-        QTreeWidgetItem *connectionItem = tree->topLevelItem(i);
-        if (!connectionItem || connectionItem->data(0, Qt::UserRole).toString() != connectionAlias)
-        {
-            continue;
-        }
-
-        for (int j = 0; j < connectionItem->childCount(); ++j)
-        {
-            QTreeWidgetItem *meterItem = connectionItem->child(j);
-            if (!meterItem)
-            {
-                continue;
-            }
-
-            const ItemType itemType = static_cast<ItemType>(meterItem->data(0, Qt::UserRole + 1).toInt());
-            if (itemType != ItemType::Meter)
-            {
-                continue;
-            }
-
-            MeterInfo meterInfo;
-            meterInfo.alias = meterItem->data(0, Qt::UserRole).toString();
-            meterInfo.address = meterItem->data(0, Qt::UserRole + 2).toString();
-            meterInfo.operatorCode = meterItem->data(0, Qt::UserRole + 3).toString();
-            meterInfo.password = meterItem->data(0, Qt::UserRole + 4).toString();
-            meterInfo.includeLeadingFE = meterItem->data(0, Qt::UserRole + 5).toBool();
-            meterInfo.phaseType = static_cast<MeterPhaseType>(meterItem->data(0, Qt::UserRole + 6).toInt());
-            metersToDelete.append(meterInfo);
-        }
-        break;
-    }
+    const QList<MeterInfo> metersToDelete = deviceTree->meterInfosForConnection(connectionAlias);
 
     if (metersToDelete.isEmpty())
     {
@@ -2666,12 +2389,7 @@ void MainWindow::onDeleteAllMetersRequested(const QString &connectionAlias)
         if (!meterInfo.address.isEmpty())
         {
             currentMeterDeleted = currentMeterDeleted || (meterInfo.address == currentMeterAddress);
-            MeterModel *meterModel = m_meterModelsByAddress.take(meterInfo.address);
-            m_protocolController->unregisterMeterModel(meterInfo.address);
-            if (meterModel)
-            {
-                meterModel->deleteLater();
-            }
+            removeMeterModel(meterInfo.address);
         }
     }
 
@@ -2694,7 +2412,7 @@ void MainWindow::onEditConnectionRequested(const QString &connectionAlias)
         return;
     }
 
-    if (m_viewModel->isConnected() && m_viewModel->currentConnectionAlias() == connectionAlias)
+    if (m_viewModel->isCloseConnectionVisible() && m_viewModel->currentConnectionAlias() == connectionAlias)
     {
         QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("请先关闭当前连接，再编辑连接配置"));
         return;
@@ -2709,29 +2427,7 @@ void MainWindow::onEditConnectionRequested(const QString &connectionAlias)
 
     if (deviceTree)
     {
-        QStringList connectedPorts;
-        for (int i = 0; i < deviceTree->getTreeWidget()->topLevelItemCount(); ++i)
-        {
-            QTreeWidgetItem *item = deviceTree->getTreeWidget()->topLevelItem(i);
-            if (!item)
-            {
-                continue;
-            }
-
-            const ItemType itemType = static_cast<ItemType>(item->data(0, Qt::UserRole + 1).toInt());
-            if (itemType != ItemType::Connection)
-            {
-                continue;
-            }
-
-            const QString alias = item->data(0, Qt::UserRole).toString();
-            const bool isConnected = item->data(0, Qt::UserRole + 2).toBool();
-            if (isConnected && alias != connectionAlias)
-            {
-                connectedPorts.append(item->data(0, Qt::UserRole + 3).toString());
-            }
-        }
-        dialog.setConnectedPorts(connectedPorts);
+        dialog.setConnectedPorts(deviceTree->connectedPortsExcept(connectionAlias));
         dialog.setConnectionConfig(originalConfig);
     }
 
@@ -2761,21 +2457,7 @@ void MainWindow::onEditConnectionRequested(const QString &connectionAlias)
 
     if (deviceTree)
     {
-        ConnectionInfo connectionInfo;
-        connectionInfo.alias = updatedConfig.alias;
-        connectionInfo.type = (updatedConfig.type == ConnectionType::Serial) ? QStringLiteral("串口") : QStringLiteral("TCP");
-        connectionInfo.port = (updatedConfig.type == ConnectionType::Serial)
-                                  ? updatedConfig.serialPort
-                                  : QString("%1:%2").arg(updatedConfig.tcpAddress).arg(updatedConfig.tcpPort);
-        connectionInfo.isConnected = false;
-        connectionInfo.baudRate = updatedConfig.baudRate;
-        connectionInfo.dataBits = updatedConfig.dataBits;
-        connectionInfo.stopBits = updatedConfig.stopBits;
-        connectionInfo.parity = updatedConfig.parity;
-        connectionInfo.flowControl = updatedConfig.flowControl;
-        connectionInfo.tcpAddress = updatedConfig.tcpAddress;
-        connectionInfo.tcpPort = updatedConfig.tcpPort;
-        deviceTree->updateConnection(connectionAlias, connectionInfo);
+        deviceTree->updateConnection(connectionAlias, buildConnectionInfo(updatedConfig, false));
     }
 
     m_viewModel->setCurrentConnectionAlias(updatedConfig.alias);
@@ -2806,12 +2488,7 @@ void MainWindow::onDeleteMeterRequested(const QString &connectionAlias, const QS
 
         if (!meterInfo.address.isEmpty())
         {
-            MeterModel *meterModel = m_meterModelsByAddress.take(meterInfo.address);
-            m_protocolController->unregisterMeterModel(meterInfo.address);
-            if (meterModel)
-            {
-                meterModel->deleteLater();
-            }
+            removeMeterModel(meterInfo.address);
         }
 
         LOG_INFO(QString("Meter deleted: %1").arg(meterAlias));

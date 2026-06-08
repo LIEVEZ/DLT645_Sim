@@ -32,6 +32,8 @@ SOURCES += \
     Source/Services/ProtocolParser.cpp \
     Source/Services/DataGenerator.cpp \
     Source/Services/MeterDataStore.cpp \
+    Source/Services/ConfigurationSerializer.cpp \
+    Source/Controllers/ConnectionManager.cpp \
     Source/Controllers/SerialController.cpp \
     Source/Controllers/TcpController.cpp \
     Source/Controllers/MasterQueryController.cpp \
@@ -64,6 +66,8 @@ HEADERS += \
     Source/Services/ProtocolParser.h \
     Source/Services/DataGenerator.h \
     Source/Services/MeterDataStore.h \
+    Source/Services/ConfigurationSerializer.h \
+    Source/Controllers/ConnectionManager.h \
     Source/Controllers/SerialController.h \
     Source/Controllers/TcpController.h \
     Source/Controllers/MasterQueryController.h \

@@ -10,6 +10,7 @@
 #include <QStackedWidget>
 #include <QTimer>
 #include <QWidget>
+#include "Controllers/ConnectionManager.h"
 #include "Controllers/ProtocolController.h"
 #include "Controllers/SerialController.h"
 #include "Controllers/TcpController.h"
@@ -102,6 +103,8 @@ private:
     QStringList collectMeterAddresses() const;
     QStringList collectMeterAddressesForConnection(const QString &connectionAlias) const;
     MeterInfo findMeterInfo(const QString &connectionAlias, const QString &meterAlias) const;
+    void removeMeterModel(const QString &address);
+    void clearMeterModels(const QStringList &addresses);
     MeterModel *createMeterModel(const MeterInfo &meterInfo);
     bool openConnectionInternal(const QString &connectionAlias, const ConnectionConfig &config, bool addConnectionNode);
     void closeConnectionInternal(const QString &connectionAlias);
@@ -116,6 +119,7 @@ private:
 
     SerialController *m_serialController;
     TcpController *m_tcpController;
+    ConnectionManager *m_connectionManager;
     ProtocolController *m_protocolController;
     DataGenerator *m_dataGenerator;
     MainWindowViewModel *m_viewModel;

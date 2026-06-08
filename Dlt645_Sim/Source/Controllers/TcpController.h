@@ -4,6 +4,7 @@
 #include <QAbstractSocket>
 #include <QByteArray>
 #include <QObject>
+#include <QTimer>
 #include <QTcpSocket>
 
 struct TcpConfig
@@ -30,6 +31,7 @@ public:
     void closeConnection();
     bool sendData(const QByteArray &data);
     bool isOpen() const;
+    bool isConnecting() const;
     TcpConfig getConfig() const;
 
 signals:
@@ -43,9 +45,11 @@ private slots:
     void onConnected();
     void onDisconnected();
     void onErrorOccurred(QAbstractSocket::SocketError error);
+    void onConnectTimeout();
 
 private:
     QTcpSocket *m_tcpSocket;
+    QTimer *m_connectTimer;
     TcpConfig m_config;
     QByteArray m_receiveBuffer;
 };

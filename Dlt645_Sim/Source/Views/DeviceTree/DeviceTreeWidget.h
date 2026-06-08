@@ -2,6 +2,8 @@
 #define DEVICETREEWIDGET_H
 
 #include <QWidget>
+#include <QList>
+#include <QStringList>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QVBoxLayout>
@@ -174,6 +176,11 @@ public:
      * @return 如果地址已存在返回true，否则返回false
      */
     bool isMeterAddressExists(const QString &address) const;
+    QStringList connectionAliases() const;
+    QStringList connectedPortsExcept(const QString &connectionAlias) const;
+    QList<MeterInfo> allMeterInfos() const;
+    QList<MeterInfo> meterInfosForConnection(const QString &connectionAlias) const;
+    MeterInfo meterInfo(const QString &connectionAlias, const QString &meterAlias) const;
 
     /**
      * @brief 获取树形控件指针
@@ -326,8 +333,8 @@ private:
     bool itemMatchesFilter(QTreeWidgetItem *item, const QString &filterText);
     void updateConnectionStatusIcon(QTreeWidgetItem *connectionItem, bool connected);
     void updateConnectionMeterCount(QTreeWidgetItem *connectionItem);
-    QTreeWidgetItem *findConnectionItem(const QString &connectionAlias);
-    QTreeWidgetItem *findMeterItem(const QString &connectionAlias, const QString &meterAlias);
+    QTreeWidgetItem *findConnectionItem(const QString &connectionAlias) const;
+    QTreeWidgetItem *findMeterItem(const QString &connectionAlias, const QString &meterAlias) const;
 
     QTreeWidget *m_treeWidget;
     QLineEdit *m_filterEdit;

@@ -2,8 +2,10 @@
 #include "Utils/Logger.h"
 
 TcpController::TcpController(QObject *parent)
-    : QObject(parent), m_tcpSocket(new QTcpSocket(this))
+    : QObject(parent), m_tcpSocket(new QTcpSocket(this)), m_connectTimer(new QTimer(this))
 {
+    m_connectTimer->setSingleShot(true);
+
     connect(m_tcpSocket, &QTcpSocket::readyRead, this, &TcpController::onReadyRead);
     connect(m_tcpSocket, &QTcpSocket::connected, this, &TcpController::onConnected);
     connect(m_tcpSocket, &QTcpSocket::disconnected, this, &TcpController::onDisconnected);
@@ -15,6 +17,7 @@ TcpController::TcpController(QObject *parent)
             this,
             &TcpController::onErrorOccurred);
 #endif
+    connect(m_connectTimer, &QTimer::timeout, this, &TcpController::onConnectTimeout);
 }
 
 TcpController::~TcpController()
@@ -32,37 +35,33 @@ bool TcpController::openConnection(const TcpConfig &config)
     m_receiveBuffer.clear();
     m_config = config;
     m_tcpSocket->connectToHost(config.hostAddress, config.port);
+    m_connectTimer->start(config.connectTimeoutMs > 0 ? config.connectTimeoutMs : 3000);
 
-    if (m_tcpSocket->waitForConnected(config.connectTimeoutMs))
-    {
-        LOG_INFO(QString("TCP connected: %1:%2")
-                     .arg(config.hostAddress)
-                     .arg(config.port));
-        return true;
-    }
-
-    const QString error = m_tcpSocket->errorString();
-    LOG_ERROR(QString("Failed to connect TCP %1:%2: %3")
-                  .arg(config.hostAddress)
-                  .arg(config.port)
-                  .arg(error));
-    emit errorOccurred(error);
-    return false;
+    LOG_INFO(QString("TCP connecting: %1:%2")
+                 .arg(config.hostAddress)
+                 .arg(config.port));
+    return true;
 }
 
 void TcpController::closeConnection()
 {
+    m_connectTimer->stop();
+
     if (m_tcpSocket->state() == QAbstractSocket::UnconnectedState)
     {
         return;
     }
 
-    m_tcpSocket->disconnectFromHost();
-    if (m_tcpSocket->state() != QAbstractSocket::UnconnectedState &&
-        !m_tcpSocket->waitForDisconnected(1000))
+    if (m_tcpSocket->state() == QAbstractSocket::ConnectingState ||
+        m_tcpSocket->state() == QAbstractSocket::HostLookupState)
     {
         m_tcpSocket->abort();
+        m_receiveBuffer.clear();
+        emit connectionStateChanged(false);
+        return;
     }
+
+    m_tcpSocket->disconnectFromHost();
 }
 
 bool TcpController::sendData(const QByteArray &data)
@@ -95,6 +94,12 @@ bool TcpController::isOpen() const
     return m_tcpSocket->state() == QAbstractSocket::ConnectedState;
 }
 
+bool TcpController::isConnecting() const
+{
+    return m_tcpSocket->state() == QAbstractSocket::ConnectingState ||
+           m_tcpSocket->state() == QAbstractSocket::HostLookupState;
+}
+
 TcpConfig TcpController::getConfig() const
 {
     return m_config;
@@ -115,11 +120,16 @@ void TcpController::onReadyRead()
 
 void TcpController::onConnected()
 {
+    m_connectTimer->stop();
+    LOG_INFO(QString("TCP connected: %1:%2")
+                 .arg(m_config.hostAddress)
+                 .arg(m_config.port));
     emit connectionStateChanged(true);
 }
 
 void TcpController::onDisconnected()
 {
+    m_connectTimer->stop();
     m_receiveBuffer.clear();
     LOG_INFO(QString("TCP disconnected: %1:%2")
                  .arg(m_config.hostAddress)
@@ -136,5 +146,23 @@ void TcpController::onErrorOccurred(QAbstractSocket::SocketError error)
 
     const QString errorString = m_tcpSocket->errorString();
     LOG_ERROR(QString("TCP socket error: %1").arg(errorString));
+    m_connectTimer->stop();
     emit errorOccurred(errorString);
+}
+
+void TcpController::onConnectTimeout()
+{
+    if (!isConnecting())
+    {
+        return;
+    }
+
+    const QString errorString = QString("TCP connect timeout: %1:%2")
+                                    .arg(m_config.hostAddress)
+                                    .arg(m_config.port);
+    LOG_ERROR(errorString);
+    m_tcpSocket->abort();
+    m_receiveBuffer.clear();
+    emit errorOccurred(errorString);
+    emit connectionStateChanged(false);
 }

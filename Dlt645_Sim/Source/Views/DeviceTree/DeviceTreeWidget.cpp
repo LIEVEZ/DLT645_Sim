@@ -28,6 +28,28 @@ namespace
 
         return text.mid(firstSpaceIndex + 1).trimmed();
     }
+
+    bool itemHasType(QTreeWidgetItem *item, ItemType type)
+    {
+        return item && static_cast<ItemType>(item->data(0, Qt::UserRole + 1).toInt()) == type;
+    }
+
+    MeterInfo meterInfoFromItem(QTreeWidgetItem *item)
+    {
+        MeterInfo info;
+        if (!itemHasType(item, ItemType::Meter))
+        {
+            return info;
+        }
+
+        info.alias = item->data(0, Qt::UserRole).toString();
+        info.address = item->data(0, Qt::UserRole + 2).toString();
+        info.operatorCode = item->data(0, Qt::UserRole + 3).toString();
+        info.password = item->data(0, Qt::UserRole + 4).toString();
+        info.includeLeadingFE = item->data(0, Qt::UserRole + 5).toBool();
+        info.phaseType = static_cast<MeterPhaseType>(item->data(0, Qt::UserRole + 6).toInt());
+        return info;
+    }
 }
 
 DeviceTreeWidget::DeviceTreeWidget(QWidget *parent)
@@ -378,15 +400,90 @@ MeterInfo DeviceTreeWidget::getSelectedMeterInfo() const
     ItemType itemType = static_cast<ItemType>(selectedItem->data(0, Qt::UserRole + 1).toInt());
     if (itemType == ItemType::Meter)
     {
-        info.alias = selectedItem->data(0, Qt::UserRole).toString();
-        info.address = selectedItem->data(0, Qt::UserRole + 2).toString();
-        info.operatorCode = selectedItem->data(0, Qt::UserRole + 3).toString();
-        info.password = selectedItem->data(0, Qt::UserRole + 4).toString();
-        info.includeLeadingFE = selectedItem->data(0, Qt::UserRole + 5).toBool();
-        info.phaseType = static_cast<MeterPhaseType>(selectedItem->data(0, Qt::UserRole + 6).toInt());
+        info = meterInfoFromItem(selectedItem);
     }
 
     return info;
+}
+
+QStringList DeviceTreeWidget::connectionAliases() const
+{
+    QStringList aliases;
+    for (int i = 0; i < m_treeWidget->topLevelItemCount(); ++i)
+    {
+        QTreeWidgetItem *item = m_treeWidget->topLevelItem(i);
+        if (!itemHasType(item, ItemType::Connection))
+        {
+            continue;
+        }
+
+        const QString alias = item->data(0, Qt::UserRole).toString();
+        if (!alias.isEmpty())
+        {
+            aliases.append(alias);
+        }
+    }
+    aliases.removeDuplicates();
+    return aliases;
+}
+
+QStringList DeviceTreeWidget::connectedPortsExcept(const QString &connectionAlias) const
+{
+    QStringList ports;
+    for (int i = 0; i < m_treeWidget->topLevelItemCount(); ++i)
+    {
+        QTreeWidgetItem *item = m_treeWidget->topLevelItem(i);
+        if (!itemHasType(item, ItemType::Connection))
+        {
+            continue;
+        }
+
+        const QString alias = item->data(0, Qt::UserRole).toString();
+        const bool isConnected = item->data(0, Qt::UserRole + 2).toBool();
+        const QString port = item->data(0, Qt::UserRole + 3).toString();
+        if (isConnected && alias != connectionAlias && !port.isEmpty())
+        {
+            ports.append(port);
+        }
+    }
+    ports.removeDuplicates();
+    return ports;
+}
+
+QList<MeterInfo> DeviceTreeWidget::allMeterInfos() const
+{
+    QList<MeterInfo> meters;
+    for (const QString &alias : connectionAliases())
+    {
+        meters.append(meterInfosForConnection(alias));
+    }
+    return meters;
+}
+
+QList<MeterInfo> DeviceTreeWidget::meterInfosForConnection(const QString &connectionAlias) const
+{
+    QList<MeterInfo> meters;
+    QTreeWidgetItem *connectionItem = findConnectionItem(connectionAlias);
+    if (!connectionItem)
+    {
+        return meters;
+    }
+
+    for (int i = 0; i < connectionItem->childCount(); ++i)
+    {
+        QTreeWidgetItem *meterItem = connectionItem->child(i);
+        const MeterInfo info = meterInfoFromItem(meterItem);
+        if (!info.address.isEmpty() || !info.alias.isEmpty())
+        {
+            meters.append(info);
+        }
+    }
+    return meters;
+}
+
+MeterInfo DeviceTreeWidget::meterInfo(const QString &connectionAlias, const QString &meterAlias) const
+{
+    return meterInfoFromItem(findMeterItem(connectionAlias, meterAlias));
 }
 
 bool DeviceTreeWidget::isPortConnected(const QString &port) const
@@ -1063,7 +1160,7 @@ void DeviceTreeWidget::updateConnectionMeterCount(QTreeWidgetItem *connectionIte
     connectionItem->setTextAlignment(1, Qt::AlignRight | Qt::AlignVCenter);
 }
 
-QTreeWidgetItem *DeviceTreeWidget::findConnectionItem(const QString &connectionAlias)
+QTreeWidgetItem *DeviceTreeWidget::findConnectionItem(const QString &connectionAlias) const
 {
     QTreeWidgetItemIterator it(m_treeWidget, QTreeWidgetItemIterator::All);
     while (*it)
@@ -1086,7 +1183,7 @@ QTreeWidgetItem *DeviceTreeWidget::findConnectionItem(const QString &connectionA
     return nullptr;
 }
 
-QTreeWidgetItem *DeviceTreeWidget::findMeterItem(const QString &connectionAlias, const QString &meterAlias)
+QTreeWidgetItem *DeviceTreeWidget::findMeterItem(const QString &connectionAlias, const QString &meterAlias) const
 {
     QTreeWidgetItem *connectionItem = findConnectionItem(connectionAlias);
     if (!connectionItem)
