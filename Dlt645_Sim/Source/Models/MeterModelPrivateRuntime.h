@@ -1,0 +1,6 @@
+#ifndef METERMODELPRIVATERUNTIME_H
+#define METERMODELPRIVATERUNTIME_H
+
+#include "MeterModelPrivateRandom.h"
+
+#endif // METERMODELPRIVATERUNTIME_H

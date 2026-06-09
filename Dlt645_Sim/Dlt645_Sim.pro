@@ -1,4 +1,4 @@
-QT       += core gui serialport network sql concurrent
+QT       += core gui serialport network sql
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -17,7 +17,7 @@ win32-g++ {
 # In order to do so, uncomment the following line.
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
-# 源文件
+# 婧愭枃浠?
 SOURCES += \
     Source/main.cpp \
     Source/Views/MainWindow/mainwindow.cpp \
@@ -27,7 +27,18 @@ SOURCES += \
     Source/Utils/ChecksumHelper.cpp \
     Source/Utils/Logger.cpp \
     Source/Models/DataItem.cpp \
+    Source/Models/MeterModelAccess.cpp \
     Source/Models/MeterModel.cpp \
+    Source/Models/MeterModelInitialization.cpp \
+    Source/Models/MeterModelInitializationEnergy.cpp \
+    Source/Models/MeterModelInitializationVariable.cpp \
+    Source/Models/MeterModelInitializationEvent.cpp \
+    Source/Models/MeterModelInitializationEventPhase.cpp \
+    Source/Models/MeterModelInitializationEventStats.cpp \
+    Source/Models/MeterModelInitializationEventProgramming.cpp \
+    Source/Models/MeterModelInitializationParameter.cpp \
+    Source/Models/MeterModelInitializationFreeze.cpp \
+    Source/Models/MeterModelQueries.cpp \
     Source/ViewModels/MainWindowViewModel.cpp \
     Source/Services/ProtocolParser.cpp \
     Source/Services/DataGenerator.cpp \
@@ -51,17 +62,28 @@ SOURCES += \
     Source/Views/Dialogs/FrameParseDialog.cpp \
     Source/Views/Dialogs/QueryFrameDialog.cpp
 
-# 头文件
+# 澶存枃浠?
 HEADERS += \
     Source/Views/MainWindow/mainwindow.h \
     Source/Utils/BCDHelper.h \
     Source/Utils/DLT645FrameFormatter.h \
+    Source/Utils/DLT645FrameFormatterFields.h \
+    Source/Utils/DLT645FrameFormatterValueDisplay.h \
     Source/Utils/DLT645DataHelper.h \
     Source/Utils/ChecksumHelper.h \
     Source/Utils/Logger.h \
     Source/Models/ConnectionConfig.h \
     Source/Models/DataItem.h \
     Source/Models/MeterModel.h \
+    Source/Models/MeterModelInitializationEventPrivate.h \
+    Source/Models/MeterModelPrivate.h \
+    Source/Models/MeterModelPrivateCommon.h \
+    Source/Models/MeterModelPrivateFreeze.h \
+    Source/Models/MeterModelPrivateRate.h \
+    Source/Models/MeterModelPrivateSupport.h \
+    Source/Models/MeterModelPrivateSync.h \
+    Source/Models/MeterModelPrivateRandom.h \
+    Source/Models/MeterModelPrivateRuntime.h \
     Source/ViewModels/MainWindowViewModel.h \
     Source/Services/ProtocolParser.h \
     Source/Services/DataGenerator.h \
@@ -85,7 +107,7 @@ HEADERS += \
     Source/Views/Dialogs/FrameParseDialog.h \
     Source/Views/Dialogs/QueryFrameDialog.h
 
-# UI文件
+# UI鏂囦欢
 FORMS += \
     Source/Views/MainWindow/mainwindow.ui
 
