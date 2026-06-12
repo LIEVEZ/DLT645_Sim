@@ -999,6 +999,11 @@ void DeviceTreeWidget::onCustomContextMenuRequested(const QPoint &pos)
             m_contextMenu->addAction(QIcon(":/icons/write.png"), "批量设置", [this, meterAlias]()
                                      { emit batchSetDataRequested(meterAlias); });
             m_contextMenu->addSeparator();
+            m_contextMenu->addAction(QIcon(":/icons/settings.png"), "事件记录设置", [this, meterAlias]()
+                                     {
+                                        QString connectionAlias = getSelectedConnectionAlias();
+                                        emit eventRecordSettingsRequested(connectionAlias, meterAlias); });
+            m_contextMenu->addSeparator();
             m_contextMenu->addAction(QIcon(":/icons/export.png"), "导出", [this, meterAlias]() { /* TODO: 导出电表数据 */ });
             m_contextMenu->addSeparator();
             m_contextMenu->addAction(QIcon(":/icons/delete.png"), "删除电表", [this, meterAlias]()

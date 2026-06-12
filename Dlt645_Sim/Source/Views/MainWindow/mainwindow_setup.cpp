@@ -212,6 +212,8 @@ void MainWindow::setupConnections()
                 this, &MainWindow::onBatchNewMeterRequested);
         connect(deviceTree, &DeviceTreeWidget::deleteMeterRequested,
                 this, &MainWindow::onDeleteMeterRequested);
+        connect(deviceTree, &DeviceTreeWidget::eventRecordSettingsRequested,
+                this, &MainWindow::onEventRecordSettingsRequested);
     }
 }
 
@@ -250,6 +252,13 @@ void MainWindow::setupMenuBar()
     m_lightThemeAction->setCheckable(true);
     m_lightThemeAction->setChecked(false);
     connect(m_lightThemeAction, &QAction::triggered, this, &MainWindow::onToggleLightTheme);
+
+    // 工具菜单
+    QMenu *toolsMenu = menuBar->addMenu(QStringLiteral("工具(&T)"));
+
+    QAction *eventRecordAction = toolsMenu->addAction(QStringLiteral("事件记录设置..."));
+    eventRecordAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+E")));
+    connect(eventRecordAction, &QAction::triggered, this, &MainWindow::onEventRecordDialog);
 
     // 帮助菜单
     QMenu *helpMenu = menuBar->addMenu(QStringLiteral("帮助(&H)"));

@@ -70,7 +70,6 @@ private:
     QLabel *m_passwordHintLabel;
     QComboBox *m_phaseTypeComboBox;
     QCheckBox *m_includePrefixFECheckBox;
-    QCheckBox *m_eventRecordPresentCheckBox;
     QLabel *m_previewLabel;
     QPushButton *m_okButton;
     QPushButton *m_cancelButton;

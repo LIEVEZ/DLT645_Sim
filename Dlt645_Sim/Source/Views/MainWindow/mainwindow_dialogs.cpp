@@ -4,10 +4,12 @@
 #include "ViewModels/MainWindowViewModel.h"
 
 #include "Views/Dialogs/CommunicationDialog.h"
+#include "Views/Dialogs/EventRecordDialog.h"
 #include "Views/Dialogs/FrameParseDialog.h"
 #include "Views/Dialogs/MasterQueryDialog.h"
 #include "Views/Dialogs/QueryFrameDialog.h"
 
+#include <QMessageBox>
 #include <QString>
 #include <QStringList>
 void MainWindow::updateCommunicationDialogState()
@@ -247,4 +249,16 @@ void MainWindow::onFrameParseDialog()
     }
 
     m_frameParseDialog->show();
+}
+
+void MainWindow::onEventRecordDialog()
+{
+    if (!m_currentMeterModel)
+    {
+        QMessageBox::warning(this, "提示", "请先选择一个电表");
+        return;
+    }
+
+    EventRecordDialog dialog(m_currentMeterModel, this);
+    dialog.exec();
 }

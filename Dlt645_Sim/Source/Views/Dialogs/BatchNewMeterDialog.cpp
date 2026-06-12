@@ -27,7 +27,6 @@ BatchNewMeterDialog::BatchNewMeterDialog(QWidget *parent)
       m_passwordHintLabel(new QLabel(this)),
       m_phaseTypeComboBox(new QComboBox(this)),
       m_includePrefixFECheckBox(new QCheckBox(QStringLiteral("包含前导FE"), this)),
-      m_eventRecordPresentCheckBox(new QCheckBox(QStringLiteral("事件记录存在"), this)),
       m_previewLabel(new QLabel(this)),
       m_okButton(new QPushButton(QStringLiteral("确定"), this)),
       m_cancelButton(new QPushButton(QStringLiteral("取消"), this))
@@ -39,7 +38,7 @@ BatchNewMeterDialog::BatchNewMeterDialog(QWidget *parent)
 void BatchNewMeterDialog::setupUI()
 {
     setWindowTitle(QStringLiteral("批量新建电表"));
-    setFixedSize(460, 410);
+    setFixedSize(460, 380);
 
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->setSpacing(12);
@@ -87,7 +86,6 @@ void BatchNewMeterDialog::setupUI()
     formLayout->addRow(QStringLiteral("电表类型:"), m_phaseTypeComboBox);
 
     formLayout->addRow(QString(), m_includePrefixFECheckBox);
-    formLayout->addRow(QString(), m_eventRecordPresentCheckBox);
     mainLayout->addLayout(formLayout);
 
     m_previewLabel->setWordWrap(true);
@@ -129,7 +127,6 @@ void BatchNewMeterDialog::setBatchMeterConfig(const BatchMeterConfig &config)
     m_operatorCodeEdit->setText(config.operatorCode);
     m_passwordEdit->setText(config.password);
     m_includePrefixFECheckBox->setChecked(config.includePrefixFE);
-    m_eventRecordPresentCheckBox->setChecked(config.eventRecordPresent);
     const int phaseTypeIndex = m_phaseTypeComboBox->findData(static_cast<int>(config.phaseType));
     m_phaseTypeComboBox->setCurrentIndex(phaseTypeIndex >= 0 ? phaseTypeIndex : 0);
 
@@ -150,7 +147,7 @@ void BatchNewMeterDialog::onOkClicked()
     m_config.operatorCode = m_operatorCodeEdit->text();
     m_config.password = m_passwordEdit->text();
     m_config.includePrefixFE = m_includePrefixFECheckBox->isChecked();
-    m_config.eventRecordPresent = m_eventRecordPresentCheckBox->isChecked();
+    m_config.eventRecordPresent = true;  // 默认为true
     m_config.phaseType = static_cast<MeterPhaseType>(m_phaseTypeComboBox->currentData().toInt());
 
     accept();

@@ -253,6 +253,13 @@ signals:
     void deleteMeterRequested(const QString &connectionAlias, const QString &meterAlias);
 
     /**
+     * @brief 事件记录设置信号
+     * @param connectionAlias 连接别名
+     * @param meterAlias 电表别名
+     */
+    void eventRecordSettingsRequested(const QString &connectionAlias, const QString &meterAlias);
+
+    /**
      * @brief 读取数据项信号
      * @param diCode 数据标识
      */

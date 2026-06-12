@@ -85,8 +85,6 @@ private:
 
     // 包含前导FE
     QCheckBox *m_includePrefixFECheckBox;
-    // 事件记录是否存在
-    QCheckBox *m_eventRecordPresentCheckBox;
     QComboBox *m_phaseTypeComboBox;
 
     // 按钮

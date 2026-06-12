@@ -25,6 +25,7 @@ class ConnectionManager;
 class DataGenerator;
 class DataTableWidget;
 class DeviceTreeWidget;
+class EventRecordDialog;
 class FrameParseDialog;
 class QLabel;
 class MainWindowViewModel;
@@ -67,6 +68,7 @@ private slots:
     void onQueryFrameGenerator();
     void onQueryFrameDialogClosed();
     void onFrameParseDialog();
+    void onEventRecordDialog();
     void onLoggerLogEntryAdded(LogLevel level, const QDateTime &timestamp, const QString &message);
     void onImportConfiguration();
     void onExportConfiguration();
@@ -84,6 +86,7 @@ private slots:
     void onBatchNewMeterDialog();
     void onBatchNewMeterRequested(const QString &connectionAlias);
     void onDeleteMeterRequested(const QString &connectionAlias, const QString &meterAlias);
+    void onEventRecordSettingsRequested(const QString &connectionAlias, const QString &meterAlias);
     void onToggleDarkTheme(bool enabled);
     void onToggleLightTheme(bool enabled);
 

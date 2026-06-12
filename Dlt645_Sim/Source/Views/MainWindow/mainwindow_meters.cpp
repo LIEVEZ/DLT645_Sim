@@ -8,6 +8,7 @@
 #include "Views/DeviceTree/DeviceTreeWidget.h"
 #include "Views/Dialogs/CommunicationDialog.h"
 #include "Views/Dialogs/BatchNewMeterDialog.h"
+#include "Views/Dialogs/EventRecordDialog.h"
 #include "Views/Dialogs/NewMeterDialog.h"
 #include "Views/OperationLog/OperationLogWidget.h"
 
@@ -572,4 +573,39 @@ void MainWindow::onNewMeterRequested(const QString &connectionAlias)
 
         QMessageBox::information(this, QStringLiteral("成功"), QStringLiteral("电表已添加"));
     }
+}
+
+void MainWindow::onEventRecordSettingsRequested(const QString &connectionAlias, const QString &meterAlias)
+{
+    MeterInfo meterInfo = findMeterInfo(connectionAlias, meterAlias);
+    if (meterInfo.address.isEmpty())
+    {
+        QMessageBox::warning(this, "错误", "未找到电表信息");
+        return;
+    }
+
+    MeterModel *meterModel = m_meterModelsByAddress.value(meterInfo.address, nullptr);
+    if (!meterModel)
+    {
+        meterModel = createMeterModel(meterInfo);
+    }
+
+    if (!meterModel)
+    {
+        QMessageBox::warning(this, "错误", "无法创建电表模型");
+        return;
+    }
+
+    EventRecordDialog dialog(meterModel, this);
+
+    if (m_viewModel->isDarkTheme())
+    {
+        dialog.applyDarkTheme();
+    }
+    else
+    {
+        dialog.applyLightTheme();
+    }
+
+    dialog.exec();
 }
