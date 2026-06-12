@@ -1,7 +1,13 @@
-﻿#include "DataTableWidget.h"
+#include "DataTableWidget.h"
 #include "Utils/Logger.h"
 #include "../../Models/MeterModel.h"
 #include "../../Models/DataItem.h"
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QPushButton>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QVBoxLayout>
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QTextStream>
@@ -20,6 +26,8 @@
 #include <QDateTime>
 #include <QSignalBlocker>
 #include <QRegularExpression>
+#include <QSet>
+#include <QTimer>
 
 namespace
 {

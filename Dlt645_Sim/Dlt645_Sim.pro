@@ -21,12 +21,23 @@ win32-g++ {
 SOURCES += \
     Source/main.cpp \
     Source/Views/MainWindow/mainwindow.cpp \
+    Source/Views/MainWindow/mainwindow_theme.cpp \
+    Source/Views/MainWindow/mainwindow_setup.cpp \
+    Source/Views/MainWindow/mainwindow_dialogs.cpp \
+    Source/Views/MainWindow/mainwindow_configuration.cpp \
+    Source/Views/MainWindow/mainwindow_connections.cpp \
+    Source/Views/MainWindow/mainwindow_meters.cpp \
+    Source/Views/MainWindow/mainwindow_protocol.cpp \
+    Source/Views/MainWindow/mainwindow_status.cpp \
+    Source/Views/MainWindow/mainwindow_helpers.cpp \
     Source/Utils/BCDHelper.cpp \
     Source/Utils/DLT645FrameFormatter.cpp \
     Source/Utils/DLT645DataHelper.cpp \
     Source/Utils/ChecksumHelper.cpp \
     Source/Utils/Logger.cpp \
     Source/Models/DataItem.cpp \
+    Source/Models/ConnectionInfoMapper.cpp \
+    Source/Models/CategoryCatalog.cpp \
     Source/Models/MeterModelAccess.cpp \
     Source/Models/MeterModel.cpp \
     Source/Models/MeterModelInitialization.cpp \
@@ -72,8 +83,13 @@ HEADERS += \
     Source/Utils/DLT645DataHelper.h \
     Source/Utils/ChecksumHelper.h \
     Source/Utils/Logger.h \
+    Source/Utils/LoggerTypes.h \
     Source/Models/ConnectionConfig.h \
+    Source/Models/ConnectionInfo.h \
+    Source/Models/ConnectionInfoMapper.h \
+    Source/Models/CategoryCatalog.h \
     Source/Models/DataItem.h \
+    Source/Models/MeterInfo.h \
     Source/Models/MeterModel.h \
     Source/Models/MeterModelInitializationEventPrivate.h \
     Source/Models/MeterModelPrivate.h \

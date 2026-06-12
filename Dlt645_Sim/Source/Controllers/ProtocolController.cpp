@@ -430,7 +430,13 @@ void ProtocolController::onResponseTimerTimeout()
 
         if ((requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::ReadData))
         {
-            if (meterModel->isDataItemSupported(diCode))
+            if (diCode.startsWith(QStringLiteral("0x03")) && !meterModel->getEventRecordPresent())
+            {
+                ProtocolFrame response = m_protocolParser->buildErrorResponse(requestFrame, 0x02);
+                sendResponse(response, meterModel);
+                emit protocolError(0x02, QStringLiteral("当前电表事件记录不存在: %1").arg(diCode));
+            }
+            else if (meterModel->isDataItemSupported(diCode))
             {
                 QVariant value = meterModel->getDataValue(diCode);
                 ProtocolFrame response = m_protocolParser->buildReadResponse(requestFrame, value, diCode);

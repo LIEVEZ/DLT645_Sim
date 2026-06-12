@@ -27,6 +27,7 @@ QJsonObject meterToJson(const MeterConfigSnapshot &meter)
     meterObject.insert(QStringLiteral("password"), meter.password);
     meterObject.insert(QStringLiteral("includeLeadingFE"), meter.includeLeadingFE);
     meterObject.insert(QStringLiteral("phaseType"), static_cast<int>(meter.phaseType));
+    meterObject.insert(QStringLiteral("eventRecordPresent"), meter.eventRecordPresent);
     return meterObject;
 }
 
@@ -183,6 +184,7 @@ bool ConfigurationSerializer::readFromFile(const QString &fileName,
             meter.operatorCode = meterObject.value(QStringLiteral("operatorCode")).toString();
             meter.password = meterObject.value(QStringLiteral("password")).toString();
             meter.includeLeadingFE = meterObject.value(QStringLiteral("includeLeadingFE")).toBool();
+            meter.eventRecordPresent = meterObject.value(QStringLiteral("eventRecordPresent")).toBool(true);
             meter.phaseType = static_cast<MeterPhaseType>(
                 meterObject.value(QStringLiteral("phaseType")).toInt(static_cast<int>(MeterPhaseType::ThreePhase)));
 

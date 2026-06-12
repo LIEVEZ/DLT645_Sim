@@ -87,6 +87,18 @@ public:
     bool isSinglePhase() const;
 
     /**
+     * @brief 设置事件记录是否存在
+     * @param present 为 false 时，读取事件类数据项（0x03 族）返回异常应答（无请求数据）
+     */
+    void setEventRecordPresent(bool present);
+
+    /**
+     * @brief 获取事件记录是否存在
+     * @return 事件记录是否存在
+     */
+    bool getEventRecordPresent() const;
+
+    /**
      * @brief 获取数据项
      * @param diCode 数据标识
      * @return 数据项
@@ -240,6 +252,7 @@ private:
     QString m_operatorCode;
     QString m_password;
     bool m_includePrefixFE;
+    bool m_eventRecordPresent;
     MeterPhaseType m_meterPhaseType;
     QMap<QString, DataItem> m_dataItems;
 };

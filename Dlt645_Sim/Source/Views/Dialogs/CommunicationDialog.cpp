@@ -5,12 +5,28 @@
 #include "Utils/DLT645FrameFormatter.h"
 #include "Utils/DLT645DataHelper.h"
 #include "Views/Common/FrameParseResultWidget.h"
-#include <QHeaderView>
-#include <QFileDialog>
-#include <QMessageBox>
-#include <QSplitter>
-#include <QDateTime>
+
+#include <QAbstractItemView>
+#include <QCheckBox>
 #include <QCloseEvent>
+#include <QColor>
+#include <QComboBox>
+#include <QDateTime>
+#include <QFile>
+#include <QFileDialog>
+#include <QFont>
+#include <QGroupBox>
+#include <QHBoxLayout>
+#include <QHeaderView>
+#include <QIODevice>
+#include <QLabel>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QPushButton>
+#include <QSplitter>
+#include <QTableWidget>
+#include <QTableWidgetItem>
+#include <QVBoxLayout>
 
 namespace
 {

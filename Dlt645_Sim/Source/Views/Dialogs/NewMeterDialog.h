@@ -23,10 +23,11 @@ struct MeterConfig
     QString operatorCode;  // 操作者代码（8位数字）
     QString password;      // 电能表密码（8位数字）
     bool includePrefixFE;  // 是否包含前导FE
+    bool eventRecordPresent; // 事件记录是否存在
     MeterPhaseType phaseType;
 
     MeterConfig()
-        : alias("电表别名"), address("202101190552"), operatorCode("00000000"), password("00000002"), includePrefixFE(true), phaseType(MeterPhaseType::ThreePhase)
+        : alias("电表别名"), address("202101190552"), operatorCode("00000000"), password("00000002"), includePrefixFE(true), eventRecordPresent(true), phaseType(MeterPhaseType::ThreePhase)
     {
     }
 };
@@ -84,6 +85,8 @@ private:
 
     // 包含前导FE
     QCheckBox *m_includePrefixFECheckBox;
+    // 事件记录是否存在
+    QCheckBox *m_eventRecordPresentCheckBox;
     QComboBox *m_phaseTypeComboBox;
 
     // 按钮

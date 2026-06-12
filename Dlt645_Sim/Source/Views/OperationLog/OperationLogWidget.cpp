@@ -1,9 +1,19 @@
 #include "OperationLogWidget.h"
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QLabel>
+
+#include <QAbstractItemView>
+#include <QCheckBox>
+#include <QColor>
+#include <QFile>
 #include <QFileDialog>
+#include <QHBoxLayout>
+#include <QIODevice>
+#include <QLineEdit>
+#include <QListWidget>
+#include <QListWidgetItem>
+#include <QPushButton>
 #include <QTextStream>
+#include <QVariant>
+#include <QVBoxLayout>
 
 OperationLogWidget::OperationLogWidget(QWidget *parent)
     : QWidget(parent), m_logListWidget(new QListWidget(this)), m_filterEdit(new QLineEdit(this)), m_autoScrollCheckBox(new QCheckBox("自动滚动", this)), m_clearButton(new QPushButton("清空", this)), m_exportButton(new QPushButton("导出", this)), m_maxLogLines(10000), m_autoScrollEnabled(true)

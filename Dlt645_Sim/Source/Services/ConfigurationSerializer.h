@@ -13,6 +13,7 @@ struct MeterConfigSnapshot
     QString operatorCode;
     QString password;
     bool includeLeadingFE = false;
+    bool eventRecordPresent = true;
     MeterPhaseType phaseType = MeterPhaseType::ThreePhase;
 };
 

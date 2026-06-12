@@ -1,19 +1,22 @@
 #ifndef DEVICETREEWIDGET_H
 #define DEVICETREEWIDGET_H
 
-#include <QWidget>
 #include <QList>
+#include <QPoint>
+#include <QString>
 #include <QStringList>
-#include <QTreeWidget>
-#include <QTreeWidgetItem>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QStackedLayout>
-#include <QLabel>
-#include <QLineEdit>
-#include <QPushButton>
-#include <QMenu>
-#include "Models/MeterPhaseType.h"
+#include <QWidget>
+
+#include "Models/ConnectionInfo.h"
+#include "Models/MeterInfo.h"
+
+class QLabel;
+class QLineEdit;
+class QMenu;
+class QPushButton;
+class QStackedLayout;
+class QTreeWidget;
+class QTreeWidgetItem;
 
 /**
  * @brief 设备树节点类型枚举
@@ -26,40 +29,6 @@ enum class ItemType
     Data        // 数据项节点 (Level 4)
 };
 
-/**
- * @brief 连接信息结构体
- */
-struct ConnectionInfo
-{
-    QString alias;    // 连接别名
-    QString type;     // 连接类型 (串口/TCP)
-    QString port;     // 串口号或IP:端口
-    bool isConnected; // 连接状态
-
-    // 串口配置
-    int baudRate;
-    int dataBits;
-    int stopBits;
-    int parity;
-    int flowControl;
-
-    // TCP配置
-    QString tcpAddress;
-    int tcpPort;
-};
-
-/**
- * @brief 电表信息结构体
- */
-struct MeterInfo
-{
-    QString alias;         // 电表别名
-    QString address;       // 通讯地址
-    QString operatorCode;  // 操作者代码
-    QString password;      // 电能表密码
-    bool includeLeadingFE; // 是否包含前导FE
-    MeterPhaseType phaseType = MeterPhaseType::ThreePhase;
-};
 
 /**
  * @brief 设备树组件

@@ -1,29 +1,12 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <QAction>
-#include <QMap>
-#include <QLabel>
 #include <QMainWindow>
+#include <QMap>
+#include <QString>
 #include <QStringList>
-#include <QSplitter>
-#include <QStackedWidget>
-#include <QTimer>
-#include <QWidget>
-#include "Controllers/ConnectionManager.h"
-#include "Controllers/ProtocolController.h"
-#include "Controllers/SerialController.h"
-#include "Controllers/TcpController.h"
-#include "Services/DataGenerator.h"
-#include "Utils/Logger.h"
-#include "ViewModels/MainWindowViewModel.h"
-#include "Views/DataTable/DataTableWidget.h"
-#include "Views/DeviceTree/DeviceTreeWidget.h"
-#include "Views/Dialogs/CommunicationDialog.h"
-#include "Views/Dialogs/MasterQueryDialog.h"
-#include "Views/Dialogs/NewConnectionDialog.h"
-#include "Views/Dialogs/QueryFrameDialog.h"
-#include "Views/OperationLog/OperationLogWidget.h"
+
+#include "Utils/LoggerTypes.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui
@@ -32,10 +15,30 @@ namespace Ui
 }
 QT_END_NAMESPACE
 
-struct ProtocolFrame;
+struct ConnectionConfig;
 struct ConnectionInfo;
 struct MeterInfo;
+struct ProtocolFrame;
+class QAction;
+class CommunicationDialog;
+class ConnectionManager;
+class DataGenerator;
+class DataTableWidget;
+class DeviceTreeWidget;
 class FrameParseDialog;
+class QLabel;
+class MainWindowViewModel;
+class MasterQueryDialog;
+class MeterDataStore;
+class MeterModel;
+class OperationLogWidget;
+class ProtocolController;
+class QSplitter;
+class QStackedWidget;
+class QTimer;
+class QueryFrameDialog;
+class SerialController;
+class TcpController;
 
 class MainWindow : public QMainWindow
 {
@@ -107,10 +110,7 @@ private:
     void clearMeterModels(const QStringList &addresses);
     MeterModel *createMeterModel(const MeterInfo &meterInfo);
     bool openConnectionInternal(const QString &connectionAlias, const ConnectionConfig &config, bool addConnectionNode);
-    void closeConnectionInternal(const QString &connectionAlias);
-    ConnectionInfo buildConnectionInfo(const ConnectionConfig &config, bool connected) const;
-    QString connectionEndpoint(const ConnectionConfig &config) const;
-    void applyCurrentMeter(const MeterInfo &meterInfo);
+    void closeConnectionInternal(const QString &connectionAlias);    void applyCurrentMeter(const MeterInfo &meterInfo);
     void clearCurrentMeter();
     void refreshMeterPresence();
     void updateRealTimeDataDisplay(bool advancePhase = false);
@@ -154,7 +154,7 @@ private:
     MasterQueryDialog *m_masterQueryDialog;
     QueryFrameDialog *m_queryFrameDialog;
     FrameParseDialog *m_frameParseDialog;
-    class MeterDataStore *m_meterDataStore;
+    MeterDataStore *m_meterDataStore;
     QMap<QString, MeterModel *> m_meterModelsByAddress;
     MeterModel *m_currentMeterModel;
 };

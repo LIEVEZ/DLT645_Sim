@@ -1,19 +1,19 @@
 #ifndef DATATABLEWIDGET_H
 #define DATATABLEWIDGET_H
 
-#include <QWidget>
-#include <QTableWidget>
-#include <QTableWidgetItem>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QLabel>
-#include <QLineEdit>
-#include <QPushButton>
-#include <QComboBox>
-#include <QSet>
-#include <QTimer>
+#include <QList>
+#include <QPoint>
+#include <QString>
 #include <QStyledItemDelegate>
-#include "../../Models/MeterModel.h"
+#include <QVariant>
+#include <QWidget>
+
+class QLabel;
+class QLineEdit;
+class QPushButton;
+class QTableWidget;
+class QTableWidgetItem;
+class MeterModel;
 
 /**
  * @brief 数值编辑代理

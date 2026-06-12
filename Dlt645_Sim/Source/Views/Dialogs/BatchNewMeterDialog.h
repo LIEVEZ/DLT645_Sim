@@ -1,14 +1,17 @@
 #ifndef BATCHNEWMETERDIALOG_H
 #define BATCHNEWMETERDIALOG_H
 
-#include <QCheckBox>
-#include <QComboBox>
 #include <QDialog>
-#include <QLabel>
-#include <QLineEdit>
-#include <QPushButton>
-#include <QSpinBox>
+#include <QString>
+
 #include "Models/MeterPhaseType.h"
+
+class QCheckBox;
+class QComboBox;
+class QLabel;
+class QLineEdit;
+class QPushButton;
+class QSpinBox;
 
 struct BatchMeterConfig
 {
@@ -19,6 +22,7 @@ struct BatchMeterConfig
     QString operatorCode;
     QString password;
     bool includePrefixFE;
+    bool eventRecordPresent;
     MeterPhaseType phaseType;
 
     BatchMeterConfig()
@@ -29,6 +33,7 @@ struct BatchMeterConfig
           operatorCode(QStringLiteral("00000000")),
           password(QStringLiteral("00000002")),
           includePrefixFE(true),
+          eventRecordPresent(true),
           phaseType(MeterPhaseType::ThreePhase)
     {
     }
@@ -65,6 +70,7 @@ private:
     QLabel *m_passwordHintLabel;
     QComboBox *m_phaseTypeComboBox;
     QCheckBox *m_includePrefixFECheckBox;
+    QCheckBox *m_eventRecordPresentCheckBox;
     QLabel *m_previewLabel;
     QPushButton *m_okButton;
     QPushButton *m_cancelButton;

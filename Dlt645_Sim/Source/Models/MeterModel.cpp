@@ -3,7 +3,7 @@
 using namespace MeterModelPrivate;
 
 MeterModel::MeterModel(QObject *parent)
-    : QObject(parent), m_meterAddress("202101190552"), m_operatorCode("00000000"), m_password("00000000"), m_includePrefixFE(true), m_meterPhaseType(MeterPhaseType::ThreePhase)
+    : QObject(parent), m_meterAddress("202101190552"), m_operatorCode("00000000"), m_password("00000000"), m_includePrefixFE(true), m_meterPhaseType(MeterPhaseType::ThreePhase), m_eventRecordPresent(true)
 {
     initializeDefaultDataItems();
 }
@@ -50,6 +50,12 @@ void MeterModel::setIncludePrefixFE(bool include)
 {
     QMutexLocker locker(&m_mutex);
     m_includePrefixFE = include;
+}
+
+void MeterModel::setEventRecordPresent(bool present)
+{
+    QMutexLocker locker(&m_mutex);
+    m_eventRecordPresent = present;
 }
 
 void MeterModel::setMeterPhaseType(MeterPhaseType meterPhaseType)

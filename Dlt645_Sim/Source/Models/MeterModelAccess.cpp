@@ -29,6 +29,12 @@ bool MeterModel::getIncludePrefixFE() const
     return m_includePrefixFE;
 }
 
+bool MeterModel::getEventRecordPresent() const
+{
+    QMutexLocker locker(&m_mutex);
+    return m_eventRecordPresent;
+}
+
 
 MeterPhaseType MeterModel::getMeterPhaseType() const
 {

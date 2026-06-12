@@ -43,6 +43,12 @@ public:
     void setHasMeter(bool hasMeter);
     void setCurrentConnectionAlias(const QString &alias);
     void setCurrentMeterAddress(const QString &address);
+    void selectMeter(const QString &address);
+    void clearMeter();
+    bool setKnownMeterPresence(bool hasMeter);
+    void selectConnection(const QString &alias);
+    void markConnectionOpening(const QString &alias, bool connected);
+    void markConnectionClosed(const QString &alias);
 
 signals:
     void stateChanged();

@@ -6,7 +6,7 @@
 #include <QStyle>
 
 NewMeterDialog::NewMeterDialog(QWidget *parent)
-    : QDialog(parent), m_aliasEdit(new QLineEdit(this)), m_addressEdit(new QLineEdit(this)), m_addressHintLabel(new QLabel("(0/12位)", this)), m_operatorCodeEdit(new QLineEdit(this)), m_operatorCodeHintLabel(new QLabel("(0/8位)", this)), m_passwordEdit(new QLineEdit(this)), m_passwordHintLabel(new QLabel("(0/8位)", this)), m_includePrefixFECheckBox(new QCheckBox("包含前导FE", this)), m_phaseTypeComboBox(new QComboBox(this)), m_okButton(new QPushButton("确定", this)), m_cancelButton(new QPushButton("取消", this))
+    : QDialog(parent), m_aliasEdit(new QLineEdit(this)), m_addressEdit(new QLineEdit(this)), m_addressHintLabel(new QLabel("(0/12位)", this)), m_operatorCodeEdit(new QLineEdit(this)), m_operatorCodeHintLabel(new QLabel("(0/8位)", this)), m_passwordEdit(new QLineEdit(this)), m_passwordHintLabel(new QLabel("(0/8位)", this)), m_includePrefixFECheckBox(new QCheckBox("包含前导FE", this)), m_eventRecordPresentCheckBox(new QCheckBox("事件记录存在", this)), m_phaseTypeComboBox(new QComboBox(this)), m_okButton(new QPushButton("确定", this)), m_cancelButton(new QPushButton("取消", this))
 {
     setupUI();
 }
@@ -19,8 +19,8 @@ void NewMeterDialog::setupUI()
 {
     setWindowTitle("新建电表");
     setMinimumWidth(400);
-    setMinimumHeight(300);
-    setFixedSize(400, 300);
+    setMinimumHeight(340);
+    setFixedSize(400, 340);
 
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->setSpacing(15);
@@ -80,6 +80,10 @@ void NewMeterDialog::setupUI()
     m_includePrefixFECheckBox->setChecked(true);
     mainLayout->addWidget(m_includePrefixFECheckBox);
 
+    // 事件记录存在
+    m_eventRecordPresentCheckBox->setChecked(true);
+    mainLayout->addWidget(m_eventRecordPresentCheckBox);
+
     // 按钮栏
     QHBoxLayout *buttonLayout = new QHBoxLayout();
     buttonLayout->addStretch();
@@ -114,6 +118,7 @@ void NewMeterDialog::setMeterConfig(const MeterConfig &config)
     m_operatorCodeEdit->setText(config.operatorCode);
     m_passwordEdit->setText(config.password);
     m_includePrefixFECheckBox->setChecked(config.includePrefixFE);
+    m_eventRecordPresentCheckBox->setChecked(config.eventRecordPresent);
     const int phaseTypeIndex = m_phaseTypeComboBox->findData(static_cast<int>(config.phaseType));
     m_phaseTypeComboBox->setCurrentIndex(phaseTypeIndex >= 0 ? phaseTypeIndex : 0);
 }
@@ -132,6 +137,7 @@ void NewMeterDialog::onOkClicked()
     m_config.operatorCode = m_operatorCodeEdit->text();
     m_config.password = m_passwordEdit->text();
     m_config.includePrefixFE = m_includePrefixFECheckBox->isChecked();
+    m_config.eventRecordPresent = m_eventRecordPresentCheckBox->isChecked();
     m_config.phaseType = static_cast<MeterPhaseType>(m_phaseTypeComboBox->currentData().toInt());
 
     accept();

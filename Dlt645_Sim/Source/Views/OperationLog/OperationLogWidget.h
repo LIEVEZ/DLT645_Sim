@@ -1,13 +1,15 @@
 #ifndef OPERATIONLOGWIDGET_H
 #define OPERATIONLOGWIDGET_H
 
-#include <QWidget>
-#include <QListWidget>
-#include <QCheckBox>
-#include <QLineEdit>
-#include <QPushButton>
 #include <QDateTime>
 #include <QMetaType>
+#include <QString>
+#include <QWidget>
+
+class QCheckBox;
+class QLineEdit;
+class QListWidget;
+class QPushButton;
 
 /**
  * @brief 操作日志级别枚举

@@ -7,18 +7,7 @@
 #include <QTextStream>
 #include <QMutex>
 #include <QDateTime>
-
-/**
- * @brief 日志级别枚举
- */
-enum class LogLevel
-{
-    Debug,
-    Info,
-    Warning,
-    Error,
-    Critical
-};
+#include "LoggerTypes.h"
 
 /**
  * @brief 日志工具类

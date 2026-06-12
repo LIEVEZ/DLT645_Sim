@@ -1,7 +1,12 @@
 #include "MainWindowViewModel.h"
 
+namespace
+{
+const QString kDefaultMeterAddress = QStringLiteral("000000000000");
+}
+
 MainWindowViewModel::MainWindowViewModel(QObject *parent)
-    : QObject(parent), m_connected(false), m_connecting(false), m_connectionSelected(false), m_darkTheme(true), m_hasMeter(false), m_currentMeterAddress("000000000000")
+    : QObject(parent), m_connected(false), m_connecting(false), m_connectionSelected(false), m_darkTheme(true), m_hasMeter(false), m_currentMeterAddress(kDefaultMeterAddress)
 {
 }
 
@@ -194,12 +199,90 @@ void MainWindowViewModel::setCurrentConnectionAlias(const QString &alias)
 
 void MainWindowViewModel::setCurrentMeterAddress(const QString &address)
 {
-    const QString nextAddress = address.isEmpty() ? QStringLiteral("000000000000") : address;
+    selectMeter(address);
+}
+
+void MainWindowViewModel::selectMeter(const QString &address)
+{
+    const QString nextAddress = address.isEmpty() ? kDefaultMeterAddress : address;
     if (m_currentMeterAddress == nextAddress)
     {
         return;
     }
 
     m_currentMeterAddress = nextAddress;
+    emit stateChanged();
+}
+
+void MainWindowViewModel::clearMeter()
+{
+    if (m_currentMeterAddress == kDefaultMeterAddress)
+    {
+        return;
+    }
+
+    m_currentMeterAddress = kDefaultMeterAddress;
+    emit stateChanged();
+}
+
+bool MainWindowViewModel::setKnownMeterPresence(bool hasMeter)
+{
+    if (m_hasMeter == hasMeter)
+    {
+        return false;
+    }
+
+    m_hasMeter = hasMeter;
+    emit hasMeterChanged(m_hasMeter);
+    emit stateChanged();
+    return true;
+}
+void MainWindowViewModel::selectConnection(const QString &alias)
+{
+    const bool selected = !alias.isEmpty();
+    if (m_currentConnectionAlias == alias && m_connectionSelected == selected)
+    {
+        return;
+    }
+
+    m_currentConnectionAlias = alias;
+    m_connectionSelected = selected;
+    emit stateChanged();
+}
+
+void MainWindowViewModel::markConnectionOpening(const QString &alias, bool connected)
+{
+    const bool selected = !alias.isEmpty();
+    const bool connecting = !connected;
+    if (m_currentConnectionAlias == alias &&
+        m_connectionSelected == selected &&
+        m_connected == connected &&
+        m_connecting == connecting)
+    {
+        return;
+    }
+
+    m_currentConnectionAlias = alias;
+    m_connectionSelected = selected;
+    m_connected = connected;
+    m_connecting = connecting;
+    emit stateChanged();
+}
+
+void MainWindowViewModel::markConnectionClosed(const QString &alias)
+{
+    const bool selected = !alias.isEmpty();
+    if (m_currentConnectionAlias == alias &&
+        m_connectionSelected == selected &&
+        !m_connected &&
+        !m_connecting)
+    {
+        return;
+    }
+
+    m_currentConnectionAlias = alias;
+    m_connectionSelected = selected;
+    m_connected = false;
+    m_connecting = false;
     emit stateChanged();
 }

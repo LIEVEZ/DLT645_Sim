@@ -1,23 +1,22 @@
 #ifndef COMMUNICATIONDIALOG_H
 #define COMMUNICATIONDIALOG_H
 
-#include <QDialog>
-#include <QCloseEvent>
-#include <QTableWidget>
-#include <QLabel>
-#include <QPushButton>
-#include <QCheckBox>
-#include <QLineEdit>
-#include <QComboBox>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QGroupBox>
-#include <QSplitter>
-#include <QTimer>
+#include <QByteArray>
 #include <QDateTime>
+#include <QDialog>
+#include <QList>
+#include <QString>
+#include <QtGlobal>
 
 class MeterModel;
 class FrameParseResultWidget;
+class QCheckBox;
+class QCloseEvent;
+class QComboBox;
+class QLabel;
+class QLineEdit;
+class QPushButton;
+class QTableWidget;
 
 /**
  * @brief 报文方向枚举

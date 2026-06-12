@@ -1,6 +1,14 @@
 #include "DeviceTreeWidget.h"
 #include "Models/MeterModel.h"
 #include "Utils/Logger.h"
+#include <QHBoxLayout>
+#include <QLineEdit>
+#include <QMenu>
+#include <QPushButton>
+#include <QStackedLayout>
+#include <QTreeWidget>
+#include <QTreeWidgetItem>
+#include <QVBoxLayout>
 #include <QHeaderView>
 #include <QAction>
 #include <QLabel>
@@ -48,6 +56,8 @@ namespace
         info.password = item->data(0, Qt::UserRole + 4).toString();
         info.includeLeadingFE = item->data(0, Qt::UserRole + 5).toBool();
         info.phaseType = static_cast<MeterPhaseType>(item->data(0, Qt::UserRole + 6).toInt());
+        const QVariant eventRecordPresentData = item->data(0, Qt::UserRole + 7);
+        info.eventRecordPresent = eventRecordPresentData.isValid() ? eventRecordPresentData.toBool() : true;
         return info;
     }
 }
@@ -703,6 +713,7 @@ QTreeWidgetItem *DeviceTreeWidget::createMeterNode(const MeterInfo &info)
     item->setData(0, Qt::UserRole + 4, info.password);         // 存储密码
     item->setData(0, Qt::UserRole + 5, info.includeLeadingFE); // 存储是否包含前导FE
     item->setData(0, Qt::UserRole + 6, static_cast<int>(info.phaseType));
+    item->setData(0, Qt::UserRole + 7, info.eventRecordPresent); // 存储事件记录是否存在
 
     // 设置电表图标
     item->setText(0, QString("📊 %1 [%2] (%3)")
