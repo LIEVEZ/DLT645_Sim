@@ -76,6 +76,7 @@ SOURCES += \
 
 # 澶存枃浠?
 HEADERS += \
+    Source/Version.h \
     Source/Views/MainWindow/mainwindow.h \
     Source/Utils/BCDHelper.h \
     Source/Utils/DLT645FrameFormatter.h \

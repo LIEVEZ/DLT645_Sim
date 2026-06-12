@@ -24,7 +24,6 @@ ConnectionManager::ConnectionManager(SerialController *serialController,
                 this, &ConnectionManager::handleTransportError);
     }
 }
-
 ConnectionOpenResult ConnectionManager::openConnection(const ConnectionConfig &config)
 {
     ConnectionOpenResult result;

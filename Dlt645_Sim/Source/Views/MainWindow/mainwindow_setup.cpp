@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "Version.h"
 #include "Controllers/ConnectionManager.h"
 #include "Controllers/ProtocolController.h"
 #include "Controllers/SerialController.h"
@@ -265,9 +266,12 @@ void MainWindow::setupMenuBar()
 
     QAction *aboutAction = helpMenu->addAction(QStringLiteral("关于(&A)"));
     connect(aboutAction, &QAction::triggered, [=]()
-            { QMessageBox::about(this, QStringLiteral("关于 DLT645 电表模拟器"),
-                                 QStringLiteral("DLT645-2007 电表模拟器\n\n"
-                                                "版本: 1.0.0\n\n"
+            { QMessageBox::about(this, QStringLiteral("关于 " APP_PRODUCT_NAME),
+                                 QStringLiteral(APP_PRODUCT_NAME "\n\n"
+                                                "软件版本: " APP_VERSION_SW "\n"
+                                                "硬件版本: " APP_VERSION_HW "\n"
+                                                "固件版本: " APP_VERSION_FW "\n"
+                                                "构建日期: " APP_BUILD_DATE "\n\n"
                                                 "基于 Qt5 开发的工业级电表模拟器\n\n"
                                                 "支持串口通信、七类数据项、实时数据模拟")); });
 }
