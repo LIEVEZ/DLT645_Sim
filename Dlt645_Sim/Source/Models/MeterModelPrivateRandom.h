@@ -5,6 +5,114 @@
 
 namespace MeterModelPrivate
 {
+    inline QString randomDigits(QRandomGenerator *rng, int length)
+    {
+        QString value;
+        value.reserve(length);
+        for (int index = 0; index < length; ++index)
+        {
+            value.append(QChar('0' + rng->bounded(0, 10)));
+        }
+        return value;
+    }
+
+    inline QVariant randomizeNumericValueForFormat(const NumericFormatSpec &formatSpec, QRandomGenerator *rng)
+    {
+        const double maxValue = maxRepresentableValue(formatSpec);
+        const double minValue = formatSpec.allowNegative ? -maxValue : 0.0;
+        const double scale = std::pow(10.0, formatSpec.decimalDigits);
+        const int randomSteps = rng->bounded(0, static_cast<int>((maxValue - minValue) * scale) + 1);
+        const double randomValue = minValue + randomSteps / scale;
+        return normalizeValueForFormat(randomValue, formatSpec);
+    }
+
+    inline bool isNumericVariantType(const QVariant &value)
+    {
+        switch (value.type())
+        {
+        case QVariant::Double:
+        case QVariant::Int:
+        case QVariant::UInt:
+        case QVariant::LongLong:
+        case QVariant::ULongLong:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    inline QVariant randomizeEventScalarValue(const QVariant &value, const QString &fieldFormat, QRandomGenerator *rng)
+    {
+        const NumericFormatSpec formatSpec = parseNumericFormatSpec(fieldFormat);
+        if (formatSpec.valid && isNumericVariantType(value))
+        {
+            return randomizeNumericValueForFormat(formatSpec, rng);
+        }
+
+        if (value.type() == QVariant::Double)
+        {
+            return roundToDecimals(rng->bounded(0, 10000) / 100.0, 2);
+        }
+
+        if (value.type() == QVariant::Int || value.type() == QVariant::UInt ||
+            value.type() == QVariant::LongLong || value.type() == QVariant::ULongLong)
+        {
+            return rng->bounded(0, 10000);
+        }
+
+        const QString text = value.toString();
+        if (text.isEmpty())
+        {
+            return value;
+        }
+
+        for (const QChar &ch : text)
+        {
+            if (!ch.isDigit())
+            {
+                return value;
+            }
+        }
+
+        const QDateTime randomTime = QDateTime::currentDateTime().addSecs(-rng->bounded(60, 180 * 24 * 60 * 60));
+        if (text.size() == 12)
+        {
+            return compactDateTimeToSeconds(randomTime);
+        }
+        if (text.size() == 10)
+        {
+            return compactDateTimeToMinutes(randomTime);
+        }
+
+        return randomDigits(rng, text.size());
+    }
+
+    inline bool randomizeEventListItem(DataItem &item, QRandomGenerator *rng)
+    {
+        if (!item.diCode.startsWith(QStringLiteral("0x03")) || item.value.type() != QVariant::List)
+        {
+            return false;
+        }
+
+        const QVariantList originalValues = item.value.toList();
+        if (originalValues.isEmpty())
+        {
+            return false;
+        }
+
+        QVariantList randomizedValues;
+        randomizedValues.reserve(originalValues.size());
+        const QStringList fieldFormats = item.format.split(QStringLiteral(":"), Qt::KeepEmptyParts);
+        for (int valueIndex = 0; valueIndex < originalValues.size(); ++valueIndex)
+        {
+            const QString fieldFormat = valueIndex < fieldFormats.size() ? fieldFormats.at(valueIndex) : QString();
+            randomizedValues.append(randomizeEventScalarValue(originalValues.at(valueIndex), fieldFormat, rng));
+        }
+
+        item.value = randomizedValues;
+        return true;
+    }
+
 inline void randomizeDataItems(QMap<QString, DataItem> &items,
                             const QString &meterAddress,
                             MeterPhaseType meterPhaseType,
@@ -30,7 +138,7 @@ inline void randomizeDataItems(QMap<QString, DataItem> &items,
                 continue;
             }
 
-            if (isDataBlockItem(item))
+            if (isDataBlockItem(item) && !item.diCode.startsWith(QStringLiteral("0x03")))
             {
                 continue;
             }
@@ -171,6 +279,22 @@ inline void randomizeDataItems(QMap<QString, DataItem> &items,
             }
 
             if (item.diCode.startsWith("0x030900") && item.diCode != "0x03090000")
+            {
+                QVariantList values;
+                const QDateTime endTime = QDateTime::currentDateTime().addSecs(-rng->bounded(2 * 60 * 60, 120 * 24 * 60 * 60));
+                const QDateTime startTime = endTime.addSecs(-rng->bounded(10 * 60, 18 * 60 * 60));
+                values.append(compactDateTimeToSeconds(startTime));
+                values.append(compactDateTimeToSeconds(endTime));
+                values.append(roundToDecimals(rng->bounded(50, 1200) / 100.0, 2));
+                for (int index = 0; index < 16; ++index)
+                {
+                    values.append(roundToDecimals(rng->bounded(100, 12000) / 100.0, 2));
+                }
+                item.value = values;
+                continue;
+            }
+
+            if (item.diCode.startsWith("0x030A00") && item.diCode != "0x030A0000")
             {
                 QVariantList values;
                 const QDateTime endTime = QDateTime::currentDateTime().addSecs(-rng->bounded(2 * 60 * 60, 120 * 24 * 60 * 60));
@@ -406,6 +530,11 @@ inline void randomizeDataItems(QMap<QString, DataItem> &items,
                 item.value = QStringLiteral("%1%2")
                                  .arg(duration, 2, 10, QChar('0'))
                                  .arg(unitCode, 2, 10, QChar('0'));
+                continue;
+            }
+
+            if (randomizeEventListItem(item, rng))
+            {
                 continue;
             }
 

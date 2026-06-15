@@ -73,6 +73,7 @@ QString displayMessageDiCode(const QByteArray &fullFrame)
 CommunicationDialog::CommunicationDialog(const QString &connectionName, QWidget *parent)
     : QDialog(parent), m_connectionName(connectionName), m_portName(""), m_baudRate(2400), m_isConnected(false), m_meterModel(nullptr), m_connectionInfoBar(nullptr), m_filterBar(nullptr), m_isPaused(false), m_autoScroll(true), m_displayFormat(DisplayFormat::Hex), m_filterRequest(true), m_filterResponse(true), m_filterError(true), m_filterText("")
 {
+    setWindowFlags(windowFlags() | Qt::WindowMinimizeButtonHint);
     setupUI();
     setWindowTitle(QString("通信交互 - %1").arg(connectionName));
     setMinimumSize(1100, 720);

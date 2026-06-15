@@ -33,86 +33,86 @@
 
 namespace
 {
-QSerialPort::DataBits dataBitsFromText(const QString &text)
-{
-    if (text == QStringLiteral("5"))
+    QSerialPort::DataBits dataBitsFromText(const QString &text)
     {
-        return QSerialPort::Data5;
-    }
-    if (text == QStringLiteral("6"))
-    {
-        return QSerialPort::Data6;
-    }
-    if (text == QStringLiteral("7"))
-    {
-        return QSerialPort::Data7;
-    }
-    return QSerialPort::Data8;
-}
-
-QSerialPort::Parity parityFromText(const QString &text)
-{
-    if (text == QStringLiteral("None"))
-    {
-        return QSerialPort::NoParity;
-    }
-    if (text == QStringLiteral("Odd"))
-    {
-        return QSerialPort::OddParity;
-    }
-    if (text == QStringLiteral("Mark"))
-    {
-        return QSerialPort::MarkParity;
-    }
-    if (text == QStringLiteral("Space"))
-    {
-        return QSerialPort::SpaceParity;
-    }
-    return QSerialPort::EvenParity;
-}
-
-QSerialPort::StopBits stopBitsFromText(const QString &text)
-{
-    if (text == QStringLiteral("1.5"))
-    {
-        return QSerialPort::OneAndHalfStop;
-    }
-    if (text == QStringLiteral("2"))
-    {
-        return QSerialPort::TwoStop;
-    }
-    return QSerialPort::OneStop;
-}
-
-QSerialPort::FlowControl flowControlFromText(const QString &text)
-{
-    if (text == QStringLiteral("Hardware"))
-    {
-        return QSerialPort::HardwareControl;
-    }
-    if (text == QStringLiteral("Software"))
-    {
-        return QSerialPort::SoftwareControl;
-    }
-    return QSerialPort::NoFlowControl;
-}
-
-QString resultSummary(const MasterQueryResult &result)
-{
-    if (!result.errorText.isEmpty())
-    {
-        return result.errorText;
+        if (text == QStringLiteral("5"))
+        {
+            return QSerialPort::Data5;
+        }
+        if (text == QStringLiteral("6"))
+        {
+            return QSerialPort::Data6;
+        }
+        if (text == QStringLiteral("7"))
+        {
+            return QSerialPort::Data7;
+        }
+        return QSerialPort::Data8;
     }
 
-    if (!result.rawResponse.isEmpty())
+    QSerialPort::Parity parityFromText(const QString &text)
     {
-        return DLT645FrameFormatter::formatHex(result.rawResponse);
+        if (text == QStringLiteral("None"))
+        {
+            return QSerialPort::NoParity;
+        }
+        if (text == QStringLiteral("Odd"))
+        {
+            return QSerialPort::OddParity;
+        }
+        if (text == QStringLiteral("Mark"))
+        {
+            return QSerialPort::MarkParity;
+        }
+        if (text == QStringLiteral("Space"))
+        {
+            return QSerialPort::SpaceParity;
+        }
+        return QSerialPort::EvenParity;
     }
 
-    return QString();
-}
+    QSerialPort::StopBits stopBitsFromText(const QString &text)
+    {
+        if (text == QStringLiteral("1.5"))
+        {
+            return QSerialPort::OneAndHalfStop;
+        }
+        if (text == QStringLiteral("2"))
+        {
+            return QSerialPort::TwoStop;
+        }
+        return QSerialPort::OneStop;
+    }
 
-using namespace CategoryCatalog;
+    QSerialPort::FlowControl flowControlFromText(const QString &text)
+    {
+        if (text == QStringLiteral("Hardware"))
+        {
+            return QSerialPort::HardwareControl;
+        }
+        if (text == QStringLiteral("Software"))
+        {
+            return QSerialPort::SoftwareControl;
+        }
+        return QSerialPort::NoFlowControl;
+    }
+
+    QString resultSummary(const MasterQueryResult &result)
+    {
+        if (!result.errorText.isEmpty())
+        {
+            return result.errorText;
+        }
+
+        if (!result.rawResponse.isEmpty())
+        {
+            return DLT645FrameFormatter::formatHex(result.rawResponse);
+        }
+
+        return QString();
+    }
+
+    using namespace CategoryCatalog;
 }
 
 MasterQueryDialog::MasterQueryDialog(QWidget *parent)
@@ -161,7 +161,7 @@ MasterQueryDialog::MasterQueryDialog(QWidget *parent)
                     m_portRefreshPending = false;
                     requestPortRefresh();
                 } });
-
+    setWindowFlags(windowFlags() | Qt::WindowMinimizeButtonHint);
     setupUi();
     populateCategories();
     populateDataItems();
@@ -937,7 +937,8 @@ QGroupBox *MasterQueryDialog::setupQueryGroup()
             QOverload<int>::of(&QComboBox::currentIndexChanged),
             this,
             &MasterQueryDialog::onQueryTypeChanged);
-    connect(m_addressEdit, &QLineEdit::textChanged, this, [this]() { updateQueryUiState(); });
+    connect(m_addressEdit, &QLineEdit::textChanged, this, [this]()
+            { updateQueryUiState(); });
     connect(m_categoryComboBox,
             QOverload<int>::of(&QComboBox::currentIndexChanged),
             this,

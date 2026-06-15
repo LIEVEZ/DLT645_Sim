@@ -22,6 +22,7 @@ FrameParseDialog::FrameParseDialog(QWidget *parent)
       m_statusLabel(nullptr),
       m_clearButton(nullptr)
 {
+    setWindowFlags(windowFlags() | Qt::WindowMinimizeButtonHint);
     setupUI();
     applyDarkTheme();
 

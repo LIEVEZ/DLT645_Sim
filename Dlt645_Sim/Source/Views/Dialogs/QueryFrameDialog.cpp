@@ -288,6 +288,7 @@ QueryFrameDialog::QueryFrameDialog(QWidget *parent)
       m_parseFrameButton(nullptr),
       m_statusLabel(nullptr)
 {
+    setWindowFlags(windowFlags() | Qt::WindowMinimizeButtonHint);
     setupUI();
     populateCategories();
     populateDataItems();
