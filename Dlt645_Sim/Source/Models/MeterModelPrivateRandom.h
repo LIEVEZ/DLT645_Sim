@@ -21,8 +21,23 @@ namespace MeterModelPrivate
         const double maxValue = maxRepresentableValue(formatSpec);
         const double minValue = formatSpec.allowNegative ? -maxValue : 0.0;
         const double scale = std::pow(10.0, formatSpec.decimalDigits);
-        const int randomSteps = rng->bounded(0, static_cast<int>((maxValue - minValue) * scale) + 1);
-        const double randomValue = minValue + randomSteps / scale;
+        const double range = (maxValue - minValue) * scale;
+
+        // 防止整数溢出：如果范围超过 INT_MAX，使用浮点数随机化
+        double randomValue;
+        if (range > static_cast<double>(INT_MAX))
+        {
+            // 大范围：直接使用浮点数随机化
+            const double randomFraction = rng->bounded(0, 10000) / 10000.0;
+            randomValue = minValue + (maxValue - minValue) * randomFraction;
+        }
+        else
+        {
+            // 小范围：使用整数步进保证精度
+            const int randomSteps = rng->bounded(0, static_cast<int>(range) + 1);
+            randomValue = minValue + randomSteps / scale;
+        }
+
         return normalizeValueForFormat(randomValue, formatSpec);
     }
 
@@ -111,6 +126,36 @@ namespace MeterModelPrivate
 
         item.value = randomizedValues;
         return true;
+    }
+
+    /**
+     * @brief 生成事件记录的时间范围和指标数据
+     * @param rng 随机数生成器
+     * @param metricsCount 指标数量（16）
+     * @param includeThirdField 是否包含第三个字段（某些事件类型需要）
+     * @return 包含时间范围和指标的 QVariantList
+     */
+    inline QVariantList buildEventMetricsWithTime(QRandomGenerator *rng, int metricsCount, bool includeThirdField = false)
+    {
+        QVariantList values;
+        const QDateTime endTime = QDateTime::currentDateTime().addSecs(-rng->bounded(2 * 60 * 60, 120 * 24 * 60 * 60));
+        const QDateTime startTime = endTime.addSecs(-rng->bounded(10 * 60, 18 * 60 * 60));
+        values.append(compactDateTimeToSeconds(startTime));
+        values.append(compactDateTimeToSeconds(endTime));
+
+        // 某些事件类型（如 0x030900, 0x030A00）在时间后有一个额外字段
+        if (includeThirdField)
+        {
+            values.append(roundToDecimals(rng->bounded(50, 1200) / 100.0, 2));
+        }
+
+        // 添加指标数据
+        for (int index = 0; index < metricsCount; ++index)
+        {
+            values.append(roundToDecimals(rng->bounded(100, 12000) / 100.0, 2));
+        }
+
+        return values;
     }
 
 inline void randomizeDataItems(QMap<QString, DataItem> &items,
@@ -265,48 +310,19 @@ inline void randomizeDataItems(QMap<QString, DataItem> &items,
             if ((item.diCode.startsWith("0x030700") && item.diCode != "0x03070000") ||
                 (item.diCode.startsWith("0x030800") && item.diCode != "0x03080000"))
             {
-                QVariantList values;
-                const QDateTime endTime = QDateTime::currentDateTime().addSecs(-rng->bounded(2 * 60 * 60, 120 * 24 * 60 * 60));
-                const QDateTime startTime = endTime.addSecs(-rng->bounded(10 * 60, 18 * 60 * 60));
-                values.append(compactDateTimeToSeconds(startTime));
-                values.append(compactDateTimeToSeconds(endTime));
-                for (int index = 0; index < 16; ++index)
-                {
-                    values.append(roundToDecimals(rng->bounded(100, 12000) / 100.0, 2));
-                }
-                item.value = values;
+                item.value = buildEventMetricsWithTime(rng, 16, false);
                 continue;
             }
 
             if (item.diCode.startsWith("0x030900") && item.diCode != "0x03090000")
             {
-                QVariantList values;
-                const QDateTime endTime = QDateTime::currentDateTime().addSecs(-rng->bounded(2 * 60 * 60, 120 * 24 * 60 * 60));
-                const QDateTime startTime = endTime.addSecs(-rng->bounded(10 * 60, 18 * 60 * 60));
-                values.append(compactDateTimeToSeconds(startTime));
-                values.append(compactDateTimeToSeconds(endTime));
-                values.append(roundToDecimals(rng->bounded(50, 1200) / 100.0, 2));
-                for (int index = 0; index < 16; ++index)
-                {
-                    values.append(roundToDecimals(rng->bounded(100, 12000) / 100.0, 2));
-                }
-                item.value = values;
+                item.value = buildEventMetricsWithTime(rng, 16, true);
                 continue;
             }
 
             if (item.diCode.startsWith("0x030A00") && item.diCode != "0x030A0000")
             {
-                QVariantList values;
-                const QDateTime endTime = QDateTime::currentDateTime().addSecs(-rng->bounded(2 * 60 * 60, 120 * 24 * 60 * 60));
-                const QDateTime startTime = endTime.addSecs(-rng->bounded(10 * 60, 18 * 60 * 60));
-                values.append(compactDateTimeToSeconds(startTime));
-                values.append(compactDateTimeToSeconds(endTime));
-                values.append(roundToDecimals(rng->bounded(50, 1200) / 100.0, 2));
-                for (int index = 0; index < 16; ++index)
-                {
-                    values.append(roundToDecimals(rng->bounded(100, 12000) / 100.0, 2));
-                }
-                item.value = values;
+                item.value = buildEventMetricsWithTime(rng, 16, true);
                 continue;
             }
 

@@ -1,62 +1,62 @@
-# DLT645_Sim 项目文档集
+# DLT645_Sim 文档目录
 
-## 1. 说明
+## 📚 核心文档（项目根目录）
 
-本目录用于集中存放 `DLT645_Sim` 项目的阶段性文档。文档内容基于以下信息整理：
+以下文档位于项目根目录，是理解项目的主要入口：
 
-- 根目录已有说明文档：`readme.md`、`ARCHITECTURE.md`、`CURRENT_IMPLEMENTATION.md`、`dataItem.md`
-- 当前 Qt5/qmake 工程源码
-- 截至 `2026-04-07` 的仓库现状
+- **[readme.md](../readme.md)** (59KB) — 完整的项目规格说明书，包含功能需求、技术栈、界面设计
+- **[ARCHITECTURE.md](../ARCHITECTURE.md)** (24KB) — 架构设计文档，说明分层结构、模块职责、数据流
+- **[CURRENT_IMPLEMENTATION.md](../CURRENT_IMPLEMENTATION.md)** (16KB) — 当前实现状态，描述已完成的功能
+- **[dataItem.md](../dataItem.md)** (59KB) — 数据项规范，详细列出所有 DLT645 数据项定义
 
-本文档集分为两类：
+---
 
-- 现状文档：尽量严格按当前代码实现编写
-- 管理文档：给出可直接落地的项目交付草案，需项目经理、客户或运维继续补充签字信息
+## 📖 协议与业务文档（本目录）
 
-## 2. 文档列表
+### 标准协议
+- **[DLT_645-2007_多功能电能表通信协议2010(1).pdf](DLT_645-2007_多功能电能表通信协议2010(1).pdf)** (1.4MB)  
+  国家标准协议文档，项目实现的基础
 
-| 文件 | 对应阶段 | 说明 |
-| --- | --- | --- |
-| `01_project_charter.md` | 项目启动 | 项目章程 |
-| `02_feasibility_study.md` | 项目启动 | 可行性分析报告 |
-| `03_requirements_research.md` | 项目启动 | 需求调研记录 |
-| `04_srs.md` | 需求分析 | 需求规格说明书 |
-| `05_user_stories_and_use_cases.md` | 需求分析 | 用户故事与用例 |
-| `06_business_process.md` | 需求分析 | 业务流程说明 |
-| `07_system_architecture.md` | 设计 | 系统架构设计文档 |
-| `08_database_design.md` | 设计 | 数据库设计文档 |
-| `09_interface_design.md` | 设计 | 接口设计文档 |
-| `10_ui_ux_design.md` | 设计 | UI/UX 设计说明 |
-| `11_security_design.md` | 设计 | 安全设计文档 |
-| `12_coding_standards.md` | 开发 | 代码规范文档 |
-| `13_technical_implementation.md` | 开发 | 技术实现文档 |
-| `14_unit_test_report.md` | 开发 | 单元测试报告 |
-| `15_test_plan.md` | 测试 | 测试计划 |
-| `16_test_cases.md` | 测试 | 测试用例文档 |
-| `17_defect_report.md` | 测试 | 缺陷报告 |
-| `18_integration_test_report.md` | 测试 | 集成测试报告 |
-| `19_deployment_manual.md` | 部署上线 | 部署手册 |
-| `20_operations_manual.md` | 部署上线 | 运维手册 |
-| `21_user_manual.md` | 部署上线 | 用户操作手册 |
-| `22_system_configuration.md` | 部署上线 | 系统配置文档 |
-| `23_project_summary.md` | 项目收尾 | 项目总结报告 |
-| `24_acceptance_report.md` | 项目收尾 | 验收报告 |
-| `25_handover_document.md` | 项目收尾 | 移交文档 |
+### 业务逻辑
+- **[电表费率时段配置说明.md](电表费率时段配置说明.md)**  
+  说明电表费率、时段、年时区、日时段表的配置逻辑
 
-## 3. 当前项目基线
+### 实现追踪
+- **[DLT645_A1_A6_DI缺口清单.md](DLT645_A1_A6_DI缺口清单.md)**  
+  列出当前未实现的数据项（DI），追踪实现进度
 
-- 项目类型：Qt5/C++ 桌面版 DLT645-2007 电表模拟器
-- 构建方式：`qmake`
-- 主要模块：主窗口、设备树、数据表格、操作日志、串口控制器、TCP 控制器、协议控制器、协议解析、数据模型、SQLite 持久化
-- 数据持久化：SQLite，本地库文件 `meter_data.db`
-- 当前数据库策略：一块表地址对应一张表，表名形如 `meter_<address>`
+- **[DLT645_A1_A6_完善计划.md](DLT645_A1_A6_完善计划.md)**  
+  数据项完善计划，按优先级规划开发
 
-## 4. 使用建议
+---
 
-- 如果用于项目立项或验收，请优先补充真实客户、预算、时间节点和签字信息。
-- 如果用于开发接手，请优先阅读：
-  - `07_system_architecture.md`
-  - `08_database_design.md`
-  - `13_technical_implementation.md`
-  - `19_deployment_manual.md`
+## 🚀 快速开始
+
+### 新成员阅读顺序
+1. [readme.md](../readme.md) — 了解项目全貌
+2. [ARCHITECTURE.md](../ARCHITECTURE.md) — 理解架构设计
+3. [CURRENT_IMPLEMENTATION.md](../CURRENT_IMPLEMENTATION.md) — 查看实现状态
+4. [DLT_645-2007 协议](DLT_645-2007_多功能电能表通信协议2010(1).pdf) — 深入协议细节
+
+### 构建与运行
+详见根目录 [readme.md](../readme.md) 中的"构建说明"章节。
+
+### 开发指南
+详见根目录 [ARCHITECTURE.md](../ARCHITECTURE.md) 中的"目录结构与职责划分"。
+
+---
+
+## 📝 文档维护说明
+
+本目录仅保留：
+1. **协议标准** — 外部参考资料
+2. **业务逻辑** — 项目特有的业务规则
+3. **实现追踪** — 开发进度管理
+
+所有架构、设计、实现文档已整合到根目录，避免重复维护。
+
+---
+
+**最后更新**: 2026-06-17  
+**文档数量**: 5 个核心文件（已清理 25 个冗余文档）
 

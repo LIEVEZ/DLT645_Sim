@@ -7,6 +7,7 @@
 #include <QTextStream>
 #include <QMutex>
 #include <QDateTime>
+#include <memory>
 #include "LoggerTypes.h"
 
 /**
@@ -62,6 +63,13 @@ public:
     void setLogFile(const QString &filePath);
 
     /**
+     * @brief 设置日志轮转参数
+     * @param maxFileSize 单个日志文件最大大小（字节），0 表示不限制
+     * @param maxBackupCount 保留的历史日志文件数量
+     */
+    void setLogRotation(qint64 maxFileSize, int maxBackupCount);
+
+    /**
      * @brief 设置日志级别
      * @param level 最低日志级别
      */
@@ -97,14 +105,20 @@ private:
     void writeLog(LogLevel level, const QString &message);
     QString levelToString(LogLevel level) const;
     QString formatLogMessage(LogLevel level, const QString &message) const;
+    void rotateLogFileIfNeeded();
+    void performLogRotation();
 
     static Logger *s_instance;
-    QFile *m_logFile;
-    QTextStream *m_logStream;
+    std::unique_ptr<QFile> m_logFile;
+    std::unique_ptr<QTextStream> m_logStream;
     QMutex m_mutex;
     LogLevel m_logLevel;
     bool m_consoleOutputEnabled;
     bool m_fileOutputEnabled;
+    QString m_logFilePath;
+    qint64 m_maxFileSize;
+    int m_maxBackupCount;
+    qint64 m_currentFileSize;
 };
 
 // 便捷宏定义

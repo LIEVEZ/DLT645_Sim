@@ -14,6 +14,7 @@ class QPushButton;
 class QTableWidget;
 class QTableWidgetItem;
 class MeterModel;
+class DataTableExporter;
 
 /**
  * @brief 数值编辑代理
@@ -165,9 +166,6 @@ private:
     void updateDataCount();
     QList<QString> currentTableDiCodes() const;
     bool isVariableData(const QString &diCode) const;
-    void exportToCSV(const QString &fileName);
-    void exportToExcel(const QString &fileName);
-    void exportToJSON(const QString &fileName);
     void readDataItem(int row);
     void writeDataItem(int row);
     void copyRowToClipboard(int row);
@@ -175,6 +173,7 @@ private:
     void addWatchItem(int row);
 
     MeterModel *m_meterModel;
+    DataTableExporter *m_exporter;
     QTableWidget *m_tableWidget;
     QLineEdit *m_searchEdit;
     QPushButton *m_refreshButton;

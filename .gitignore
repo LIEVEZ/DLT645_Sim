@@ -1,3 +1,4 @@
 Build/
 *.pro.user
 *.qmake.stash
+.ccg

@@ -63,6 +63,7 @@ SOURCES += \
     Source/Views/OperationLog/OperationLogWidget.cpp \
     Source/Views/DeviceTree/DeviceTreeWidget.cpp \
     Source/Views/DataTable/DataTableWidget.cpp \
+    Source/Views/DataTable/DataTableExporter.cpp \
     Source/Views/Common/FrameParseResultWidget.cpp \
     Source/Views/CommunicationBar/CommunicationBarWidget.cpp \
     Source/Views/Dialogs/NewConnectionDialog.cpp \
@@ -115,6 +116,7 @@ HEADERS += \
     Source/Views/OperationLog/OperationLogWidget.h \
     Source/Views/DeviceTree/DeviceTreeWidget.h \
     Source/Views/DataTable/DataTableWidget.h \
+    Source/Views/DataTable/DataTableExporter.h \
     Source/Views/Common/FrameParseResultWidget.h \
     Source/Views/CommunicationBar/CommunicationBarWidget.h \
     Source/Views/Dialogs/NewConnectionDialog.h \
