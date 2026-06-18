@@ -271,6 +271,18 @@ namespace MeterModelPrivate
 
     inline bool isParameterStructureCodeSupported(const QMap<QString, DataItem> &items, const QString &diCode)
     {
+        if (diCode.size() == 10 &&
+            (diCode.startsWith(QStringLiteral("0x040501")) || diCode.startsWith(QStringLiteral("0x040502"))))
+        {
+            int rateIndex = 0;
+            if (!parseHexByteValue(diCode.mid(8, 2), &rateIndex))
+            {
+                return false;
+            }
+
+            return rateIndex >= 1 && rateIndex <= currentRateCount(items);
+        }
+
         if (diCode == QStringLiteral("0x04010000") || diCode == QStringLiteral("0x04020000"))
         {
             return true;

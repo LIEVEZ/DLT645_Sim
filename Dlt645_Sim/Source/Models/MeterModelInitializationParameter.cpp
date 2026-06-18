@@ -194,9 +194,9 @@ void MeterModel::initializeParameterData()
                                        0);
     }
 
-    const QList<double> firstRatePrices = {0.5688, 0.6288, 0.6888, 0.7488, 0.8088};
-    const QList<double> secondRatePrices = {0.5888, 0.6488, 0.7088, 0.7688, 0.8288};
-    for (int rateIndex = 0; rateIndex < configuredRateCount; ++rateIndex)
+    const QList<double> firstRatePrices = {0.5688, 0.6288, 0.6888, 0.7488, 0.8088, 0.8688, 0.9288, 0.9888};
+    const QList<double> secondRatePrices = {0.5888, 0.6488, 0.7088, 0.7688, 0.8288, 0.8888, 0.9488, 1.0088};
+    for (int rateIndex = 0; rateIndex < kMaxRateCount; ++rateIndex)
     {
         const QString firstDiCode = QStringLiteral("0x040501%1").arg(rateIndex + 1, 2, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
         const QString secondDiCode = QStringLiteral("0x040502%1").arg(rateIndex + 1, 2, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));

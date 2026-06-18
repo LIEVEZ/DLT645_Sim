@@ -4,6 +4,10 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 #include <QSqlError>
 #include <QSqlQuery>
 
@@ -11,7 +15,7 @@ namespace
 {
     bool isPersistedDataItem(const DataItem &item)
     {
-        return !item.format.contains(':') && !item.diCode.endsWith(QStringLiteral("FF00"));
+        return !item.diCode.endsWith(QStringLiteral("FF00"));
     }
 }
 
@@ -340,6 +344,20 @@ QString MeterDataStore::serializeValue(const QVariant &value, int valueType) con
 {
     switch (static_cast<QVariant::Type>(valueType))
     {
+    case QVariant::List:
+    {
+        QJsonArray values;
+        const QVariantList valueList = value.toList();
+        for (const QVariant &entry : valueList)
+        {
+            const int entryType = static_cast<int>(entry.type());
+            QJsonObject entryObject;
+            entryObject.insert(QStringLiteral("type"), entryType);
+            entryObject.insert(QStringLiteral("value"), serializeValue(entry, entryType));
+            values.append(entryObject);
+        }
+        return QString::fromUtf8(QJsonDocument(values).toJson(QJsonDocument::Compact));
+    }
     case QVariant::Bool:
         return value.toBool() ? QStringLiteral("1") : QStringLiteral("0");
     case QVariant::ByteArray:
@@ -353,6 +371,27 @@ QVariant MeterDataStore::deserializeValue(const QString &value, int valueType) c
 {
     switch (static_cast<QVariant::Type>(valueType))
     {
+    case QVariant::List:
+    {
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(value.toUtf8(), &parseError);
+        if (parseError.error != QJsonParseError::NoError || !document.isArray())
+        {
+            return value.split(QStringLiteral(":"), Qt::KeepEmptyParts);
+        }
+
+        QVariantList values;
+        const QJsonArray valueArray = document.array();
+        values.reserve(valueArray.size());
+        for (const QJsonValue &entryValue : valueArray)
+        {
+            const QJsonObject entryObject = entryValue.toObject();
+            const int entryType = entryObject.value(QStringLiteral("type")).toInt(static_cast<int>(QVariant::String));
+            const QString entryText = entryObject.value(QStringLiteral("value")).toString();
+            values.append(deserializeValue(entryText, entryType));
+        }
+        return values;
+    }
     case QVariant::Int:
         return value.toInt();
     case QVariant::UInt:

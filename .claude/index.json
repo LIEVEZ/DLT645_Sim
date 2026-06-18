@@ -1,0 +1,296 @@
+{
+  "projectName": "DLT645_Sim",
+  "scanTimestamp": "2026-06-17T20:08:59+08:00",
+  "rootPath": "E:\\04_Git\\01_github\\DLT645_Sim",
+  "version": "1.0.0",
+  "scanResults": {
+    "totalFiles": 109,
+    "scannedFiles": 109,
+    "coveragePercent": 100,
+    "ignorePatterns": [
+      "Build/**",
+      "*.pro.user",
+      "*.qmake.stash",
+      ".ccg",
+      ".git/**",
+      "*.log",
+      "*.bin",
+      "*.pdf",
+      "*.png",
+      "*.jpg",
+      "*.jpeg",
+      "*.gif"
+    ]
+  },
+  "modules": [
+    {
+      "path": "Dlt645_Sim/Source/Controllers",
+      "name": "Controllers - 控制器层",
+      "description": "通信与协议控制层",
+      "entryPoints": [
+        "ConnectionManager.h",
+        "SerialController.h",
+        "TcpController.h",
+        "ProtocolController.h",
+        "MasterQueryController.h"
+      ],
+      "interfaces": [
+        "ConnectionManager::addConnection",
+        "ConnectionManager::openConnection",
+        "SerialController::openPort",
+        "TcpController::connectToHost",
+        "ProtocolController::onRawDataReceived"
+      ],
+      "dependencies": [
+        "Models/MeterModel",
+        "Services/ProtocolParser",
+        "Utils/Logger"
+      ],
+      "testCoverage": "需补充",
+      "documentPath": "Dlt645_Sim/Source/Controllers/CLAUDE.md"
+    },
+    {
+      "path": "Dlt645_Sim/Source/Models",
+      "name": "Models - 领域模型层",
+      "description": "电表业务核心模型",
+      "entryPoints": [
+        "MeterModel.h",
+        "DataItem.h",
+        "ConnectionConfig.h",
+        "CategoryCatalog.h"
+      ],
+      "interfaces": [
+        "MeterModel::initializeDefaultDataItems",
+        "MeterModel::getDataValue",
+        "MeterModel::setDataValue",
+        "MeterModel::getDataItemsByCategory"
+      ],
+      "dependencies": [
+        "Utils/BCDHelper",
+        "Utils/DLT645DataHelper"
+      ],
+      "dataModels": [
+        "DataCategory (Energy/Demand/Variable/Event/Parameter/Freeze/LoadRecord)",
+        "MeterPhaseType (SinglePhase/ThreePhase)",
+        "DataItem (diCode, value, unit, format, category)"
+      ],
+      "testCoverage": "需补充",
+      "documentPath": "Dlt645_Sim/Source/Models/CLAUDE.md"
+    },
+    {
+      "path": "Dlt645_Sim/Source/Services",
+      "name": "Services - 服务层",
+      "description": "协议解析与数据生成服务",
+      "entryPoints": [
+        "ProtocolParser.h",
+        "DataGenerator.h",
+        "MeterDataStore.h",
+        "ConfigurationSerializer.h"
+      ],
+      "interfaces": [
+        "ProtocolParser::parseFrame",
+        "ProtocolParser::buildFrame",
+        "DataGenerator::start",
+        "MeterDataStore::saveMeterData",
+        "ConfigurationSerializer::saveConfiguration"
+      ],
+      "dependencies": [
+        "Models/MeterModel",
+        "Utils/BCDHelper",
+        "Utils/ChecksumHelper",
+        "Utils/DLT645DataHelper"
+      ],
+      "protocolStructures": [
+        "ProtocolFrame",
+        "ControlCode (ReadData 0x11, WriteData 0x14, etc.)"
+      ],
+      "testCoverage": "需补充",
+      "documentPath": "Dlt645_Sim/Source/Services/CLAUDE.md"
+    },
+    {
+      "path": "Dlt645_Sim/Source/Utils",
+      "name": "Utils - 工具层",
+      "description": "底层基础工具类",
+      "entryPoints": [
+        "BCDHelper.h",
+        "ChecksumHelper.h",
+        "DLT645DataHelper.h",
+        "DLT645FrameFormatter.h",
+        "DLT645ValueFormatter.h",
+        "Logger.h"
+      ],
+      "interfaces": [
+        "BCDHelper::toBCD",
+        "BCDHelper::fromBCD",
+        "ChecksumHelper::calculate",
+        "DLT645DataHelper::applyOffset",
+        "DLT645ValueFormatter::formatValue",
+        "Logger::instance"
+      ],
+      "dependencies": [],
+      "utilities": [
+        "BCD 编解码",
+        "校验和计算",
+        "数据域偏移 (+33H/-33H)",
+        "格式串解析 (AA/xx/F9/AS/bin/bit)",
+        "日志记录（单例模式）"
+      ],
+      "testCoverage": "部分覆盖（BCDHelper, ChecksumHelper 适合单元测试）",
+      "documentPath": "Dlt645_Sim/Source/Utils/CLAUDE.md"
+    },
+    {
+      "path": "Dlt645_Sim/Source/ViewModels",
+      "name": "ViewModels - 视图模型层",
+      "description": "UI 状态管理与数据转换",
+      "entryPoints": [
+        "MainWindowViewModel.h"
+      ],
+      "interfaces": [
+        "MainWindowViewModel::setConnectionState",
+        "MainWindowViewModel::setCurrentMeter",
+        "MainWindowViewModel::isNewMeterEnabled",
+        "MainWindowViewModel::getMeterDisplayName"
+      ],
+      "dependencies": [
+        "Models/MeterModel",
+        "Controllers/ConnectionManager"
+      ],
+      "responsibilities": [
+        "UI 状态管理",
+        "工具栏按钮状态逻辑",
+        "数据格式转换",
+        "状态变更通知"
+      ],
+      "testCoverage": "需补充",
+      "documentPath": "Dlt645_Sim/Source/ViewModels/CLAUDE.md"
+    },
+    {
+      "path": "Dlt645_Sim/Source/Views",
+      "name": "Views - 视图层",
+      "description": "UI 界面组件",
+      "entryPoints": [
+        "MainWindow/mainwindow.h",
+        "DeviceTree/DeviceTreeWidget.h",
+        "DataTable/DataTableWidget.h",
+        "OperationLog/OperationLogWidget.h"
+      ],
+      "components": [
+        "MainWindow - 主窗口装配中心",
+        "DeviceTreeWidget - 设备树导航",
+        "DataTableWidget - 数据表格展示与编辑",
+        "OperationLogWidget - 操作日志面板",
+        "CommunicationBarWidget - 通信栏",
+        "各类对话框 (NewConnectionDialog, NewMeterDialog, etc.)"
+      ],
+      "dependencies": [
+        "ViewModels/MainWindowViewModel",
+        "Models/MeterModel",
+        "Controllers/ConnectionManager"
+      ],
+      "uiFeatures": [
+        "深色/浅色主题切换",
+        "三栏布局（QSplitter）",
+        "实时数据摘要栏",
+        "通信报文监视窗口",
+        "数据搜索与过滤",
+        "批量操作（重置/随机化/导出）"
+      ],
+      "testCoverage": "手动测试为主",
+      "documentPath": "Dlt645_Sim/Source/Views/CLAUDE.md"
+    }
+  ],
+  "keyFiles": [
+    {
+      "path": "Dlt645_Sim/Source/main.cpp",
+      "description": "应用程序入口"
+    },
+    {
+      "path": "Dlt645_Sim/Dlt645_Sim.pro",
+      "description": "qmake 项目文件"
+    },
+    {
+      "path": "Dlt645_Sim/Source/Version.h",
+      "description": "版本信息定义（v1.0.0）"
+    },
+    {
+      "path": "readme.md",
+      "description": "设计规格说明书"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "description": "架构文档"
+    },
+    {
+      "path": "CURRENT_IMPLEMENTATION.md",
+      "description": "当前实现状态"
+    }
+  ],
+  "gaps": [
+    {
+      "area": "测试",
+      "description": "缺少单元测试和集成测试，建议补充 Utils 和 Services 层的测试用例",
+      "priority": "高"
+    },
+    {
+      "area": "持久化",
+      "description": "配置持久化功能已实现，但缺少独立的 Repository 层抽象",
+      "priority": "中"
+    },
+    {
+      "area": "多连接上下文",
+      "description": "当前电表索引仅基于地址，未完全考虑多连接场景的地址冲突",
+      "priority": "中"
+    },
+    {
+      "area": "协议完整性",
+      "description": "DLT645-2007 七类数据项已建立框架，部分数据项仍以占位数据为主",
+      "priority": "低"
+    }
+  ],
+  "recommendedNextSteps": [
+    "补充 Utils 层单元测试（BCDHelper, ChecksumHelper, DLT645ValueFormatter）",
+    "补充 Services 层测试（ProtocolParser 帧解析测试）",
+    "建立独立的 Repository 层（ProjectRepository, MeterProfileRepository）",
+    "完善事件记录、冻结、负荷记录数据项的初始化逻辑",
+    "增强多连接并发场景的测试与优化",
+    "实现协议仿真的行为脚本（负荷曲线、事件注入）"
+  ],
+  "statistics": {
+    "headerFiles": 52,
+    "sourceFiles": 57,
+    "uiFiles": 1,
+    "totalLinesOfCode": "约 15000+ 行（估算）",
+    "supportedLanguages": [
+      "C++"
+    ],
+    "frameworks": [
+      "Qt 5.14.2+",
+      "Qt Widgets",
+      "Qt SerialPort",
+      "Qt Network",
+      "Qt SQL"
+    ]
+  },
+  "buildInfo": {
+    "buildSystem": "qmake",
+    "compilerRequirements": "C++17",
+    "platforms": [
+      "Windows 10/11 (MSVC 2019+ / MinGW 8.1+)",
+      "Linux (GCC 7+ / Clang 10+)"
+    ],
+    "dependencies": [
+      "Qt 5.14.2+"
+    ]
+  },
+  "truncated": false,
+  "scanNotes": "完整扫描覆盖所有源码文件，已生成根级 CLAUDE.md 和 6 个模块级 CLAUDE.md 文档。",
+  "generatedDocuments": [
+    "CLAUDE.md",
+    "Dlt645_Sim/Source/Controllers/CLAUDE.md",
+    "Dlt645_Sim/Source/Models/CLAUDE.md",
+    "Dlt645_Sim/Source/Services/CLAUDE.md",
+    "Dlt645_Sim/Source/Utils/CLAUDE.md",
+    "Dlt645_Sim/Source/ViewModels/CLAUDE.md",
+    "Dlt645_Sim/Source/Views/CLAUDE.md"
+  ]
+}

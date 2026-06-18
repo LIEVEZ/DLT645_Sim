@@ -11,7 +11,7 @@ namespace MeterModelPrivate
 {
     constexpr int kDefaultRateCount = 5;
     // 当前产品固定按 5 个费率处理，避免大费率数导致读取链路膨胀卡顿
-    constexpr int kMaxRateCount = kDefaultRateCount;
+    constexpr int kMaxRateCount = 8;
     constexpr int kMaxYearZoneCount = 14;
     constexpr int kMaxDayScheduleTableCount = 8;
     constexpr int kMaxDayScheduleCount = 14;

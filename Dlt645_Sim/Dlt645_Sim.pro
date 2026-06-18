@@ -32,6 +32,8 @@ SOURCES += \
     Source/Views/MainWindow/mainwindow_helpers.cpp \
     Source/Utils/BCDHelper.cpp \
     Source/Utils/DLT645FrameFormatter.cpp \
+    Source/Utils/DLT645BlockHandler.cpp \
+    Source/Utils/DLT645ValueFormatter.cpp \
     Source/Utils/DLT645DataHelper.cpp \
     Source/Utils/ChecksumHelper.cpp \
     Source/Utils/Logger.cpp \
@@ -81,6 +83,8 @@ HEADERS += \
     Source/Views/MainWindow/mainwindow.h \
     Source/Utils/BCDHelper.h \
     Source/Utils/DLT645FrameFormatter.h \
+    Source/Utils/DLT645BlockHandler.h \
+    Source/Utils/DLT645ValueFormatter.h \
     Source/Utils/DLT645FrameFormatterFields.h \
     Source/Utils/DLT645FrameFormatterValueDisplay.h \
     Source/Utils/DLT645DataHelper.h \
