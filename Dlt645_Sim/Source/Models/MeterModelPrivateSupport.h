@@ -69,6 +69,72 @@ namespace MeterModelPrivate
                    (familyValue >= 0x01BC && familyValue <= 0x01C2);
         }
 
+        // 事件记录（0x03XX）：单相表只支持 A 相事件
+        if (diCode.startsWith(QStringLiteral("0x03")))
+        {
+            // 失压/欠压/过压事件：0x030100/0x030200/0x030300
+            // - 总次数：0x03010000(A相) 0x03010001(B相) 0x03010002(C相)
+            // - 历史记录：0x030101XX(A相) 0x030102XX(B相) 0x030103XX(C相)
+            if (diCode.startsWith(QStringLiteral("0x0301")) ||
+                diCode.startsWith(QStringLiteral("0x0302")) ||
+                diCode.startsWith(QStringLiteral("0x0303")))
+            {
+                // 总次数：最后一个字节为相别（00=A, 01=B, 02=C）
+                if (diCode.length() == 10 && (diCode.endsWith(QStringLiteral("01")) || diCode.endsWith(QStringLiteral("02"))))
+                {
+                    return true;
+                }
+                // 历史记录：倒数第二个字节为相别（01=A, 02=B, 03=C）
+                if (diCode.length() == 10)
+                {
+                    const QString phaseCode = diCode.mid(6, 2);
+                    if (phaseCode == QStringLiteral("02") || phaseCode == QStringLiteral("03"))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            // 失流/过流事件：0x030B00/0x030C00
+            // - 总次数：0x030B0000(A相) 0x030B0001(B相) 0x030B0002(C相)
+            // - 历史记录：0x030B01XX(A相) 0x030B02XX(B相) 0x030B03XX(C相)
+            if (diCode.startsWith(QStringLiteral("0x030B")) ||
+                diCode.startsWith(QStringLiteral("0x030C")))
+            {
+                // 总次数：最后一个字节为相别
+                if (diCode.length() == 10 && (diCode.endsWith(QStringLiteral("01")) || diCode.endsWith(QStringLiteral("02"))))
+                {
+                    return true;
+                }
+                // 历史记录：倒数第二个字节为相别
+                if (diCode.length() == 10)
+                {
+                    const QString phaseCode = diCode.mid(6, 2);
+                    if (phaseCode == QStringLiteral("02") || phaseCode == QStringLiteral("03"))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            // 断相/相序事件也类似处理（如果有）
+            if (diCode.startsWith(QStringLiteral("0x0304")))
+            {
+                if (diCode.length() == 10 && (diCode.endsWith(QStringLiteral("01")) || diCode.endsWith(QStringLiteral("02"))))
+                {
+                    return true;
+                }
+                if (diCode.length() == 10)
+                {
+                    const QString phaseCode = diCode.mid(6, 2);
+                    if (phaseCode == QStringLiteral("02") || phaseCode == QStringLiteral("03"))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
         if (!isEnergyDataCode(diCode))
         {
             return false;

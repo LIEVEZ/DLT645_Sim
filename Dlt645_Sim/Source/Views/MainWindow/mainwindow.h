@@ -68,7 +68,6 @@ private slots:
     void onQueryFrameGenerator();
     void onQueryFrameDialogClosed();
     void onFrameParseDialog();
-    void onEventRecordDialog();
     void onLoggerLogEntryAdded(LogLevel level, const QDateTime &timestamp, const QString &message);
     void onImportConfiguration();
     void onExportConfiguration();

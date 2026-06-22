@@ -251,14 +251,3 @@ void MainWindow::onFrameParseDialog()
     m_frameParseDialog->show();
 }
 
-void MainWindow::onEventRecordDialog()
-{
-    if (!m_currentMeterModel)
-    {
-        QMessageBox::warning(this, "提示", "请先选择一个电表");
-        return;
-    }
-
-    EventRecordDialog dialog(m_currentMeterModel, this);
-    dialog.exec();
-}

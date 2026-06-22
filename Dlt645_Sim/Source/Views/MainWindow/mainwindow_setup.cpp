@@ -257,10 +257,6 @@ void MainWindow::setupMenuBar()
     // 工具菜单
     QMenu *toolsMenu = menuBar->addMenu(QStringLiteral("工具(&T)"));
 
-    QAction *eventRecordAction = toolsMenu->addAction(QStringLiteral("事件记录设置..."));
-    eventRecordAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+E")));
-    connect(eventRecordAction, &QAction::triggered, this, &MainWindow::onEventRecordDialog);
-
     // 帮助菜单
     QMenu *helpMenu = menuBar->addMenu(QStringLiteral("帮助(&H)"));
 
