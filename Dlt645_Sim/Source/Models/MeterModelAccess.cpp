@@ -94,6 +94,18 @@ DataItem MeterModel::getDataItem(const QString &diCode) const
     return item;
 }
 
+DataItem MeterModel::getDataItemRaw(const QString &diCode) const
+{
+    QMutexLocker locker(&m_mutex);
+    DataItem item = m_dataItems.value(diCode, DataItem());
+    const QVariant currentValue = currentDateTimeParameterValue(diCode);
+    if (currentValue.isValid())
+    {
+        item.value = currentValue;
+    }
+    return item;
+}
+
 
 QVariant MeterModel::getDataValue(const QString &diCode) const
 {

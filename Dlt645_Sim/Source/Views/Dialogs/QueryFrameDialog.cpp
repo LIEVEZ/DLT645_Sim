@@ -809,7 +809,7 @@ void QueryFrameDialog::populateDataItems()
         const QList<QString> diCodes = dataCodesForCategory(category);
         for (const QString &diCode : diCodes)
         {
-            const DataItem item = sourceModel->getDataItem(diCode);
+            const DataItem item = sourceModel->getDataItemRaw(diCode);
             if (!supportsCurrentMode(item))
             {
                 continue;

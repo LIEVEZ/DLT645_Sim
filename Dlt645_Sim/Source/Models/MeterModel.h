@@ -101,9 +101,16 @@ public:
     /**
      * @brief 获取数据项
      * @param diCode 数据标识
-     * @return 数据项
+     * @return 数据项（若电表不支持该数据项，返回空）
      */
     DataItem getDataItem(const QString &diCode) const;
+
+    /**
+     * @brief 获取原始数据项（不经过支持性过滤）
+     * @param diCode 数据标识
+     * @return 数据项（即使电表不支持也返回，用于界面显示所有数据项）
+     */
+    DataItem getDataItemRaw(const QString &diCode) const;
 
     /**
      * @brief 获取数据值

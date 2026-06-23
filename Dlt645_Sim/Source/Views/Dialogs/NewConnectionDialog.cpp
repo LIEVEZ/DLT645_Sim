@@ -6,6 +6,7 @@
 #include <QGridLayout>
 #include <QRegExpValidator>
 #include <QMessageBox>
+#include <algorithm>
 
 NewConnectionDialog::NewConnectionDialog(QWidget *parent)
     : QDialog(parent), m_connectionTypeCombo(new QComboBox(this)), m_aliasEdit(new QLineEdit(this)), m_configStack(new QStackedWidget(this)), m_serialPortCombo(new QComboBox(this)), m_baudRateCombo(new QComboBox(this)), m_dataBitsCombo(new QComboBox(this)), m_stopBitsCombo(new QComboBox(this)), m_parityCombo(new QComboBox(this)), m_flowControlCombo(new QComboBox(this)), m_refreshPortsButton(new QPushButton("刷新", this)), m_tcpAddressEdit(new QLineEdit(this)), m_tcpPortSpinBox(new QSpinBox(this)), m_okButton(new QPushButton("连接", this)), m_cancelButton(new QPushButton("取消", this))
@@ -158,6 +159,34 @@ void NewConnectionDialog::onRefreshPorts()
     m_serialPortCombo->clear();
 
     QList<QSerialPortInfo> ports = QSerialPortInfo::availablePorts();
+
+    // 对串口列表按端口名进行自然排序（COM1, COM3, COM10...）
+    std::sort(ports.begin(), ports.end(), [](const QSerialPortInfo &a, const QSerialPortInfo &b) {
+        QString nameA = a.portName();
+        QString nameB = b.portName();
+
+        // 提取数字部分进行比较
+        QRegExp rxA("(\\D+)(\\d+)");
+        QRegExp rxB("(\\D+)(\\d+)");
+        int posA = rxA.indexIn(nameA);
+        int posB = rxB.indexIn(nameB);
+
+        if (posA >= 0 && posB >= 0)
+        {
+            QString prefixA = rxA.cap(1);
+            QString prefixB = rxB.cap(1);
+            int numA = rxA.cap(2).toInt();
+            int numB = rxB.cap(2).toInt();
+
+            if (prefixA == prefixB)
+            {
+                return numA < numB;  // 数字小的在前
+            }
+        }
+
+        return nameA < nameB;  // 无数字时按字母排序
+    });
+
     for (const QSerialPortInfo &port : ports)
     {
         QString portName = port.portName();

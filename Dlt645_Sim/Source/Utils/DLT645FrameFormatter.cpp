@@ -488,7 +488,35 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
         detailText += DLT645FrameFormatter::formatHex(decodedDataField) + QStringLiteral("\n");
         detailText += separatorLine(QChar('=')) + QStringLiteral("\n");
 
-        if (dataField.size() >= 4)
+        // 检查是否为异常应答（控制码 bit6=1 表示异常）
+        const bool isErrorResponse = hasControlCode && (controlCode & 0x40) != 0;
+        if (isErrorResponse && dataField.size() == 1)
+        {
+            const quint8 errorCode = static_cast<quint8>(decodedDataField[0]);
+            QString errorDescription;
+            switch (errorCode)
+            {
+            case 0x01:
+                errorDescription = QStringLiteral("其他错误");
+                break;
+            case 0x02:
+                errorDescription = QStringLiteral("无请求数据");
+                break;
+            case 0x03:
+                errorDescription = QStringLiteral("通信超时");
+                break;
+            case 0x04:
+                errorDescription = QStringLiteral("费率数超");
+                break;
+            default:
+                errorDescription = QStringLiteral("未知错误");
+                break;
+            }
+            detailText += annotatedLine(hexByte(errorCode),
+                                        QStringLiteral("错误信息字"),
+                                        errorDescription) + QStringLiteral("\n");
+        }
+        else if (dataField.size() >= 4)
         {
             const QString diCode = ProtocolParser::extractDIFromDataField(dataField);
             DataItem diItem;
@@ -688,6 +716,38 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
     QByteArray decodedPayload;
     QString payloadLabel;
     DataItem diItem;
+
+    // 检查是否为异常应答（控制码 bit6=1 表示异常）
+    const bool isErrorResponse = isResponse && (controlCode & 0x40) != 0;
+    if (isErrorResponse && dataField.size() == 1)
+    {
+        const QByteArray decodedDataField = DLT645DataHelper::subtract33(dataField);
+        const quint8 errorCode = static_cast<quint8>(decodedDataField[0]);
+        QString errorDescription;
+        switch (errorCode)
+        {
+        case 0x01:
+            errorDescription = QString::fromUtf8("其他错误");
+            break;
+        case 0x02:
+            errorDescription = QString::fromUtf8("无请求数据");
+            break;
+        case 0x03:
+            errorDescription = QString::fromUtf8("通信超时");
+            break;
+        case 0x04:
+            errorDescription = QString::fromUtf8("费率数超");
+            break;
+        default:
+            errorDescription = QString::fromUtf8("未知错误");
+            break;
+        }
+        dataText += lineWithValue(QString::fromUtf8("载荷类型："), QString::fromUtf8("异常应答"));
+        dataText += lineWithValue(QString::fromUtf8("错误码："), formatByteHex(errorCode));
+        dataText += lineWithValue(QString::fromUtf8("错误描述："), errorDescription);
+        appendCard(section, section.title, dataText.trimmed());
+        return section;
+    }
 
     if (dataField.size() >= 4)
     {

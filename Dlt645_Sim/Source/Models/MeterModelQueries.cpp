@@ -40,7 +40,7 @@ QList<DataItem> MeterModel::getDataItemsByCategory(DataCategory category) const
                                          : (category == DataCategory::Demand)
                                                ? isDemandDataCode(it.key())
                                                : it.key().startsWith(prefix);
-        if (categoryMatched && isDataItemSupportedUnlocked(it.key()))
+        if (categoryMatched)
         {
             items.append(it.value());
         }
@@ -55,10 +55,7 @@ QList<DataItem> MeterModel::getAllDataItems() const
     QList<DataItem> items;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if (isDataItemSupportedUnlocked(it.key()))
-        {
-            items.append(it.value());
-        }
+        items.append(it.value());
     }
     return items;
 }
@@ -69,7 +66,7 @@ QList<QString> MeterModel::getEnergyDataCodes() const
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if (isEnergyDataCode(it.key()) && !isHistoricalEnergyCode(it.key()) && isDataItemSupportedUnlocked(it.key()))
+        if (isEnergyDataCode(it.key()) && !isHistoricalEnergyCode(it.key()))
         {
             codes.append(it.key());
         }
@@ -88,7 +85,7 @@ QList<QString> MeterModel::getSettlementDayEnergyDataCodes(int settlementDay) co
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if (!isEnergyDataCode(it.key()) || !isDataItemSupportedUnlocked(it.key()))
+        if (!isEnergyDataCode(it.key()))
         {
             continue;
         }
@@ -109,7 +106,7 @@ QList<QString> MeterModel::getDemandDataCodes() const
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if (isDemandDataCode(it.key()) && isDataItemSupportedUnlocked(it.key()))
+        if (isDemandDataCode(it.key()))
         {
             codes.append(it.key());
         }
@@ -128,7 +125,7 @@ QList<QString> MeterModel::getSettlementDayDemandDataCodes(int settlementDay) co
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if (!isDemandDataCode(it.key()) || !isDataItemSupportedUnlocked(it.key()))
+        if (!isDemandDataCode(it.key()))
         {
             continue;
         }
@@ -149,7 +146,7 @@ QList<QString> MeterModel::getMaxDemandDataCodes() const
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if (isDemandDataCode(it.key()) && isDataItemSupportedUnlocked(it.key()))
+        if (isDemandDataCode(it.key()))
         {
             codes.append(it.key());
         }
@@ -167,8 +164,7 @@ QList<QString> MeterModel::getVariableDataCodes() const
         const quint32 codeValue = it.key().toUInt(&ok, 16);
         if (ok &&
             codeValue >= 0x02000000 &&
-            codeValue < 0x02900000 &&
-            isDataItemSupportedUnlocked(it.key()))
+            codeValue < 0x02900000)
         {
             codes.append(it.key());
         }
@@ -182,7 +178,7 @@ QList<QString> MeterModel::getEventDataCodes() const
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if (it.key().startsWith("0x03") && isDataItemSupportedUnlocked(it.key()))
+        if (it.key().startsWith("0x03"))
         {
             codes.append(it.key());
         }
@@ -196,7 +192,7 @@ QList<QString> MeterModel::getParameterDataCodes() const
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if (it.key().startsWith("0x04") && isDataItemSupportedUnlocked(it.key()))
+        if (it.key().startsWith("0x04"))
         {
             codes.append(it.key());
         }
@@ -210,7 +206,7 @@ QList<QString> MeterModel::getFreezeDataCodes() const
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if (it.key().startsWith("0x05") && isDataItemSupportedUnlocked(it.key()))
+        if (it.key().startsWith("0x05"))
         {
             codes.append(it.key());
         }
@@ -259,7 +255,7 @@ QList<QString> MeterModel::getFreezeDataCodes(const QString &freezeCategory) con
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if (!it.key().startsWith(QStringLiteral("0x05")) || !isDataItemSupportedUnlocked(it.key()))
+        if (!it.key().startsWith(QStringLiteral("0x05")))
         {
             continue;
         }
@@ -281,7 +277,7 @@ QList<QString> MeterModel::getLoadRecordDataCodes() const
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if (it.key().startsWith("0x06") && isDataItemSupportedUnlocked(it.key()))
+        if (it.key().startsWith("0x06"))
         {
             codes.append(it.key());
         }
@@ -295,7 +291,7 @@ QList<QString> MeterModel::getStatusDataCodes() const
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if ((it.key().startsWith("0x05") || it.key().startsWith("0x06")) && isDataItemSupportedUnlocked(it.key()))
+        if (it.key().startsWith("0x05") || it.key().startsWith("0x06"))
         {
             codes.append(it.key());
         }
@@ -306,7 +302,7 @@ QList<QString> MeterModel::getStatusDataCodes() const
 QString MeterModel::getDataName(const QString &diCode) const
 {
     QMutexLocker locker(&m_mutex);
-    if (isDataItemSupportedUnlocked(diCode))
+    if (m_dataItems.contains(diCode))
     {
         return m_dataItems[diCode].description;
     }
@@ -316,7 +312,7 @@ QString MeterModel::getDataName(const QString &diCode) const
 QString MeterModel::getDataUnit(const QString &diCode) const
 {
     QMutexLocker locker(&m_mutex);
-    if (isDataItemSupportedUnlocked(diCode))
+    if (m_dataItems.contains(diCode))
     {
         return m_dataItems[diCode].unit;
     }

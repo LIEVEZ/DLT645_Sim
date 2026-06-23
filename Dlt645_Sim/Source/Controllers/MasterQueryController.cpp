@@ -373,8 +373,9 @@ MasterQueryController::FrameExtractState MasterQueryController::tryTakeNextFrame
 
 bool MasterQueryController::validateResponseFrame(const ProtocolFrame &frame, QString &errorText) const
 {
-    const quint8 requestControlCode = m_pendingResult.requestFrame.controlCode & 0x7F;
-    const quint8 responseControlCode = frame.controlCode & 0x7F;
+    // 只比较低6位的控制码（bit0-5），忽略 bit7（应答标志）和 bit6（异常标志）
+    const quint8 requestControlCode = m_pendingResult.requestFrame.controlCode & 0x3F;
+    const quint8 responseControlCode = frame.controlCode & 0x3F;
     const bool isResponseFrame = (frame.controlCode & 0x80) != 0;
 
     if (!isResponseFrame)
@@ -397,6 +398,22 @@ bool MasterQueryController::validateResponseFrame(const ProtocolFrame &frame, QS
 
     if (!m_pendingResult.requestSpec.isReadAddressRequest())
     {
+        // 检查是否为异常应答（控制码 bit6=1）
+        const bool isErrorResponse = (frame.controlCode & 0x40) != 0;
+
+        if (isErrorResponse)
+        {
+            // 异常应答帧的数据域只有 1 字节错误码，这是正常的
+            if (frame.dataField.size() != 1)
+            {
+                errorText = QString::fromUtf8("收到异常应答帧但数据域长度异常，已忽略。");
+                return false;
+            }
+            // 异常应答帧不需要检查 DI 匹配，直接返回成功
+            return true;
+        }
+
+        // 正常应答帧的检查
         if (frame.dataField.size() < 4)
         {
             errorText = QString::fromUtf8("收到数据域长度不足的应答帧，已忽略。");

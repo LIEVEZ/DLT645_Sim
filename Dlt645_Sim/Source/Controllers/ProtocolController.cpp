@@ -445,9 +445,11 @@ void ProtocolController::onResponseTimerTimeout()
             }
             else
             {
-                ProtocolFrame response = m_protocolParser->buildErrorResponse(requestFrame, 0x01);
+                // 数据项不支持：返回错误码 0x02（无请求数据）
+                // 适用场景：单相表查询 B/C 相数据、查询不存在的数据标识等
+                ProtocolFrame response = m_protocolParser->buildErrorResponse(requestFrame, 0x02);
                 sendResponse(response, meterModel);
-                emit protocolError(0x01, QStringLiteral("当前电表不支持数据项: %1").arg(diCode));
+                emit protocolError(0x02, QStringLiteral("当前电表不支持数据项: %1").arg(diCode));
             }
         }
         else if ((requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::WriteData))

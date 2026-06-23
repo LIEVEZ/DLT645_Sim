@@ -549,10 +549,12 @@ ProtocolFrame ProtocolParser::buildErrorResponse(const ProtocolFrame &requestFra
     frame.startFlag = 0x68;
     frame.address = requestFrame.address;
     frame.startFlag2 = 0x68;
-    frame.controlCode = requestFrame.controlCode | 0x80;
+    // 异常应答：bit7=1（应答） + bit6=1（异常） = 0xC0
+    frame.controlCode = (requestFrame.controlCode & 0x3F) | 0xC0;
 
-    // 数据域：错误信息（1字节）
-    frame.dataField = QByteArray(1, errorCode);
+    // 数据域：错误信息（1字节），需要 +33H 编码
+    quint8 encodedError = errorCode + 0x33;
+    frame.dataField = QByteArray(1, static_cast<char>(encodedError));
     frame.dataLength = 0x01;
 
     frame.checksum = 0;
