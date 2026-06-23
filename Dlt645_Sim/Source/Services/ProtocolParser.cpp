@@ -1,6 +1,8 @@
 #include "ProtocolParser.h"
 #include "Models/DataItem.h"
 #include "Utils/BCDHelper.h"
+#include "Utils/DLT645BlockHandler.h"
+#include "Utils/DLT645DataHelper.h"
 #include <algorithm>
 
 namespace
@@ -35,6 +37,16 @@ void add33(QByteArray &data)
     {
         data[i] = static_cast<char>(static_cast<quint8>(data[i]) + 0x33);
     }
+}
+
+QByteArray encodeValueBytes(const QVariant &value, const QString &format)
+{
+    QString formattedValue = BCDHelper::formatValueToString(value, format);
+    formattedValue.remove(".");
+    QByteArray bytes = BCDHelper::stringToByteArray(formattedValue);
+    std::reverse(bytes.begin(), bytes.end());
+    add33(bytes);
+    return bytes;
 }
 }
 
@@ -435,6 +447,44 @@ ProtocolFrame ProtocolParser::buildReadResponse(const ProtocolFrame &requestFram
     // 确保format部分的数量与数据值的数量匹配
     if (formatParts.size() != valuesList.size())
     {
+        return frame;
+    }
+
+    const QStringList payloadCodes = DLT645BlockHandler::payloadOrderCodesForBlock(m_meterModel, diCode);
+    if (!payloadCodes.isEmpty() &&
+        payloadCodes.size() == formatParts.size() &&
+        payloadCodes.size() == valuesList.size())
+    {
+        for (int i = 0; i < valuesList.size(); ++i)
+        {
+            const QString currentFormat = formatParts.at(i);
+            if (m_meterModel && !m_meterModel->isDataItemSupported(payloadCodes.at(i)))
+            {
+                const int byteCount = DLT645DataHelper::bytesRequiredForFormat(currentFormat);
+                if (byteCount <= 0)
+                {
+                    return frame;
+                }
+                // 不支持的数据项：填充 0xFF 后执行 +0x33 偏移
+                // 0xFF + 0x33 = 0x132 -> 取低字节 0x32
+                QByteArray unsupportedBytes(byteCount, static_cast<char>(0xFF));
+                add33(unsupportedBytes);
+                valueBytes.append(unsupportedBytes);
+            }
+            else
+            {
+                valueBytes.append(encodeValueBytes(valuesList.at(i), currentFormat));
+            }
+        }
+
+        frame.dataField = diBytes + valueBytes;
+        frame.dataLength = static_cast<quint8>(frame.dataField.size());
+
+        frame.checksum = 0;
+        QByteArray frameData = frame.toByteArray();
+        frame.checksum = ChecksumHelper::calculateChecksum(frameData.left(frameData.size() - 2));
+        frame.endFlag = 0x16;
+
         return frame;
     }
 

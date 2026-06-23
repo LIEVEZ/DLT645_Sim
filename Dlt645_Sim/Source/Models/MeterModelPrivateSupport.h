@@ -8,15 +8,6 @@ namespace MeterModelPrivate
     inline bool isSinglePhaseUnsupportedCode(const QString &diCode)
     {
         static const QSet<QString> unsupportedCodes = {
-            QStringLiteral("0x0201FF00"),
-            QStringLiteral("0x0202FF00"),
-            QStringLiteral("0x0203FF00"),
-            QStringLiteral("0x0204FF00"),
-            QStringLiteral("0x0205FF00"),
-            QStringLiteral("0x0206FF00"),
-            QStringLiteral("0x0207FF00"),
-            QStringLiteral("0x0208FF00"),
-            QStringLiteral("0x0209FF00"),
             QStringLiteral("0x02010200"),
             QStringLiteral("0x02010300"),
             QStringLiteral("0x02020200"),
@@ -38,8 +29,7 @@ namespace MeterModelPrivate
             QStringLiteral("0x23010002"),
             QStringLiteral("0x23010003"),
             QStringLiteral("0x23010006"),
-            QStringLiteral("0x23010007"),
-            QStringLiteral("0x230100FF")};
+            QStringLiteral("0x23010007")};
         if (unsupportedCodes.contains(diCode))
         {
             return true;

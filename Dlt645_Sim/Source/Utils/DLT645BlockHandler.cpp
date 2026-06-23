@@ -335,7 +335,6 @@ QStringList payloadOrderCodesForBlock(const MeterModel *meterModel, const QStrin
 
 QStringList displayOrderCodesForBlock(const MeterModel *meterModel, const QString &diCode, int rateCountOverride)
 {
-    // 显示顺序与载荷顺序相同
     return payloadOrderCodesForBlock(meterModel, diCode, rateCountOverride);
 }
 

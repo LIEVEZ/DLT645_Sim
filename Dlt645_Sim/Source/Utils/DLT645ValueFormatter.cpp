@@ -262,9 +262,75 @@ QString blockByteBreakdownLines(const MeterModel *meterModel, const QString &blo
     for (const QString &code : payloadCodes)
     {
         DataItem item = meterModel->getDataItem(code);
+
+        // 对于不支持的子项（单相表的 B/C 相数据），从块的格式串推断
         if (item.diCode.isEmpty())
         {
-            return QString();
+            const DataItem blockItem = meterModel->getDataItem(blockDiCode);
+            if (blockItem.format.isEmpty())
+            {
+                return QString();
+            }
+
+            const QStringList formatParts = blockItem.format.split(QStringLiteral(":"), Qt::SkipEmptyParts);
+            const int index = payloadCodes.indexOf(code);
+            if (index < 0 || index >= formatParts.size())
+            {
+                return QString();
+            }
+
+            const QString currentFormat = formatParts.at(index);
+            const int size = DLT645DataHelper::bytesRequiredForFormat(currentFormat);
+            if (size <= 0 || offset + size > payload.size())
+            {
+                return QString();
+            }
+
+            const QByteArray fieldBytes = payload.mid(offset, size);
+
+            // 尝试推断描述（基于 DI 码模式）
+            QString description = code;
+            if (code.contains(QStringLiteral("020102")))
+            {
+                description = QStringLiteral("B相电压");
+            }
+            else if (code.contains(QStringLiteral("020103")))
+            {
+                description = QStringLiteral("C相电压");
+            }
+            else if (code.contains(QStringLiteral("020202")))
+            {
+                description = QStringLiteral("B相电流");
+            }
+            else if (code.contains(QStringLiteral("020203")))
+            {
+                description = QStringLiteral("C相电流");
+            }
+
+            // 格式化值（0xFF 会被格式化为 FFF.F 等形式）
+            QString value = displayValueForFormatPart(fieldBytes, currentFormat);
+            if (value.isEmpty())
+            {
+                value = DLT645FrameFormatter::formatHex(fieldBytes);
+            }
+
+            // 推断单位
+            QString unit;
+            if (description.contains(QStringLiteral("电压")))
+            {
+                unit = QStringLiteral("V");
+            }
+            else if (description.contains(QStringLiteral("电流")))
+            {
+                unit = QStringLiteral("A");
+            }
+
+            lines.append(QStringLiteral("%1 --- %2:%3")
+                             .arg(DLT645FrameFormatter::formatHex(fieldBytes),
+                                  description,
+                                  appendUnit(value, unit)));
+            offset += size;
+            continue;
         }
 
         const int size = DLT645DataHelper::bytesRequiredForFormat(item.format);
@@ -324,9 +390,77 @@ QList<FrameParseCard> buildBlockDecodeCards(const MeterModel *meterModel, const 
     for (const QString &code : payloadCodes)
     {
         const DataItem item = meterModel->getDataItem(code);
+
+        // 对于不支持的子项，从块的格式串推断
         if (item.diCode.isEmpty())
         {
-            return {};
+            const DataItem blockItem = meterModel->getDataItem(blockDiCode);
+            if (blockItem.format.isEmpty())
+            {
+                return {};
+            }
+
+            const QStringList formatParts = blockItem.format.split(QStringLiteral(":"), Qt::SkipEmptyParts);
+            const int index = payloadCodes.indexOf(code);
+            if (index < 0 || index >= formatParts.size())
+            {
+                return {};
+            }
+
+            const QString currentFormat = formatParts.at(index);
+            const int size = DLT645DataHelper::bytesRequiredForFormat(currentFormat);
+            if (size <= 0 || offset + size > payload.size())
+            {
+                return {};
+            }
+
+            const QByteArray partPayload = payload.mid(offset, size);
+            QByteArray displayBytes = partPayload;
+            std::reverse(displayBytes.begin(), displayBytes.end());
+
+            // 尝试推断描述（基于 DI 码模式）
+            QString description = code;
+            if (code.contains(QStringLiteral("020102")))
+            {
+                description = QStringLiteral("B相电压");
+            }
+            else if (code.contains(QStringLiteral("020103")))
+            {
+                description = QStringLiteral("C相电压");
+            }
+            else if (code.contains(QStringLiteral("020202")))
+            {
+                description = QStringLiteral("B相电流");
+            }
+            else if (code.contains(QStringLiteral("020203")))
+            {
+                description = QStringLiteral("C相电流");
+            }
+
+            // 格式化值
+            QString value = displayValueForFormatPart(partPayload, currentFormat);
+            if (value.isEmpty())
+            {
+                value = DLT645FrameFormatter::formatHex(displayBytes);
+            }
+
+            // 推断单位
+            QString unit;
+            if (description.contains(QStringLiteral("电压")))
+            {
+                unit = QStringLiteral("V");
+            }
+            else if (description.contains(QStringLiteral("电流")))
+            {
+                unit = QStringLiteral("A");
+            }
+
+            payloadHexByCode.insert(code, DLT645FrameFormatter::formatHex(displayBytes));
+            valuesByCode.insert(code, value);
+            descriptionsByCode.insert(code, description);
+            unitsByCode.insert(code, unit);
+            offset += size;
+            continue;
         }
 
         const int size = DLT645DataHelper::bytesRequiredForFormat(item.format);
