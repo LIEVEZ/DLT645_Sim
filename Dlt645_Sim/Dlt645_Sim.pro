@@ -57,6 +57,7 @@ SOURCES += \
     Source/Services/DataGenerator.cpp \
     Source/Services/MeterDataStore.cpp \
     Source/Services/ConfigurationSerializer.cpp \
+    Source/Services/TermCatalogService.cpp \
     Source/Controllers/ConnectionManager.cpp \
     Source/Controllers/SerialController.cpp \
     Source/Controllers/TcpController.cpp \
@@ -67,6 +68,7 @@ SOURCES += \
     Source/Views/DataTable/DataTableWidget.cpp \
     Source/Views/DataTable/DataTableExporter.cpp \
     Source/Views/Common/FrameParseResultWidget.cpp \
+    Source/Views/Common/TermExplanationWidget.cpp \
     Source/Views/CommunicationBar/CommunicationBarWidget.cpp \
     Source/Views/Dialogs/NewConnectionDialog.cpp \
     Source/Views/Dialogs/NewMeterDialog.cpp \
@@ -99,6 +101,7 @@ HEADERS += \
     Source/Models/DataItem.h \
     Source/Models/MeterInfo.h \
     Source/Models/MeterModel.h \
+    Source/Models/TermDefinition.h \
     Source/Models/MeterModelInitializationEventPrivate.h \
     Source/Models/MeterModelPrivate.h \
     Source/Models/MeterModelPrivateCommon.h \
@@ -113,6 +116,7 @@ HEADERS += \
     Source/Services/DataGenerator.h \
     Source/Services/MeterDataStore.h \
     Source/Services/ConfigurationSerializer.h \
+    Source/Services/TermCatalogService.h \
     Source/Controllers/ConnectionManager.h \
     Source/Controllers/SerialController.h \
     Source/Controllers/TcpController.h \
@@ -123,6 +127,7 @@ HEADERS += \
     Source/Views/DataTable/DataTableWidget.h \
     Source/Views/DataTable/DataTableExporter.h \
     Source/Views/Common/FrameParseResultWidget.h \
+    Source/Views/Common/TermExplanationWidget.h \
     Source/Views/CommunicationBar/CommunicationBarWidget.h \
     Source/Views/Dialogs/NewConnectionDialog.h \
     Source/Views/Dialogs/NewMeterDialog.h \
@@ -137,6 +142,10 @@ HEADERS += \
 # UI鏂囦欢
 FORMS += \
     Source/Views/MainWindow/mainwindow.ui
+
+# 资源文件
+RESOURCES += \
+    resources.qrc
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

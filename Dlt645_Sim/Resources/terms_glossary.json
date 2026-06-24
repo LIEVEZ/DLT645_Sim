@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "terms": [
+    {
+      "term": "功率因数",
+      "englishTerm": "Power Factor",
+      "definition": "交流电路中有功功率与视在功率的比值，表示电能利用效率。",
+      "formula": "PF = P / S = cos(φ)",
+      "unit": "无量纲",
+      "range": "0 ~ 1（或 0% ~ 100%）",
+      "note": "功率因数越接近1，表示电能利用效率越高。感性负载（如电动机）会降低功率因数。",
+      "keywords": ["功率因数", "power factor", "PF", "cos", "相角", "cosφ"]
+    },
+    {
+      "term": "有功功率",
+      "englishTerm": "Active Power",
+      "definition": "电路中实际消耗并转换为其他形式能量的功率。",
+      "formula": "P = U × I × cos(φ)",
+      "unit": "W（瓦）、kW（千瓦）",
+      "range": "≥ 0",
+      "note": "电表计费的主要依据，表示真实做功的功率。",
+      "keywords": ["有功功率", "active power", "P", "瓦", "kW", "有功", "功率"]
+    },
+    {
+      "term": "无功功率",
+      "englishTerm": "Reactive Power",
+      "definition": "电路中在电感或电容中来回传递但不做功的功率。",
+      "formula": "Q = U × I × sin(φ)",
+      "unit": "Var（乏）、kVar（千乏）",
+      "range": "任意实数",
+      "note": "无功功率不做功，但会增加线路损耗。需要通过无功补偿装置改善。",
+      "keywords": ["无功功率", "reactive power", "Q", "乏", "kVar", "无功"]
+    },
+    {
+      "term": "视在功率",
+      "englishTerm": "Apparent Power",
+      "definition": "电路中电压和电流的乘积，表示电路的总功率容量。",
+      "formula": "S = U × I = √(P² + Q²)",
+      "unit": "VA（伏安）、kVA（千伏安）",
+      "range": "≥ 0",
+      "note": "视在功率是有功功率和无功功率的矢量和。变压器容量以视在功率标称。",
+      "keywords": ["视在功率", "apparent power", "S", "VA", "kVA", "伏安"]
+    },
+    {
+      "term": "电能",
+      "englishTerm": "Electric Energy",
+      "definition": "电功率在时间上的累积，表示消耗或产生的电量。",
+      "formula": "E = P × t",
+      "unit": "Wh（瓦时）、kWh（千瓦时，度）",
+      "range": "≥ 0",
+      "note": "电能是电表计费的基础单位。1度电 = 1千瓦时 = 1000瓦时。",
+      "keywords": ["电能", "electric energy", "电量", "度", "kWh", "Wh"]
+    },
+    {
+      "term": "需量",
+      "englishTerm": "Demand",
+      "definition": "在规定的时间区间内，负荷的平均功率。",
+      "formula": "需量 = 时间区间内的总电能 / 时间区间",
+      "unit": "kW",
+      "range": "≥ 0",
+      "note": "用于电力系统容量规划和大工业用户计费。常用时间区间为 15 分钟。",
+      "keywords": ["需量", "demand", "最大需量", "平均功率"]
+    },
+    {
+      "term": "DI 码",
+      "englishTerm": "Data Identifier",
+      "definition": "DLT645-2007 协议中用于标识数据项的 4 字节编码，低字节在前。",
+      "formula": "格式：DI3 DI2 DI1 DI0（低字节在前）",
+      "unit": "无",
+      "range": "0x00000000 ~ 0xFFFFFFFF",
+      "note": "例如 0x00000100 表示(当前)正向有功总电能。DI0 为高位，DI3 为低位。",
+      "keywords": ["DI", "DI码", "数据标识", "data identifier", "编码"]
+    },
+    {
+      "term": "控制码",
+      "englishTerm": "Control Code",
+      "definition": "DLT645 协议帧中标识帧功能的单字节字段。",
+      "formula": "读数据=0x11, 写数据=0x14, 读地址=0x13",
+      "unit": "无",
+      "range": "0x00 ~ 0xFF",
+      "note": "应答帧控制码为请求帧控制码+0x80。例如读数据应答为0x91。",
+      "keywords": ["控制码", "control code", "C", "功能码"]
+    },
+    {
+      "term": "BCD 码",
+      "englishTerm": "Binary-Coded Decimal",
+      "definition": "用4位二进制数表示1位十进制数的编码方式。",
+      "formula": "例如：十进制 25 = BCD码 0x25",
+      "unit": "无",
+      "range": "每字节 0x00 ~ 0x99",
+      "note": "DLT645 协议中地址、时间等字段使用 BCD 编码。注意与16进制的区别。",
+      "keywords": ["BCD", "BCD码", "二进制编码十进制", "binary-coded decimal"]
+    },
+    {
+      "term": "帧格式",
+      "englishTerm": "Frame Format",
+      "definition": "DLT645 协议数据帧的结构定义。",
+      "formula": "FE FE FE FE | 68 | A0~A5 | 68 | C | L | DATA | CS | 16",
+      "unit": "无",
+      "range": "无",
+      "note": "前导符4个FE，起始符68，地址6字节，控制码C，长度L，数据域DATA，校验和CS，结束符16。",
+      "keywords": ["帧格式", "frame format", "报文格式", "协议帧"]
+    },
+    {
+      "term": "校验和",
+      "englishTerm": "Checksum",
+      "definition": "从第一个68H到校验和前一字节的模256累加和。",
+      "formula": "CS = (68H + A0 + ... + DATAn) % 256",
+      "unit": "无",
+      "range": "0x00 ~ 0xFF",
+      "note": "用于检测传输错误。接收方重新计算校验和并与接收到的校验和比较。",
+      "keywords": ["校验和", "checksum", "CS", "校验码"]
+    },
+    {
+      "term": "format 字段",
+      "englishTerm": "Format String",
+      "definition": "数据项的格式字符串，定义如何解析字节数组为可读值。",
+      "formula": "AA=直接显示, xx=除10, F9=正负号, .=小数点",
+      "unit": "无",
+      "range": "无",
+      "note": "例如 F9,AA,AA,.,AA 表示正负号+4字节+2位小数。格式串按逗号分组计算字节数。",
+      "keywords": ["format", "格式", "格式串", "数据格式", "F9", "AA"]
+    },
+    {
+      "term": "冻结数据",
+      "englishTerm": "Frozen Data",
+      "definition": "电表在特定时刻自动保存的数据快照。",
+      "formula": "无",
+      "unit": "无",
+      "range": "无",
+      "note": "用于抄表和数据分析。常见冻结类型：定时冻结、瞬时冻结、约定冻结、日冻结等。",
+      "keywords": ["冻结", "frozen", "冻结数据", "快照"]
+    },
+    {
+      "term": "结算日",
+      "englishTerm": "Settlement Day",
+      "definition": "电力公司与用户进行电费结算的日期。",
+      "formula": "无",
+      "unit": "无",
+      "range": "每月1~28日",
+      "note": "电表会在结算日冻结数据。上1结算日表示上一个结算周期，上2结算日表示上上个周期。",
+      "keywords": ["结算日", "settlement day", "结算周期"]
+    },
+    {
+      "term": "负荷曲线",
+      "englishTerm": "Load Profile",
+      "definition": "记录一段时间内负荷变化的数据序列。",
+      "formula": "无",
+      "unit": "kW",
+      "range": "无",
+      "note": "通常以15分钟为间隔记录。用于分析用电规律和需量计算。",
+      "keywords": ["负荷曲线", "load profile", "负荷记录", "曲线"]
+    },
+    {
+      "term": "电压",
+      "englishTerm": "Voltage",
+      "definition": "电路中两点之间的电位差。",
+      "formula": "U = P / I",
+      "unit": "V（伏特）、kV（千伏）",
+      "range": "> 0",
+      "note": "我国民用单相电压标准为220V，三相电压标准为380V。",
+      "keywords": ["电压", "voltage", "V", "伏特", "电位差"]
+    },
+    {
+      "term": "电流",
+      "englishTerm": "Current",
+      "definition": "单位时间内通过导体截面的电荷量。",
+      "formula": "I = P / U",
+      "unit": "A（安培）、mA（毫安）",
+      "range": "≥ 0",
+      "note": "电流方向规定为正电荷移动的方向。电表测量的是负载电流。",
+      "keywords": ["电流", "current", "I", "A", "安培"]
+    },
+    {
+      "term": "频率",
+      "englishTerm": "Frequency",
+      "definition": "交流电每秒钟变化的周期数。",
+      "formula": "f = 1 / T",
+      "unit": "Hz（赫兹）",
+      "range": "≥ 0",
+      "note": "我国电网标准频率为50Hz，部分国家（如美国）为60Hz。",
+      "keywords": ["频率", "frequency", "Hz", "赫兹", "工频"]
+    }
+  ]
+}

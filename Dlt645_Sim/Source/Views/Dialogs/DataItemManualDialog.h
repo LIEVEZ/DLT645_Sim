@@ -12,6 +12,7 @@ class QLabel;
 class QTreeWidgetItem;
 class QTableWidgetItem;
 class MeterModel;
+class TermExplanationWidget;
 struct DataItem;
 
 /**
@@ -35,7 +36,6 @@ private slots:
     void onCategorySelected(QTreeWidgetItem *item, int column);
     void onSearchTextChanged(const QString &text);
     void onTableCellDoubleClicked(int row, int column);
-    void onExportCsv();
 
 private:
     void setupUI();
@@ -48,8 +48,7 @@ private:
     QTreeWidget *m_categoryTree;
     QTableWidget *m_dataTable;
     QLineEdit *m_searchBox;
-    QPushButton *m_exportButton;
-    QLabel *m_formatHintLabel;
+    TermExplanationWidget *m_termExplanationWidget;
 
     MeterModel *m_catalogMeterModel;  // 临时电表实例
     QList<DataItem> m_allDataItems;   // 缓存所有数据项

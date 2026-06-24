@@ -2,6 +2,8 @@
 
 #include "Models/DataItem.h"
 #include "Models/MeterModel.h"
+#include "Services/TermCatalogService.h"
+#include "Views/Common/TermExplanationWidget.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -12,19 +14,19 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QSizePolicy>
 #include <QSplitter>
 #include <QTableWidget>
 #include <QTextStream>
 #include <QTreeWidget>
 #include <QVBoxLayout>
-
+#include <QDebug>
 DataItemManualDialog::DataItemManualDialog(QWidget *parent)
     : QDialog(parent),
       m_categoryTree(nullptr),
       m_dataTable(nullptr),
       m_searchBox(nullptr),
-      m_exportButton(nullptr),
-      m_formatHintLabel(nullptr),
+      m_termExplanationWidget(nullptr),
       m_catalogMeterModel(nullptr),
       m_currentCategory(QString::fromUtf8("全部"))
 {
@@ -62,8 +64,11 @@ void DataItemManualDialog::setupUI()
     searchLayout->addWidget(m_searchBox);
     mainLayout->addLayout(searchLayout);
 
-    // 中部分割器（左侧树 + 右侧表格）
-    QSplitter *splitter = new QSplitter(Qt::Horizontal, this);
+    // 内容区上下分割：上方数据表、下方术语解释
+    QSplitter *mainSplitter = new QSplitter(Qt::Vertical, this);
+
+    // 上方分割器（左侧树 + 右侧表格）
+    QSplitter *splitter = new QSplitter(Qt::Horizontal, mainSplitter);
 
     // 左侧分类树
     m_categoryTree = new QTreeWidget(this);
@@ -87,8 +92,8 @@ void DataItemManualDialog::setupUI()
     m_dataTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_dataTable->setAlternatingRowColors(false);  // 禁用交替行色
     m_dataTable->setShowGrid(true);  // 显示网格线
+    m_dataTable->verticalHeader()->setVisible(false);  // 隐藏行号列
     m_dataTable->verticalHeader()->setDefaultSectionSize(30);  // 行高 30px
-    m_dataTable->verticalHeader()->setFixedWidth(50);  // 行号列宽度 50px
     m_dataTable->horizontalHeader()->setStretchLastSection(false);
     m_dataTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Fixed);
     m_dataTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
@@ -105,23 +110,19 @@ void DataItemManualDialog::setupUI()
     splitter->setStretchFactor(0, 0);
     splitter->setStretchFactor(1, 1);
     splitter->setSizes(QList<int>() << 220 << 750);  // 左侧 220px，右侧 750px
-    mainLayout->addWidget(splitter);
+    splitter->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    mainSplitter->addWidget(splitter);
 
-    // 底部格式串说明
-    m_formatHintLabel = new QLabel(
-        QString::fromUtf8("格式串说明：F9=正负号(≥80为负) | AA=直接显示 | xx=除10 | .=小数点 | AS=ASCII | bin/bit=查表 | 双击行复制 DI 码"),
-        this
-    );
-    m_formatHintLabel->setWordWrap(true);
-    mainLayout->addWidget(m_formatHintLabel);
+    // 底部术语解释面板
+    m_termExplanationWidget = new TermExplanationWidget(mainSplitter);
+    m_termExplanationWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    mainSplitter->addWidget(m_termExplanationWidget);
 
-    // 底部按钮
-    QHBoxLayout *buttonLayout = new QHBoxLayout();
-    buttonLayout->addStretch();
-    m_exportButton = new QPushButton(QString::fromUtf8("导出 CSV"), this);
-    connect(m_exportButton, &QPushButton::clicked, this, &DataItemManualDialog::onExportCsv);
-    buttonLayout->addWidget(m_exportButton);
-    mainLayout->addLayout(buttonLayout);
+    mainSplitter->setStretchFactor(0, 1);
+    mainSplitter->setStretchFactor(1, 1);
+    mainSplitter->setChildrenCollapsible(false);
+    mainSplitter->setSizes(QList<int>() << 320 << 320);
+    mainLayout->addWidget(mainSplitter, 1);
 }
 
 void DataItemManualDialog::loadDataItems()
@@ -195,13 +196,6 @@ void DataItemManualDialog::populateTable(const QList<DataItem> &items)
 {
     m_dataTable->setRowCount(0);
     m_dataTable->setRowCount(items.size());
-
-    // 设置垂直表头（行号）
-    QStringList verticalHeaders;
-    for (int i = 0; i < items.size(); ++i) {
-        verticalHeaders << QString::number(i + 1);
-    }
-    m_dataTable->setVerticalHeaderLabels(verticalHeaders);
 
     for (int i = 0; i < items.size(); ++i) {
         const DataItem &item = items[i];
@@ -304,6 +298,17 @@ void DataItemManualDialog::onCategorySelected(QTreeWidgetItem *item, int column)
 void DataItemManualDialog::onSearchTextChanged(const QString &text)
 {
     filterTable(text);
+
+    // 搜索匹配的术语
+    TermDefinition term = TermCatalogService::instance()->searchTerm(text);
+
+    qDebug() << "[TermSearch] Keyword:" << text << "| Found:" << (!term.term.isEmpty()) << "| Term:" << term.term;
+
+    if (!term.term.isEmpty()) {
+        m_termExplanationWidget->showTerm(term);
+    } else {
+        m_termExplanationWidget->clear();
+    }
 }
 
 void DataItemManualDialog::onTableCellDoubleClicked(int row, int column)
@@ -322,49 +327,6 @@ void DataItemManualDialog::onTableCellDoubleClicked(int row, int column)
     // 状态栏提示（临时）
     QMessageBox::information(this, QString::fromUtf8("已复制"),
                              QString::fromUtf8("DI 码 %1 已复制到剪贴板").arg(diCode));
-}
-
-void DataItemManualDialog::onExportCsv()
-{
-    QString fileName = QFileDialog::getSaveFileName(this,
-        QString::fromUtf8("导出数据项手册"),
-        "data_item_manual.csv",
-        "CSV Files (*.csv)");
-
-    if (fileName.isEmpty()) return;
-
-    QFile file(fileName);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::warning(this, QString::fromUtf8("导出失败"),
-                             QString::fromUtf8("无法写入文件：%1").arg(fileName));
-        return;
-    }
-
-    QTextStream out(&file);
-    out.setCodec("UTF-8");
-
-    // 写入表头
-    out << "DI 码,描述,格式,单位,可写\n";
-
-    // 写入数据
-    for (int i = 0; i < m_dataTable->rowCount(); ++i) {
-        QStringList row;
-        for (int j = 0; j < m_dataTable->columnCount(); ++j) {
-            QTableWidgetItem *item = m_dataTable->item(i, j);
-            QString text = item ? item->text() : "";
-            // CSV 转义
-            if (text.contains(',') || text.contains('"') || text.contains('\n')) {
-                text.replace("\"", "\"\"");
-                text = "\"" + text + "\"";
-            }
-            row.append(text);
-        }
-        out << row.join(",") << "\n";
-    }
-
-    file.close();
-    QMessageBox::information(this, QString::fromUtf8("导出成功"),
-                             QString::fromUtf8("已导出 %1 条数据到 %2").arg(m_dataTable->rowCount()).arg(fileName));
 }
 
 void DataItemManualDialog::applyDarkTheme()
@@ -420,10 +382,6 @@ void DataItemManualDialog::applyDarkTheme()
             color: #FFFFFF;
         }
 
-        QTableWidget::item:disabled {
-            color: #FFFFFF;
-        }
-
         QHeaderView::section {
             background-color: #3C3F41;
             color: #FFFFFF;
@@ -460,6 +418,11 @@ void DataItemManualDialog::applyDarkTheme()
             background-color: #094771;
         }
     )");
+
+    // 同步主题到术语面板
+    if (m_termExplanationWidget) {
+        m_termExplanationWidget->applyDarkTheme();
+    }
 }
 
 void DataItemManualDialog::applyLightTheme()
@@ -516,10 +479,6 @@ void DataItemManualDialog::applyLightTheme()
             color: #000000;
         }
 
-        QTableWidget::item:disabled {
-            color: #000000;
-        }
-
         QHeaderView::section {
             background-color: #F0F0F0;
             color: #000000;
@@ -556,4 +515,9 @@ void DataItemManualDialog::applyLightTheme()
             background-color: #005A9E;
         }
     )");
+
+    // 同步主题到术语面板
+    if (m_termExplanationWidget) {
+        m_termExplanationWidget->applyLightTheme();
+    }
 }
