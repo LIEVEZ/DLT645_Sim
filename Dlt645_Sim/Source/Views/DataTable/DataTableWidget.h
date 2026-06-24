@@ -8,6 +8,8 @@
 #include <QVariant>
 #include <QWidget>
 
+#include "Models/MeterPhaseType.h"
+
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -91,8 +93,9 @@ public:
      * @brief 设置电表信息
      * @param alias 电表别名
      * @param address 电表地址
+     * @param phaseType 电表类型（单相/三相）
      */
-    void setMeterInfo(const QString &alias, const QString &address);
+    void setMeterInfo(const QString &alias, const QString &address, MeterPhaseType phaseType = MeterPhaseType::ThreePhase);
 
     /**
      * @brief 更新单个数据项的值
@@ -188,6 +191,7 @@ private:
     QString m_currentCategory;
     QString m_meterAlias;
     QString m_meterAddress;
+    MeterPhaseType m_meterPhaseType;
 };
 
 #endif // DATATABLEWIDGET_H

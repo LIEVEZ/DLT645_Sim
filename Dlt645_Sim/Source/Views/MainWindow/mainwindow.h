@@ -27,6 +27,7 @@ class DataTableWidget;
 class DeviceTreeWidget;
 class EventRecordDialog;
 class FrameParseDialog;
+class DataItemManualDialog;
 class QLabel;
 class MainWindowViewModel;
 class MasterQueryDialog;
@@ -68,6 +69,7 @@ private slots:
     void onQueryFrameGenerator();
     void onQueryFrameDialogClosed();
     void onFrameParseDialog();
+    void onDataItemManualDialog();
     void onLoggerLogEntryAdded(LogLevel level, const QDateTime &timestamp, const QString &message);
     void onImportConfiguration();
     void onExportConfiguration();
@@ -149,6 +151,7 @@ private:
     QAction *m_masterQueryAction;
     QAction *m_queryFrameAction;
     QAction *m_frameParseAction;
+    QAction *m_dataItemManualAction;
     QAction *m_darkThemeAction;
     QAction *m_lightThemeAction;
 
@@ -156,6 +159,7 @@ private:
     MasterQueryDialog *m_masterQueryDialog;
     QueryFrameDialog *m_queryFrameDialog;
     FrameParseDialog *m_frameParseDialog;
+    DataItemManualDialog *m_dataItemManualDialog;
     MeterDataStore *m_meterDataStore;
     QMap<QString, MeterModel *> m_meterModelsByAddress;
     MeterModel *m_currentMeterModel;

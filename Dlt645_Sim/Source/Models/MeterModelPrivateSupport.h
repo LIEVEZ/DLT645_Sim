@@ -69,18 +69,28 @@ namespace MeterModelPrivate
                 diCode.startsWith(QStringLiteral("0x0302")) ||
                 diCode.startsWith(QStringLiteral("0x0303")))
             {
-                // 总次数：最后一个字节为相别（00=A, 01=B, 02=C）
-                if (diCode.length() == 10 && (diCode.endsWith(QStringLiteral("01")) || diCode.endsWith(QStringLiteral("02"))))
-                {
-                    return true;
-                }
-                // 历史记录：倒数第二个字节为相别（01=A, 02=B, 03=C）
+                // 总次数：格式为 0x030X0000、0x030X0001、0x030X0002，倒数第三、第四字节为 "00"
+                // 单相表过滤 B相(01) 和 C相(02)
                 if (diCode.length() == 10)
                 {
-                    const QString phaseCode = diCode.mid(6, 2);
-                    if (phaseCode == QStringLiteral("02") || phaseCode == QStringLiteral("03"))
+                    const QString thirdFourthByte = diCode.mid(4, 2);
+                    if (thirdFourthByte == QStringLiteral("00"))
                     {
-                        return true;
+                        // 这是总次数格式
+                        if (diCode.endsWith(QStringLiteral("01")) || diCode.endsWith(QStringLiteral("02")))
+                        {
+                            return true;
+                        }
+                    }
+                    else
+                    {
+                        // 这是历史记录格式：0x030XPPNN (PP=相别 01/02/03, NN=历史序号)
+                        // 倒数第二个字节(mid(6,2))为相别（01=A, 02=B, 03=C）
+                        const QString phaseCode = diCode.mid(6, 2);
+                        if (phaseCode == QStringLiteral("02") || phaseCode == QStringLiteral("03"))
+                        {
+                            return true;
+                        }
                     }
                 }
             }
@@ -91,18 +101,25 @@ namespace MeterModelPrivate
             if (diCode.startsWith(QStringLiteral("0x030B")) ||
                 diCode.startsWith(QStringLiteral("0x030C")))
             {
-                // 总次数：最后一个字节为相别
-                if (diCode.length() == 10 && (diCode.endsWith(QStringLiteral("01")) || diCode.endsWith(QStringLiteral("02"))))
-                {
-                    return true;
-                }
-                // 历史记录：倒数第二个字节为相别
                 if (diCode.length() == 10)
                 {
-                    const QString phaseCode = diCode.mid(6, 2);
-                    if (phaseCode == QStringLiteral("02") || phaseCode == QStringLiteral("03"))
+                    const QString thirdFourthByte = diCode.mid(4, 2);
+                    if (thirdFourthByte == QStringLiteral("00"))
                     {
-                        return true;
+                        // 这是总次数格式
+                        if (diCode.endsWith(QStringLiteral("01")) || diCode.endsWith(QStringLiteral("02")))
+                        {
+                            return true;
+                        }
+                    }
+                    else
+                    {
+                        // 这是历史记录格式
+                        const QString phaseCode = diCode.mid(6, 2);
+                        if (phaseCode == QStringLiteral("02") || phaseCode == QStringLiteral("03"))
+                        {
+                            return true;
+                        }
                     }
                 }
             }
@@ -110,16 +127,25 @@ namespace MeterModelPrivate
             // 断相/相序事件也类似处理（如果有）
             if (diCode.startsWith(QStringLiteral("0x0304")))
             {
-                if (diCode.length() == 10 && (diCode.endsWith(QStringLiteral("01")) || diCode.endsWith(QStringLiteral("02"))))
-                {
-                    return true;
-                }
                 if (diCode.length() == 10)
                 {
-                    const QString phaseCode = diCode.mid(6, 2);
-                    if (phaseCode == QStringLiteral("02") || phaseCode == QStringLiteral("03"))
+                    const QString thirdFourthByte = diCode.mid(4, 2);
+                    if (thirdFourthByte == QStringLiteral("00"))
                     {
-                        return true;
+                        // 这是总次数格式
+                        if (diCode.endsWith(QStringLiteral("01")) || diCode.endsWith(QStringLiteral("02")))
+                        {
+                            return true;
+                        }
+                    }
+                    else
+                    {
+                        // 这是历史记录格式
+                        const QString phaseCode = diCode.mid(6, 2);
+                        if (phaseCode == QStringLiteral("02") || phaseCode == QStringLiteral("03"))
+                        {
+                            return true;
+                        }
                     }
                 }
             }

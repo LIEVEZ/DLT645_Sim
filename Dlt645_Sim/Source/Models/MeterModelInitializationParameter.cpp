@@ -9,7 +9,7 @@ void MeterModel::initializeParameterData()
     const int configuredYearZoneCount = 2;
     const int configuredDayScheduleTableCount = 2;
     const int configuredDayScheduleCount = 8;
-    const int configuredRateCount = 5;
+    const int configuredRateCount = 8;  // 修改为8，支持费率1-8
     const int configuredHolidayCount = 12;
     const int configuredStepCount = 3;
     const int configuredAutoScreenCount = 6;

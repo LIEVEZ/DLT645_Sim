@@ -6,6 +6,7 @@
 #include "Views/Dialogs/CommunicationDialog.h"
 #include "Views/Dialogs/EventRecordDialog.h"
 #include "Views/Dialogs/FrameParseDialog.h"
+#include "Views/Dialogs/DataItemManualDialog.h"
 #include "Views/Dialogs/MasterQueryDialog.h"
 #include "Views/Dialogs/QueryFrameDialog.h"
 
@@ -249,5 +250,29 @@ void MainWindow::onFrameParseDialog()
     }
 
     m_frameParseDialog->show();
+}
+
+void MainWindow::onDataItemManualDialog()
+{
+    if (m_dataItemManualDialog)
+    {
+        m_dataItemManualDialog->show();
+        m_dataItemManualDialog->raise();
+        m_dataItemManualDialog->activateWindow();
+        return;
+    }
+
+    m_dataItemManualDialog = new DataItemManualDialog(this);
+
+    if (m_viewModel->isDarkTheme())
+    {
+        m_dataItemManualDialog->applyDarkTheme();
+    }
+    else
+    {
+        m_dataItemManualDialog->applyLightTheme();
+    }
+
+    m_dataItemManualDialog->show();
 }
 

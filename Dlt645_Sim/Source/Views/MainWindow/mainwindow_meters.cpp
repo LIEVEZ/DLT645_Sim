@@ -344,7 +344,7 @@ void MainWindow::applyCurrentMeter(const MeterInfo &meterInfo)
     if (m_dataTableWidget)
     {
         m_dataTableWidget->setMeterModel(m_currentMeterModel);
-        m_dataTableWidget->setMeterInfo(meterInfo.alias, meterInfo.address);
+        m_dataTableWidget->setMeterInfo(meterInfo.alias, meterInfo.address, meterInfo.phaseType);
     }
 
     if (m_communicationDialog)
@@ -368,7 +368,7 @@ void MainWindow::clearCurrentMeter()
     if (m_dataTableWidget)
     {
         m_dataTableWidget->setMeterModel(nullptr);
-        m_dataTableWidget->setMeterInfo(QString(), QString());
+        m_dataTableWidget->setMeterInfo(QString(), QString(), MeterPhaseType::ThreePhase);
     }
 
     if (m_communicationDialog)

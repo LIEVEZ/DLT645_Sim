@@ -257,6 +257,11 @@ void MainWindow::setupMenuBar()
     // 工具菜单
     QMenu *toolsMenu = menuBar->addMenu(QStringLiteral("工具(&T)"));
 
+    QAction *dataItemManualAction = toolsMenu->addAction(QStringLiteral("数据项手册(&M)"));
+    dataItemManualAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+H")));
+    dataItemManualAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogInfoView));
+    connect(dataItemManualAction, &QAction::triggered, this, &MainWindow::onDataItemManualDialog);
+
     // 帮助菜单
     QMenu *helpMenu = menuBar->addMenu(QStringLiteral("帮助(&H)"));
 

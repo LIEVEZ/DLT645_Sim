@@ -2,6 +2,7 @@
 #include "ViewModels/MainWindowViewModel.h"
 
 #include "Views/Dialogs/CommunicationDialog.h"
+#include "Views/Dialogs/DataItemManualDialog.h"
 #include "Views/Dialogs/FrameParseDialog.h"
 #include "Views/Dialogs/MasterQueryDialog.h"
 #include "Views/Dialogs/QueryFrameDialog.h"
@@ -633,6 +634,10 @@ void MainWindow::onToggleDarkTheme(bool enabled)
         {
             m_frameParseDialog->applyDarkTheme();
         }
+        if (m_dataItemManualDialog)
+        {
+            m_dataItemManualDialog->applyDarkTheme();
+        }
     }
 }
 
@@ -661,6 +666,10 @@ void MainWindow::onToggleLightTheme(bool enabled)
         if (m_frameParseDialog)
         {
             m_frameParseDialog->applyLightTheme();
+        }
+        if (m_dataItemManualDialog)
+        {
+            m_dataItemManualDialog->applyLightTheme();
         }
     }
 }

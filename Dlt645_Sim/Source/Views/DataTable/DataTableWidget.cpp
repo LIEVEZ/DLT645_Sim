@@ -3,6 +3,8 @@
 #include "Utils/Logger.h"
 #include "../../Models/MeterModel.h"
 #include "../../Models/DataItem.h"
+#include "../../Models/MeterPhaseType.h"
+#include "../../Models/MeterModelPrivateSupport.h"
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
@@ -1443,9 +1445,16 @@ void DataTableWidget::populateCategory(const QString &category)
     const QString filterText = m_searchEdit ? m_searchEdit->text().trimmed() : QString();
     const bool hasSearchFilter = !filterText.isEmpty();
     const QList<QString> codes = dataCodesForCategory(category);
+    const bool isSinglePhase = m_meterModel->isSinglePhase();
 
     for (const QString &diCode : codes)
     {
+        // 单相表过滤：跳过不支持的数据项
+        if (isSinglePhase && MeterModelPrivate::isSinglePhaseUnsupportedCode(diCode))
+        {
+            continue;
+        }
+
         // 从MeterModel中获取完整的DataItem信息
         DataItem dataItem = m_meterModel->getDataItem(diCode);
         QString name = dataItem.description;
@@ -1640,10 +1649,11 @@ QString DataTableWidget::getCategory() const
     return m_currentCategory;
 }
 
-void DataTableWidget::setMeterInfo(const QString &alias, const QString &address)
+void DataTableWidget::setMeterInfo(const QString &alias, const QString &address, MeterPhaseType phaseType)
 {
     m_meterAlias = alias;
     m_meterAddress = address;
+    m_meterPhaseType = phaseType;
 
     // 更新导出器的电表信息
     if (m_exporter)
@@ -1658,7 +1668,9 @@ void DataTableWidget::setMeterInfo(const QString &alias, const QString &address)
     }
     else
     {
-        m_meterInfoLabel->setText(QString("电表信息：[%1] [%2]").arg(alias, address));
+        QString phaseTypeText = meterPhaseTypeToDisplayName(phaseType);
+        m_meterInfoLabel->setText(QString("电表信息：[%1] [%2] [%3]")
+                                      .arg(alias, address, phaseTypeText));
     }
 }
 

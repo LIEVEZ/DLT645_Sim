@@ -75,6 +75,7 @@ SOURCES += \
     Source/Views/Dialogs/EventRecordDialog.cpp \
     Source/Views/Dialogs/MasterQueryDialog.cpp \
     Source/Views/Dialogs/FrameParseDialog.cpp \
+    Source/Views/Dialogs/DataItemManualDialog.cpp \
     Source/Views/Dialogs/QueryFrameDialog.cpp
 
 # 澶存枃浠?
@@ -130,6 +131,7 @@ HEADERS += \
     Source/Views/Dialogs/EventRecordDialog.h \
     Source/Views/Dialogs/MasterQueryDialog.h \
     Source/Views/Dialogs/FrameParseDialog.h \
+    Source/Views/Dialogs/DataItemManualDialog.h \
     Source/Views/Dialogs/QueryFrameDialog.h
 
 # UI鏂囦欢

@@ -10,7 +10,6 @@
 namespace MeterModelPrivate
 {
     constexpr int kDefaultRateCount = 5;
-    // 当前产品固定按 5 个费率处理，避免大费率数导致读取链路膨胀卡顿
     constexpr int kMaxRateCount = 8;
     constexpr int kMaxYearZoneCount = 14;
     constexpr int kMaxDayScheduleTableCount = 8;
@@ -385,10 +384,10 @@ namespace MeterModelPrivate
     }
 
     inline int boundedParameterCount(const QMap<QString, DataItem> &items,
-                              const QString &diCode,
-                              int defaultValue,
-                              int minimumValue,
-                              int maximumValue)
+                                     const QString &diCode,
+                                     int defaultValue,
+                                     int minimumValue,
+                                     int maximumValue)
     {
         if (!items.contains(diCode))
         {
@@ -638,7 +637,8 @@ namespace MeterModelPrivate
 
     inline const QSet<int> &demandBaseFamilyValues()
     {
-        static const QSet<int> values = []() {
+        static const QSet<int> values = []()
+        {
             QSet<int> result;
             for (const DemandFamilyDefinition &family : currentDemandFamilies())
             {
@@ -818,9 +818,9 @@ namespace MeterModelPrivate
     }
 
     inline DataItem clonedDataItem(const DataItem &templateItem,
-                            const QString &newCode,
-                            const QString &newDescription,
-                            const QVariant &newValue)
+                                   const QString &newCode,
+                                   const QString &newDescription,
+                                   const QVariant &newValue)
     {
         return DataItem(newCode,
                         newDescription,
