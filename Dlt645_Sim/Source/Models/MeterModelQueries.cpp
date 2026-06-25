@@ -178,7 +178,7 @@ QList<QString> MeterModel::getEventDataCodes() const
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if (it.key().startsWith("0x03"))
+        if (it.key().startsWith("0x03") && isEventDataItemEnabledUnlocked(it.key()))
         {
             codes.append(it.key());
         }

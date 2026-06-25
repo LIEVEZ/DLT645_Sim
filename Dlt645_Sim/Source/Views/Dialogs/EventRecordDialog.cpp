@@ -5,6 +5,7 @@
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QMessageBox>
+#include <QSignalBlocker>
 #include <QWidget>
 
 EventRecordDialog::EventRecordDialog(MeterModel *meterModel, QWidget *parent)
@@ -51,6 +52,7 @@ void EventRecordDialog::setupUI()
     {
         QCheckBox *checkBox = new QCheckBox(categoryName, scrollWidget);
         checkBox->setChecked(true);
+        connect(checkBox, &QCheckBox::toggled, this, &EventRecordDialog::onEventCheckBoxToggled);
         m_eventCheckBoxes.insert(categoryName, checkBox);
         scrollLayout->addWidget(checkBox);
     }
@@ -91,13 +93,60 @@ void EventRecordDialog::loadMeterSettings()
     QString meterAddress = m_meterModel->getMeterAddress();
     m_infoLabel->setText(QString("当前电表地址：%1").arg(meterAddress));
 
-    bool globalEnabled = m_meterModel->getEventRecordPresent();
-    m_globalCheckBox->setChecked(globalEnabled);
+    bool allChecked = !m_eventCheckBoxes.isEmpty();
+    for (auto it = m_eventCheckBoxes.begin(); it != m_eventCheckBoxes.end(); ++it)
+    {
+        const bool checked = m_meterModel->isEventCategoryEnabled(it.key());
+        it.value()->setChecked(checked);
+        if (!checked)
+        {
+            allChecked = false;
+        }
+    }
+    m_globalCheckBox->setChecked(allChecked);
 }
 
 void EventRecordDialog::onGlobalCheckBoxToggled(bool checked)
 {
-    m_scrollArea->setEnabled(checked);
+    if (!checked)
+    {
+        for (auto it = m_eventCheckBoxes.begin(); it != m_eventCheckBoxes.end(); ++it)
+        {
+            it.value()->setChecked(false);
+        }
+        return;
+    }
+
+    if (!m_meterModel)
+    {
+        return;
+    }
+
+    for (auto it = m_eventCheckBoxes.begin(); it != m_eventCheckBoxes.end(); ++it)
+    {
+        it.value()->setChecked(m_meterModel->isEventCategoryEnabled(it.key()));
+    }
+}
+
+void EventRecordDialog::onEventCheckBoxToggled(bool checked)
+{
+    Q_UNUSED(checked);
+
+    bool allChecked = !m_eventCheckBoxes.isEmpty();
+    for (auto it = m_eventCheckBoxes.cbegin(); it != m_eventCheckBoxes.cend(); ++it)
+    {
+        if (!it.value()->isChecked())
+        {
+            allChecked = false;
+            break;
+        }
+    }
+
+    if (m_globalCheckBox->isChecked() != allChecked)
+    {
+        QSignalBlocker blocker(m_globalCheckBox);
+        m_globalCheckBox->setChecked(allChecked);
+    }
 }
 
 void EventRecordDialog::onOkClicked()
@@ -108,8 +157,15 @@ void EventRecordDialog::onOkClicked()
         return;
     }
 
-    bool globalEnabled = m_globalCheckBox->isChecked();
-    m_meterModel->setEventRecordPresent(globalEnabled);
+    bool hasCheckedItem = false;
+    QMap<QString, bool> categoryEnabled;
+    for (auto it = m_eventCheckBoxes.cbegin(); it != m_eventCheckBoxes.cend(); ++it)
+    {
+        const bool checked = it.value()->isChecked();
+        categoryEnabled.insert(it.key(), checked);
+        hasCheckedItem = hasCheckedItem || checked;
+    }
+    m_meterModel->applyEventRecordSettings(hasCheckedItem, categoryEnabled);
 
     accept();
 }

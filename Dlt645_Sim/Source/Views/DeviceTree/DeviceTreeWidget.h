@@ -150,6 +150,7 @@ public:
     QList<MeterInfo> allMeterInfos() const;
     QList<MeterInfo> meterInfosForConnection(const QString &connectionAlias) const;
     MeterInfo meterInfo(const QString &connectionAlias, const QString &meterAlias) const;
+    bool updateMeterEventRecordPresent(const QString &connectionAlias, const QString &meterAlias, bool eventRecordPresent);
 
     /**
      * @brief 获取树形控件指针

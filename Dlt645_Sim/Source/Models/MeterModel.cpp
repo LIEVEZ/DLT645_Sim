@@ -1,10 +1,16 @@
 #include "MeterModelPrivate.h"
+#include "Models/CategoryCatalog.h"
 
 using namespace MeterModelPrivate;
 
 MeterModel::MeterModel(QObject *parent)
     : QObject(parent), m_meterAddress("202101190552"), m_operatorCode("00000000"), m_password("00000000"), m_includePrefixFE(true), m_meterPhaseType(MeterPhaseType::ThreePhase), m_eventRecordPresent(true)
 {
+    const QList<CategoryCatalog::EventCategoryDefinition> eventDefinitions = CategoryCatalog::eventCategoryDefinitions();
+    for (const CategoryCatalog::EventCategoryDefinition &definition : eventDefinitions)
+    {
+        m_eventCategoryEnabled.insert(definition.name, true);
+    }
     initializeDefaultDataItems();
 }
 
@@ -56,6 +62,65 @@ void MeterModel::setEventRecordPresent(bool present)
 {
     QMutexLocker locker(&m_mutex);
     m_eventRecordPresent = present;
+}
+
+void MeterModel::setEventCategoryEnabled(const QString &categoryName, bool enabled)
+{
+    const QString normalizedCategoryName = categoryName.trimmed();
+    if (normalizedCategoryName.isEmpty())
+    {
+        return;
+    }
+
+    bool changed = false;
+    {
+        QMutexLocker locker(&m_mutex);
+        const bool currentValue = m_eventCategoryEnabled.value(normalizedCategoryName, true);
+        if (currentValue != enabled || !m_eventCategoryEnabled.contains(normalizedCategoryName))
+        {
+            m_eventCategoryEnabled.insert(normalizedCategoryName, enabled);
+            changed = true;
+        }
+    }
+
+    if (changed)
+    {
+        emit dataBatchChanged();
+    }
+}
+
+void MeterModel::applyEventRecordSettings(bool present, const QMap<QString, bool> &categoryEnabled)
+{
+    bool changed = false;
+    {
+        QMutexLocker locker(&m_mutex);
+        if (m_eventRecordPresent != present)
+        {
+            m_eventRecordPresent = present;
+            changed = true;
+        }
+
+        for (auto it = categoryEnabled.cbegin(); it != categoryEnabled.cend(); ++it)
+        {
+            const QString normalizedCategoryName = it.key().trimmed();
+            if (normalizedCategoryName.isEmpty())
+            {
+                continue;
+            }
+
+            const bool currentValue = m_eventCategoryEnabled.value(normalizedCategoryName, true);
+            if (currentValue != it.value() || !m_eventCategoryEnabled.contains(normalizedCategoryName))
+            {
+                m_eventCategoryEnabled.insert(normalizedCategoryName, it.value());
+                changed = true;
+            }
+        }
+    }
+
+    if (changed)
+    {
+        emit dataBatchChanged();
+    }
 }
 
 void MeterModel::setMeterPhaseType(MeterPhaseType meterPhaseType)

@@ -436,6 +436,12 @@ void ProtocolController::onResponseTimerTimeout()
                 sendResponse(response, meterModel);
                 emit protocolError(0x02, QStringLiteral("当前电表事件记录不存在: %1").arg(diCode));
             }
+            else if (diCode.startsWith(QStringLiteral("0x03")) && !meterModel->isDataItemSupported(diCode))
+            {
+                ProtocolFrame response = m_protocolParser->buildErrorResponse(requestFrame, 0x02);
+                sendResponse(response, meterModel);
+                emit protocolError(0x02, QStringLiteral("褰撳墠鐢佃〃鏈惎鐢ㄨ浜嬩欢璁板綍: %1").arg(diCode));
+            }
             else if (meterModel->isDataItemSupported(diCode))
             {
                 QVariant value = meterModel->getDataValue(diCode);

@@ -1,4 +1,5 @@
 #include "MeterModelPrivate.h"
+#include "Models/CategoryCatalog.h"
 
 using namespace MeterModelPrivate;
 
@@ -35,6 +36,12 @@ bool MeterModel::getEventRecordPresent() const
     return m_eventRecordPresent;
 }
 
+bool MeterModel::isEventCategoryEnabled(const QString &categoryName) const
+{
+    QMutexLocker locker(&m_mutex);
+    return m_eventCategoryEnabled.value(categoryName.trimmed(), true);
+}
+
 
 MeterPhaseType MeterModel::getMeterPhaseType() const
 {
@@ -63,7 +70,17 @@ bool MeterModel::isDataItemSupportedUnlocked(const QString &diCode) const
         return false;
     }
 
+    if (diCode.startsWith(QStringLiteral("0x03")) && !m_eventRecordPresent)
+    {
+        return false;
+    }
+
     if (!isParameterStructureCodeSupported(m_dataItems, diCode))
+    {
+        return false;
+    }
+
+    if (diCode.startsWith(QStringLiteral("0x03")) && !isEventDataItemEnabledUnlocked(diCode))
     {
         return false;
     }
@@ -74,6 +91,28 @@ bool MeterModel::isDataItemSupportedUnlocked(const QString &diCode) const
     }
 
     return !isSinglePhaseUnsupportedCode(diCode) && isRateControlledCodeSupported(m_dataItems, diCode);
+}
+
+bool MeterModel::isEventDataItemEnabledUnlocked(const QString &diCode) const
+{
+    if (!diCode.startsWith(QStringLiteral("0x03")))
+    {
+        return true;
+    }
+
+    const QList<CategoryCatalog::EventCategoryDefinition> eventDefinitions = CategoryCatalog::eventCategoryDefinitions();
+    for (const CategoryCatalog::EventCategoryDefinition &definition : eventDefinitions)
+    {
+        for (const QString &prefix : definition.prefixes)
+        {
+            if (diCode.startsWith(prefix))
+            {
+                return m_eventCategoryEnabled.value(definition.name, true);
+            }
+        }
+    }
+
+    return true;
 }
 
 

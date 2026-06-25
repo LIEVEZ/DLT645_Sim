@@ -297,6 +297,7 @@ MeterModel *MainWindow::createMeterModel(const MeterInfo &meterInfo)
     }
 
     MeterModel *meterModel = m_meterModelsByAddress.value(meterInfo.address, nullptr);
+    bool loadedPersistedData = false;
     if (!meterModel)
     {
         meterModel = new MeterModel(this);
@@ -309,7 +310,8 @@ MeterModel *MainWindow::createMeterModel(const MeterInfo &meterInfo)
 
         if (m_meterDataStore && m_meterDataStore->isReady())
         {
-            if (!m_meterDataStore->loadMeterData(meterModel))
+            loadedPersistedData = m_meterDataStore->loadMeterData(meterModel);
+            if (!loadedPersistedData)
             {
                 m_meterDataStore->saveMeterData(meterModel);
             }
@@ -324,7 +326,10 @@ MeterModel *MainWindow::createMeterModel(const MeterInfo &meterInfo)
     meterModel->setOperatorCode(meterInfo.operatorCode);
     meterModel->setPassword(meterInfo.password);
     meterModel->setIncludePrefixFE(meterInfo.includeLeadingFE);
-    meterModel->setEventRecordPresent(meterInfo.eventRecordPresent);
+    if (!loadedPersistedData)
+    {
+        meterModel->setEventRecordPresent(meterInfo.eventRecordPresent);
+    }
 
     m_protocolController->registerMeterModel(meterInfo.address, meterModel);
     return meterModel;
@@ -607,5 +612,19 @@ void MainWindow::onEventRecordSettingsRequested(const QString &connectionAlias, 
         dialog.applyLightTheme();
     }
 
-    dialog.exec();
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return;
+    }
+
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    if (deviceTree)
+    {
+        deviceTree->updateMeterEventRecordPresent(connectionAlias, meterAlias, meterModel->getEventRecordPresent());
+    }
+
+    if (m_currentMeterModel == meterModel && m_dataTableWidget)
+    {
+        m_dataTableWidget->refreshTable();
+    }
 }

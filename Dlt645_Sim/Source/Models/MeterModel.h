@@ -97,6 +97,9 @@ public:
      * @return 事件记录是否存在
      */
     bool getEventRecordPresent() const;
+    void setEventCategoryEnabled(const QString &categoryName, bool enabled);
+    bool isEventCategoryEnabled(const QString &categoryName) const;
+    void applyEventRecordSettings(bool present, const QMap<QString, bool> &categoryEnabled);
 
     /**
      * @brief 获取数据项
@@ -246,6 +249,7 @@ signals:
 
 private:
     bool isDataItemSupportedUnlocked(const QString &diCode) const;
+    bool isEventDataItemEnabledUnlocked(const QString &diCode) const;
     void initializeEnergyData();
     void initializeDemandData();
     void initializeVariableData();
@@ -261,6 +265,7 @@ private:
     bool m_includePrefixFE;
     bool m_eventRecordPresent;
     MeterPhaseType m_meterPhaseType;
+    QMap<QString, bool> m_eventCategoryEnabled;
     QMap<QString, DataItem> m_dataItems;
 };
 

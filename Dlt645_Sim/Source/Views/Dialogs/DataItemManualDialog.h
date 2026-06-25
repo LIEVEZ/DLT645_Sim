@@ -14,6 +14,7 @@ class QTableWidgetItem;
 class MeterModel;
 class TermExplanationWidget;
 struct DataItem;
+struct TermDefinition;
 
 /**
  * @brief 数据项手册对话框
@@ -36,6 +37,7 @@ private slots:
     void onCategorySelected(QTreeWidgetItem *item, int column);
     void onSearchTextChanged(const QString &text);
     void onTableCellDoubleClicked(int row, int column);
+    void onTableCurrentCellChanged(int currentRow, int currentColumn, int previousRow, int previousColumn);
 
 private:
     void setupUI();
@@ -44,6 +46,30 @@ private:
     void populateTable(const QList<DataItem> &items);
     void filterTable(const QString &keyword);
     QList<DataItem> getDataItemsByCategory(const QString &categoryName) const;
+    bool isEnergyDataItem(const DataItem &item) const;
+    bool isDemandDataItem(const DataItem &item) const;
+    bool isVariableDataItem(const DataItem &item) const;
+    bool isEventDataItem(const DataItem &item) const;
+    bool isParameterDataItem(const DataItem &item) const;
+    bool isFreezeDataItem(const DataItem &item) const;
+    bool isLoadRecordDataItem(const DataItem &item) const;
+    bool findDataItemByDiCode(const QString &diCode, DataItem *result) const;
+    bool findDisplayedDataItem(int row, DataItem *result) const;
+    TermDefinition buildEnergyDataItemTerm(const DataItem &item) const;
+    TermDefinition buildDemandDataItemTerm(const DataItem &item) const;
+    TermDefinition buildVariableDataItemTerm(const DataItem &item) const;
+    TermDefinition buildEventDataItemTerm(const DataItem &item) const;
+    TermDefinition buildParameterDataItemTerm(const DataItem &item) const;
+    TermDefinition buildFreezeDataItemTerm(const DataItem &item) const;
+    TermDefinition buildLoadRecordDataItemTerm(const DataItem &item) const;
+    bool showEnergyDataItemTerm(const DataItem &item);
+    bool showDemandDataItemTerm(const DataItem &item);
+    bool showVariableDataItemTerm(const DataItem &item);
+    bool showEventDataItemTerm(const DataItem &item);
+    bool showParameterDataItemTerm(const DataItem &item);
+    bool showFreezeDataItemTerm(const DataItem &item);
+    bool showLoadRecordDataItemTerm(const DataItem &item);
+    bool showSpecializedDataItemTerm(const DataItem &item);
 
     QTreeWidget *m_categoryTree;
     QTableWidget *m_dataTable;

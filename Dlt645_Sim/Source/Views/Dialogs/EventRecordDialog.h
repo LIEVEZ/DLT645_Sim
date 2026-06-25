@@ -30,6 +30,7 @@ private slots:
     void onOkClicked();
     void onCancelClicked();
     void onGlobalCheckBoxToggled(bool checked);
+    void onEventCheckBoxToggled(bool checked);
 
 private:
     void setupUI();

@@ -1,4 +1,5 @@
 #include "MeterDataStore.h"
+#include "Models/CategoryCatalog.h"
 #include "Models/MeterModel.h"
 #include "Utils/Logger.h"
 #include <QCoreApplication>
@@ -13,9 +14,53 @@
 
 namespace
 {
+    const QString kEventRecordPresentKey = QStringLiteral("__event_record_present");
+    const QString kEventCategoryEnabledKey = QStringLiteral("__event_category_enabled");
+
     bool isPersistedDataItem(const DataItem &item)
     {
         return !item.diCode.endsWith(QStringLiteral("FF00"));
+    }
+
+    QJsonObject eventCategorySettingsToJson(const MeterModel *meterModel)
+    {
+        QJsonObject categoryObject;
+        if (!meterModel)
+        {
+            return categoryObject;
+        }
+
+        const QList<CategoryCatalog::EventCategoryDefinition> eventDefinitions = CategoryCatalog::eventCategoryDefinitions();
+        for (const CategoryCatalog::EventCategoryDefinition &definition : eventDefinitions)
+        {
+            categoryObject.insert(definition.name, meterModel->isEventCategoryEnabled(definition.name));
+        }
+
+        return categoryObject;
+    }
+
+    QMap<QString, bool> eventCategorySettingsFromJson(const QString &settingsText)
+    {
+        QMap<QString, bool> categorySettings;
+
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(settingsText.toUtf8(), &parseError);
+        if (parseError.error != QJsonParseError::NoError || !document.isObject())
+        {
+            return categorySettings;
+        }
+
+        const QJsonObject categoryObject = document.object();
+        for (auto it = categoryObject.constBegin(); it != categoryObject.constEnd(); ++it)
+        {
+            const QString categoryName = it.key().trimmed();
+            if (!categoryName.isEmpty())
+            {
+                categorySettings.insert(categoryName, it.value().toBool(true));
+            }
+        }
+
+        return categorySettings;
     }
 }
 
@@ -85,6 +130,18 @@ bool MeterDataStore::loadMeterData(MeterModel *meterModel)
     }
 
     meterModel->applyPersistedData(snapshot);
+
+    const bool hasEventRecordPresent = snapshot.contains(kEventRecordPresentKey);
+    const QMap<QString, bool> categorySettings =
+        eventCategorySettingsFromJson(snapshot.value(kEventCategoryEnabledKey).toString());
+    if (hasEventRecordPresent || !categorySettings.isEmpty())
+    {
+        const bool eventRecordPresent = hasEventRecordPresent
+                                            ? snapshot.value(kEventRecordPresentKey).toBool()
+                                            : meterModel->getEventRecordPresent();
+        meterModel->applyEventRecordSettings(eventRecordPresent, categorySettings);
+    }
+
     return true;
 }
 
@@ -130,6 +187,22 @@ bool MeterDataStore::saveMeterData(const MeterModel *meterModel)
         "VALUES (?, ?, ?, ?)").arg(quotedTableName));
 
     const QString updatedAt = QDateTime::currentDateTime().toString(Qt::ISODate);
+    auto insertSnapshotValue = [this, &insertQuery, &updatedAt](const QString &key, const QVariant &value) -> bool
+    {
+        const int valueType = static_cast<int>(value.type());
+        insertQuery.bindValue(0, key);
+        insertQuery.bindValue(1, serializeValue(value, valueType));
+        insertQuery.bindValue(2, valueType);
+        insertQuery.bindValue(3, updatedAt);
+        if (!insertQuery.exec())
+        {
+            LOG_ERROR(QStringLiteral("SQLite insert meter item failed: %1").arg(insertQuery.lastError().text()));
+            return false;
+        }
+        insertQuery.finish();
+        return true;
+    };
+
     const QList<DataItem> items = meterModel->getAllDataItems();
     for (const DataItem &item : items)
     {
@@ -138,18 +211,25 @@ bool MeterDataStore::saveMeterData(const MeterModel *meterModel)
             continue;
         }
 
-        const int valueType = static_cast<int>(item.value.type());
-        insertQuery.bindValue(0, item.diCode);
-        insertQuery.bindValue(1, serializeValue(item.value, valueType));
-        insertQuery.bindValue(2, valueType);
-        insertQuery.bindValue(3, updatedAt);
-        if (!insertQuery.exec())
+        if (!insertSnapshotValue(item.diCode, item.value))
         {
-            LOG_ERROR(QStringLiteral("SQLite insert meter item failed: %1").arg(insertQuery.lastError().text()));
             m_database.rollback();
             return false;
         }
-        insertQuery.finish();
+    }
+
+    if (!insertSnapshotValue(kEventRecordPresentKey, meterModel->getEventRecordPresent()))
+    {
+        m_database.rollback();
+        return false;
+    }
+
+    const QString categorySettingsText =
+        QString::fromUtf8(QJsonDocument(eventCategorySettingsToJson(meterModel)).toJson(QJsonDocument::Compact));
+    if (!insertSnapshotValue(kEventCategoryEnabledKey, categorySettingsText))
+    {
+        m_database.rollback();
+        return false;
     }
 
     if (!m_database.commit())

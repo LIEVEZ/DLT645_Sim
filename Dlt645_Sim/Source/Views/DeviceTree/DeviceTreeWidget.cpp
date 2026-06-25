@@ -496,6 +496,18 @@ MeterInfo DeviceTreeWidget::meterInfo(const QString &connectionAlias, const QStr
     return meterInfoFromItem(findMeterItem(connectionAlias, meterAlias));
 }
 
+bool DeviceTreeWidget::updateMeterEventRecordPresent(const QString &connectionAlias, const QString &meterAlias, bool eventRecordPresent)
+{
+    QTreeWidgetItem *meterItem = findMeterItem(connectionAlias, meterAlias);
+    if (!meterItem)
+    {
+        return false;
+    }
+
+    meterItem->setData(0, Qt::UserRole + 7, eventRecordPresent);
+    return true;
+}
+
 bool DeviceTreeWidget::isPortConnected(const QString &port) const
 {
     // 遍历所有顶层连接节点
@@ -782,6 +794,7 @@ void DeviceTreeWidget::onItemClicked(QTreeWidgetItem *item, int column)
         meterInfo.password = item->data(0, Qt::UserRole + 4).toString();
         meterInfo.includeLeadingFE = item->data(0, Qt::UserRole + 5).toBool();
         meterInfo.phaseType = static_cast<MeterPhaseType>(item->data(0, Qt::UserRole + 6).toInt());
+        meterInfo.eventRecordPresent = item->data(0, Qt::UserRole + 7).toBool();
         emit meterInfoSelected(meterInfo);
         return;
     }
@@ -822,6 +835,7 @@ void DeviceTreeWidget::onItemClicked(QTreeWidgetItem *item, int column)
             meterInfo.password = parentItem->data(0, Qt::UserRole + 4).toString();
             meterInfo.includeLeadingFE = parentItem->data(0, Qt::UserRole + 5).toBool();
             meterInfo.phaseType = static_cast<MeterPhaseType>(parentItem->data(0, Qt::UserRole + 6).toInt());
+            meterInfo.eventRecordPresent = parentItem->data(0, Qt::UserRole + 7).toBool();
             emit meterInfoSelected(meterInfo);
         }
         return;
