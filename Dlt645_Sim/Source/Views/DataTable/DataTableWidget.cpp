@@ -1445,12 +1445,11 @@ void DataTableWidget::populateCategory(const QString &category)
     const QString filterText = m_searchEdit ? m_searchEdit->text().trimmed() : QString();
     const bool hasSearchFilter = !filterText.isEmpty();
     const QList<QString> codes = dataCodesForCategory(category);
-    const bool isSinglePhase = m_meterModel->isSinglePhase();
 
     for (const QString &diCode : codes)
     {
-        // 单相表过滤：跳过不支持的数据项
-        if (isSinglePhase && MeterModelPrivate::isSinglePhaseUnsupportedCode(diCode))
+        // 跳过当前配置下不支持的数据项（含费率数过滤、单相表过滤、事件记录开关等）
+        if (!m_meterModel->isDataItemSupported(diCode))
         {
             continue;
         }

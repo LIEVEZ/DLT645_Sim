@@ -95,11 +95,14 @@ namespace MeterModelPrivate
                 }
             }
 
-            // 失流/过流事件：0x030B00/0x030C00
+            // 失流/过流/断流/潮流反向/过载事件：0x030B00~0x030F00
             // - 总次数：0x030B0000(A相) 0x030B0001(B相) 0x030B0002(C相)
             // - 历史记录：0x030B01XX(A相) 0x030B02XX(B相) 0x030B03XX(C相)
             if (diCode.startsWith(QStringLiteral("0x030B")) ||
-                diCode.startsWith(QStringLiteral("0x030C")))
+                diCode.startsWith(QStringLiteral("0x030C")) ||
+                diCode.startsWith(QStringLiteral("0x030D")) ||
+                diCode.startsWith(QStringLiteral("0x030E")) ||
+                diCode.startsWith(QStringLiteral("0x030F")))
             {
                 if (diCode.length() == 10)
                 {
@@ -146,6 +149,22 @@ namespace MeterModelPrivate
                         {
                             return true;
                         }
+                    }
+                }
+            }
+
+            // 电压合格率统计：0x0310
+            // - 总统计：0x03100000(本月) 0x031000XX(上X月)，第三字节为 "00"
+            // - 分相统计：0x031001XX(A相) 0x031002XX(B相) 0x031003XX(C相)
+            //   第三字节(mid(6,2))直接表示相别（00=总, 01=A, 02=B, 03=C）
+            if (diCode.startsWith(QStringLiteral("0x0310")))
+            {
+                if (diCode.length() == 10)
+                {
+                    const QString phaseCode = diCode.mid(6, 2);
+                    if (phaseCode == QStringLiteral("02") || phaseCode == QStringLiteral("03"))
+                    {
+                        return true;
                     }
                 }
             }
