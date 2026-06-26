@@ -108,23 +108,10 @@ void EventRecordDialog::loadMeterSettings()
 
 void EventRecordDialog::onGlobalCheckBoxToggled(bool checked)
 {
-    if (!checked)
-    {
-        for (auto it = m_eventCheckBoxes.begin(); it != m_eventCheckBoxes.end(); ++it)
-        {
-            it.value()->setChecked(false);
-        }
-        return;
-    }
-
-    if (!m_meterModel)
-    {
-        return;
-    }
-
+    // 全局复选框切换时，直接设置所有子复选框的选中状态
     for (auto it = m_eventCheckBoxes.begin(); it != m_eventCheckBoxes.end(); ++it)
     {
-        it.value()->setChecked(m_meterModel->isEventCategoryEnabled(it.key()));
+        it.value()->setChecked(checked);
     }
 }
 

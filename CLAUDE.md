@@ -1,6 +1,6 @@
 # DLT645_Sim - DLT645-2007 多功能电能表模拟器
 
-> 更新时间：2026-06-17 20:08:59
+> 更新时间：2026-06-26
 
 ## 项目愿景
 
@@ -43,17 +43,20 @@ DLT645_Sim 是一个基于 Qt5 Widgets 的工业级 DLT645-2007 协议电能表�
 ┌─────────────────────────────────────────────────────────────┐
 │                Controller / Service层                        │
 │  ConnectionManager / ProtocolController / ProtocolParser    │
-│  SerialController / TcpController / DataGenerator           │
+│  SerialController / TcpController / MasterQueryController    │
+│  DataGenerator / TermCatalogService                         │
 └─────────────────────────────────────────────────────────────┘
                             ↕
 ┌─────────────────────────────────────────────────────────────┐
 │                     Domain Model层                           │
 │   MeterModel / DataItem / ConnectionConfig / MeterInfo      │
+│   TermDefinition / CategoryCatalog                          │
 └─────────────────────────────────────────────────────────────┘
                             ↕
 ┌─────────────────────────────────────────────────────────────┐
 │                   协议与基础工具层                            │
 │  BCDHelper / ChecksumHelper / DLT645DataHelper / Logger     │
+│  DLT645FrameFormatter / DLT645BlockHandler / DLT645ValueFormatter │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -76,8 +79,7 @@ graph TD
     I --> N["Dialogs"];
     I --> O["CommunicationBar"];
     I --> P["Common"];
-    
-    A --> Q["doc"];
+        A --> Q["doc"];
     A --> R["Build"];
 
     click B "#dlt645_sim-模块" "查看 Dlt645_Sim 模块文档"
@@ -95,11 +97,11 @@ graph TD
 | 模块路径 | 职责描述 | 关键文件 |
 |---------|---------|---------|
 | [`Dlt645_Sim/Source/Controllers/`](./Dlt645_Sim/Source/Controllers/) | 通信与协议控制 | SerialController, TcpController, ProtocolController, ConnectionManager, MasterQueryController |
-| [`Dlt645_Sim/Source/Models/`](./Dlt645_Sim/Source/Models/) | 电表领域模型 | MeterModel, DataItem, ConnectionConfig, MeterInfo, CategoryCatalog |
-| [`Dlt645_Sim/Source/Services/`](./Dlt645_Sim/Source/Services/) | 协议与数据服务 | ProtocolParser, DataGenerator, MeterDataStore, ConfigurationSerializer |
+| [`Dlt645_Sim/Source/Models/`](./Dlt645_Sim/Source/Models/) | 电表领域模型 | MeterModel（拆分为 MeterModelPrivate* 多文件）, DataItem, ConnectionConfig, ConnectionInfo, MeterInfo, CategoryCatalog, MeterPhaseType, TermDefinition |
+| [`Dlt645_Sim/Source/Services/`](./Dlt645_Sim/Source/Services/) | 协议与数据服务 | ProtocolParser, DataGenerator, MeterDataStore, ConfigurationSerializer, TermCatalogService |
 | [`Dlt645_Sim/Source/Utils/`](./Dlt645_Sim/Source/Utils/) | 基础工具类 | BCDHelper, ChecksumHelper, DLT645DataHelper, Logger, DLT645FrameFormatter, DLT645BlockHandler, DLT645ValueFormatter |
 | [`Dlt645_Sim/Source/ViewModels/`](./Dlt645_Sim/Source/ViewModels/) | 视图模型 | MainWindowViewModel |
-| [`Dlt645_Sim/Source/Views/`](./Dlt645_Sim/Source/Views/) | UI界面组件 | MainWindow, DeviceTreeWidget, DataTableWidget, OperationLogWidget, Dialogs, CommunicationBarWidget |
+| [`Dlt645_Sim/Source/Views/`](./Dlt645_Sim/Source/Views/) | UI界面组件 | MainWindow（拆分为 mainwindow_* 多文件）, DeviceTreeWidget, DataTableWidget, OperationLogWidget, CommunicationBarWidget, Common（FrameParseResultWidget/TermExplanationWidget）, Dialogs |
 
 ## 运行与开发
 
@@ -209,18 +211,25 @@ make -j4
 ### 快速定位
 
 1. **协议相关**：从 `ProtocolParser.h` 和 `ProtocolController.h` 入手
-2. **数据模型**：核心在 `MeterModel.h` 和 `DataItem.h`
+2. **数据模型**：核心在 `MeterModel.h` 和 `DataItem.h`（实现按职责拆分到 `MeterModelPrivate*.h` 与 `MeterModelInitialization*.cpp`）
 3. **通信层**：`SerialController.h` / `TcpController.h` / `ConnectionManager.h`
-4. **UI 框架**：`MainWindow.h` 是装配中心
-5. **工具类**：`Utils/` 目录下各类独立工具
+4. **主站查询**：`MasterQueryController.h`（独立串口主站，主动向外发查询帧）
+5. **UI 框架**：`mainwindow.h` 是装配中心（实现拆分为 `mainwindow_*.cpp`）
+6. **术语解释**：`TermCatalogService.h` + `TermDefinition.h` + `TermExplanationWidget.h`
+7. **报文解析展示**：`DLT645FrameFormatter.h` + `FrameParseResultWidget.h` + `FrameParseDialog.h`
+8. **工具类**：`Utils/` 目录下各类独立工具
 
 ### 核心概念
 
-- **MeterModel**：电表核心模型，管理所有数据项（DataItem）和电表参数
+- **MeterModel**：电表核心模型，管理所有数据项（DataItem）和电表参数；实现按初始化/费率/冻结/同步/随机化等职责拆分为多个 Private 头文件与初始化源文件
+- **MeterPhaseType**：电表相别类型（单相表/三相表），单相表隔离不适用的事件记录与数据项
 - **DataCategory**：七类数据分类（电能量/最大需量/变量/事件/参变量/冻结/负荷记录）
 - **ProtocolFrame**：DLT645-2007 协议帧结构体
 - **ControlCode**：控制码枚举（读数据 0x11、写数据 0x14 等）
-- **ConnectionConfig**：连接配置（串口/TCP 参数）
+- **ConnectionConfig / ConnectionInfo**：连接配置与运行态信息（串口/TCP 参数）
+- **MasterQueryController**：主站查询控制器，独立串口模拟主站主动发起查询
+- **TermCatalogService**：术语目录服务（单例），加载与检索电表术语库供术语解释功能使用
+- **DLT645FrameFormatter**：报文格式化器，将原始帧解析为分区分卡片的可视化结果（FrameParseDisplayResult）
 
 ### 关键数据流
 
@@ -234,9 +243,12 @@ DataTable ← MeterModel ← DataGenerator  ← 外部主站/网关
 
 ### 常见任务入口
 
-- **新增数据项**：修改 `MeterModel::initializeDefaultDataItems()` 和 `CategoryCatalog`
+- **新增数据项**：修改 `MeterModelInitialization*.cpp`（按数据类分文件）和 `CategoryCatalog`
 - **修改协议行为**：调整 `ProtocolParser` 和 `ProtocolController`
-- **增加 UI 组件**：在 `Views/` 目录创建新组件，通过 `MainWindow` 装配
+- **修改主站查询行为**：调整 `MasterQueryController` 和 `MasterQueryDialog`
+- **修改报文解析展示**：调整 `DLT645FrameFormatter` 系列与 `FrameParseResultWidget`
+- **维护术语库**：通过 `TermCatalogService` 加载/检索，UI 在 `TermExplanationWidget`
+- **增加 UI 组件**：在 `Views/` 目录创建新组件，通过 `mainwindow_setup.cpp` 装配
 - **增加工具函数**：在 `Utils/` 目录添加独立工具类
 
 ### DLT645-2007 协议要点
@@ -249,6 +261,16 @@ DataTable ← MeterModel ← DataGenerator  ← 外部主站/网关
 - **DI 编码**：4 字节数据标识，如 00 00 00 00（组合有功总电能）
 
 ## 变更记录
+
+### [2026-06-26] - 功能扩展与架构细化扫描
+- 重新扫描项目结构，识别 57 个头文件、60 个源文件
+- MainWindow 拆分为多文件实现（theme/setup/dialogs/configuration/connections/meters/protocol/status/helpers）
+- MeterModel 初始化逻辑按数据类拆分（Energy/Variable/Event/Parameter/Freeze 等多文件）
+- 新增主站查询功能（MasterQueryController / MasterQueryDialog）
+- 新增术语解释功能（TermCatalogService / TermDefinition / TermExplanationWidget）
+- 新增报文解析展示功能（FrameParseDialog / FrameParseResultWidget / DLT645FrameFormatter 系列）
+- 新增单相表支持（MeterPhaseType）与事件记录隔离（EventRecordDialog）
+- Utils 新增帧格式化器系列：DLT645FrameFormatter, DLT645BlockHandler, DLT645ValueFormatter
 
 ### [2026-06-17] - 项目初始化扫描
 - 完成项目架构扫描与文档生成
@@ -274,5 +296,5 @@ MIT License - Copyright (c) 2026 LIEVEZ
 
 **维护者**：LIEVEZ  
 **项目地址**：https://github.com/LIEVEZ/DLT645_Sim  
-**文档版本**：v1.0  
+**文档版本**：v1.1  
 **状态**：✅ 生产就绪
