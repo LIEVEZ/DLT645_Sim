@@ -5,6 +5,7 @@
 #include "Models/MeterModel.h"
 #include "Services/ProtocolParser.h"
 #include "Utils/DLT645FrameFormatter.h"
+#include "Utils/UiTheme.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -330,18 +331,20 @@ void QueryFrameDialog::setIncludePrefixFE(bool include)
     }
 }
 
-void QueryFrameDialog::applyDarkTheme()
+namespace
 {
-    m_isDarkTheme = true;
-    setStyleSheet(R"(
+// 查询帧对话框 QSS 模板。占位符由全局调色板（Utils/UiTheme）替换。
+QString queryFrameStyleTemplate()
+{
+    return QStringLiteral(R"(
         QDialog {
-            background-color: #2B2B2B;
+            background-color: {{windowBg}};
         }
 
         QGroupBox {
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 4px;
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 8px;
             margin-top: 10px;
             padding-top: 10px;
         }
@@ -350,69 +353,77 @@ void QueryFrameDialog::applyDarkTheme()
             subcontrol-origin: margin;
             left: 10px;
             padding: 0 4px;
+            color: {{accentTitle}};
         }
 
         QLabel {
-            color: #FFFFFF;
+            color: {{text}};
             font-family: "Microsoft YaHei";
         }
 
         QLineEdit, QListWidget, QComboBox {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 3px;
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 4px;
             padding: 5px;
         }
 
         QLineEdit:focus, QListWidget:focus, QComboBox:focus {
-            border: 1px solid #094771;
+            border: 1px solid {{accent}};
         }
 
         QListWidget::item {
             padding: 6px 4px;
-            border-bottom: 1px solid #3C3F41;
+            border-bottom: 1px solid {{gridLine}};
         }
 
         QListWidget::item:selected {
-            background-color: #094771;
-            color: #FFFFFF;
+            background-color: {{accent}};
+            color: {{onAccent}};
         }
 
         QPushButton {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 3px;
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 4px;
             padding: 6px 14px;
         }
 
         QPushButton:hover {
-            background-color: #4E5254;
+            background-color: {{panelHover}};
         }
 
         QPushButton:disabled {
-            color: #888888;
+            color: {{textMuted}};
         }
 
         QCheckBox {
-            color: #FFFFFF;
+            color: {{text}};
             spacing: 4px;
         }
 
         QCheckBox::indicator {
             width: 16px;
             height: 16px;
-            border: 1px solid #555555;
-            border-radius: 3px;
-            background-color: #3C3F41;
+            border: 1px solid {{border}};
+            border-radius: 4px;
+            background-color: {{panelBg}};
         }
 
         QCheckBox::indicator:checked {
-            background-color: #094771;
-            border: 1px solid #094771;
+            background-color: {{accent}};
+            border: 1px solid {{accent}};
         }
     )");
+}
+} // namespace
+
+void QueryFrameDialog::applyDarkTheme()
+{
+    m_isDarkTheme = true;
+    setStyleSheet(ui::applyThemeTokens(queryFrameStyleTemplate(), ui::darkPalette()));
 
     if (m_frameParseDialog)
     {
@@ -423,86 +434,7 @@ void QueryFrameDialog::applyDarkTheme()
 void QueryFrameDialog::applyLightTheme()
 {
     m_isDarkTheme = false;
-    setStyleSheet(R"(
-        QDialog {
-            background-color: #FFFFFF;
-        }
-
-        QGroupBox {
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 4px;
-            margin-top: 10px;
-            padding-top: 10px;
-        }
-
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            left: 10px;
-            padding: 0 4px;
-        }
-
-        QLabel {
-            color: #000000;
-            font-family: "Microsoft YaHei";
-        }
-
-        QLineEdit, QListWidget, QComboBox {
-            background-color: #FFFFFF;
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-            padding: 5px;
-        }
-
-        QLineEdit:focus, QListWidget:focus, QComboBox:focus {
-            border: 1px solid #0078D7;
-        }
-
-        QListWidget::item {
-            padding: 6px 4px;
-            border-bottom: 1px solid #E0E0E0;
-        }
-
-        QListWidget::item:selected {
-            background-color: #0078D7;
-            color: #FFFFFF;
-        }
-
-        QPushButton {
-            background-color: #F0F0F0;
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-            padding: 6px 14px;
-        }
-
-        QPushButton:hover {
-            background-color: #E0E0E0;
-        }
-
-        QPushButton:disabled {
-            color: #999999;
-        }
-
-        QCheckBox {
-            color: #000000;
-            spacing: 4px;
-        }
-
-        QCheckBox::indicator {
-            width: 16px;
-            height: 16px;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-            background-color: #FFFFFF;
-        }
-
-        QCheckBox::indicator:checked {
-            background-color: #0078D7;
-            border: 1px solid #0078D7;
-        }
-    )");
+    setStyleSheet(ui::applyThemeTokens(queryFrameStyleTemplate(), ui::lightPalette()));
 
     if (m_frameParseDialog)
     {

@@ -30,6 +30,7 @@ SOURCES += \
     Source/Views/MainWindow/mainwindow_protocol.cpp \
     Source/Views/MainWindow/mainwindow_status.cpp \
     Source/Views/MainWindow/mainwindow_helpers.cpp \
+    Source/Utils/UiTheme.cpp \
     Source/Utils/BCDHelper.cpp \
     Source/Utils/DLT645FrameFormatter.cpp \
     Source/Utils/DLT645BlockHandler.cpp \
@@ -94,6 +95,7 @@ HEADERS += \
     Source/Utils/ChecksumHelper.h \
     Source/Utils/Logger.h \
     Source/Utils/LoggerTypes.h \
+    Source/Utils/UiTheme.h \
     Source/Models/ConnectionConfig.h \
     Source/Models/ConnectionInfo.h \
     Source/Models/ConnectionInfoMapper.h \

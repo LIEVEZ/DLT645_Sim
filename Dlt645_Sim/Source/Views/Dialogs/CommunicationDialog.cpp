@@ -4,6 +4,7 @@
 #include "Services/ProtocolParser.h"
 #include "Utils/DLT645FrameFormatter.h"
 #include "Utils/DLT645DataHelper.h"
+#include "Utils/UiTheme.h"
 #include "Views/Common/FrameParseResultWidget.h"
 
 #include <QAbstractItemView>
@@ -1079,17 +1080,20 @@ void CommunicationDialog::closeEvent(QCloseEvent *event)
     QDialog::closeEvent(event);
 }
 
-void CommunicationDialog::applyDarkTheme()
+namespace
 {
-    QString styleSheet = R"(
+// 通信监视对话框 QSS 模板。占位符由全局调色板（Utils/UiTheme）替换。
+QString communicationStyleTemplate()
+{
+    return QStringLiteral(R"(
         QDialog {
-            background-color: #2B2B2B;
+            background-color: {{windowBg}};
         }
 
         QGroupBox {
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 4px;
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 8px;
             margin-top: 10px;
             padding-top: 10px;
         }
@@ -1098,10 +1102,11 @@ void CommunicationDialog::applyDarkTheme()
             subcontrol-origin: margin;
             left: 10px;
             padding: 0 4px;
+            color: {{accentTitle}};
         }
 
         QLabel {
-            color: #FFFFFF;
+            color: {{text}};
             font-family: "Microsoft YaHei";
         }
 
@@ -1111,33 +1116,33 @@ void CommunicationDialog::applyDarkTheme()
         }
 
         QPushButton {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 3px;
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 4px;
             padding: 6px 14px;
         }
 
         QPushButton:hover {
-            background-color: #4E5254;
+            background-color: {{panelHover}};
         }
 
         QPushButton:pressed {
-            background-color: #2B2B2B;
+            background-color: {{panelPressed}};
         }
 
         QLineEdit,
         QComboBox {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 3px;
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 4px;
             padding: 6px 8px;
         }
 
         QLineEdit:focus,
         QComboBox:focus {
-            border: 1px solid #094771;
+            border: 1px solid {{accent}};
         }
 
         QComboBox::drop-down {
@@ -1145,75 +1150,79 @@ void CommunicationDialog::applyDarkTheme()
         }
 
         QComboBox QAbstractItemView {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            selection-background-color: #094771;
+            background-color: {{panelBg}};
+            color: {{text}};
+            selection-background-color: {{accent}};
         }
 
         QCheckBox {
-            color: #FFFFFF;
+            color: {{text}};
             spacing: 4px;
         }
 
         QCheckBox::indicator {
             width: 16px;
             height: 16px;
-            border: 1px solid #555555;
-            border-radius: 3px;
-            background-color: #3C3F41;
+            border: 1px solid {{border}};
+            border-radius: 4px;
+            background-color: {{panelBg}};
         }
 
         QCheckBox::indicator:checked {
-            background-color: #094771;
-            border: 1px solid #094771;
+            background-color: {{accent}};
+            border: 1px solid {{accent}};
         }
 
         QTableWidget {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 3px;
-            gridline-color: #4B4F51;
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 4px;
+            gridline-color: {{gridLine}};
         }
 
         QTableWidget::item {
             padding: 5px;
-            border-bottom: 1px solid #4B4F51;
+            border-bottom: 1px solid {{gridLine}};
         }
 
         QTableWidget::item:selected {
-            background-color: #094771;
-            color: #FFFFFF;
+            background-color: {{accent}};
+            color: {{onAccent}};
         }
 
         QHeaderView::section {
-            background-color: #3C3F41;
-            color: #FFFFFF;
+            background-color: {{panelBg}};
+            color: {{text}};
             padding: 5px;
             border: none;
-            border-bottom: 1px solid #555555;
+            border-bottom: 1px solid {{border}};
         }
 
         QTextEdit,
         QTextEdit#detailTextEdit {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 3px;
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 4px;
             padding: 8px;
         }
 
         QTextEdit:focus,
         QTextEdit#detailTextEdit:focus {
-            border: 1px solid #094771;
+            border: 1px solid {{accent}};
         }
 
         QSplitter::handle {
-            background-color: #555555;
+            background-color: {{borderStrong}};
         }
-    )";
+    )");
+}
+} // namespace
 
-    setStyleSheet(styleSheet);
+void CommunicationDialog::applyDarkTheme()
+{
+    setStyleSheet(ui::applyThemeTokens(communicationStyleTemplate(), ui::darkPalette()));
 
     if (m_detailWidget)
     {
@@ -1223,139 +1232,7 @@ void CommunicationDialog::applyDarkTheme()
 
 void CommunicationDialog::applyLightTheme()
 {
-    QString styleSheet = R"(
-        QDialog {
-            background-color: #FFFFFF;
-        }
-
-        QGroupBox {
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 4px;
-            margin-top: 10px;
-            padding-top: 10px;
-        }
-
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            left: 10px;
-            padding: 0 4px;
-        }
-
-        QLabel {
-            color: #000000;
-            font-family: "Microsoft YaHei";
-        }
-
-        QLabel#infoLabel,
-        QLabel#statisticsLabel {
-            padding: 5px 0;
-        }
-
-        QPushButton {
-            background-color: #F0F0F0;
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-            padding: 6px 14px;
-        }
-
-        QPushButton:hover {
-            background-color: #E0E0E0;
-        }
-
-        QPushButton:pressed {
-            background-color: #D0D0D0;
-        }
-
-        QLineEdit,
-        QComboBox {
-            background-color: #FFFFFF;
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-            padding: 6px 8px;
-        }
-
-        QLineEdit:focus,
-        QComboBox:focus {
-            border: 1px solid #0078D7;
-        }
-
-        QComboBox::drop-down {
-            border: none;
-        }
-
-        QComboBox QAbstractItemView {
-            background-color: #FFFFFF;
-            color: #000000;
-            selection-background-color: #0078D7;
-        }
-
-        QCheckBox {
-            color: #000000;
-            spacing: 4px;
-        }
-
-        QCheckBox::indicator {
-            width: 16px;
-            height: 16px;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-            background-color: #FFFFFF;
-        }
-
-        QCheckBox::indicator:checked {
-            background-color: #0078D7;
-            border: 1px solid #0078D7;
-        }
-
-        QTableWidget {
-            background-color: #FFFFFF;
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-            gridline-color: #E0E0E0;
-        }
-
-        QTableWidget::item {
-            padding: 5px;
-            border-bottom: 1px solid #E0E0E0;
-        }
-
-        QTableWidget::item:selected {
-            background-color: #0078D7;
-            color: #FFFFFF;
-        }
-
-        QHeaderView::section {
-            background-color: #F0F0F0;
-            color: #000000;
-            padding: 5px;
-            border: none;
-            border-bottom: 1px solid #CCCCCC;
-        }
-
-        QTextEdit,
-        QTextEdit#detailTextEdit {
-            background-color: #FFFFFF;
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-            padding: 8px;
-        }
-
-        QTextEdit:focus,
-        QTextEdit#detailTextEdit:focus {
-            border: 1px solid #0078D7;
-        }
-
-        QSplitter::handle {
-            background-color: #CCCCCC;
-        }
-    )";
-
-    setStyleSheet(styleSheet);
+    setStyleSheet(ui::applyThemeTokens(communicationStyleTemplate(), ui::lightPalette()));
 
     if (m_detailWidget)
     {

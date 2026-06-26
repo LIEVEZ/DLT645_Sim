@@ -1,5 +1,7 @@
 #include "OperationLogWidget.h"
 
+#include "Utils/UiTheme.h"
+
 #include <QAbstractItemView>
 #include <QCheckBox>
 #include <QColor>
@@ -16,7 +18,7 @@
 #include <QVBoxLayout>
 
 OperationLogWidget::OperationLogWidget(QWidget *parent)
-    : QWidget(parent), m_logListWidget(new QListWidget(this)), m_filterEdit(new QLineEdit(this)), m_autoScrollCheckBox(new QCheckBox("自动滚动", this)), m_clearButton(new QPushButton("清空", this)), m_exportButton(new QPushButton("导出", this)), m_maxLogLines(10000), m_autoScrollEnabled(true)
+    : QWidget(parent), m_logListWidget(new QListWidget(this)), m_filterEdit(new QLineEdit(this)), m_autoScrollCheckBox(new QCheckBox("自动滚动", this)), m_clearButton(new QPushButton("清空", this)), m_exportButton(new QPushButton("导出", this)), m_maxLogLines(10000), m_autoScrollEnabled(true), m_darkTheme(true)
 {
     setupUI();
 }
@@ -225,17 +227,52 @@ QString OperationLogWidget::getLevelIcon(OperationLogLevel level) const
 
 QString OperationLogWidget::getLevelColor(OperationLogLevel level) const
 {
+    // 日志级别色取自全局调色板（Utils/UiTheme），随暗/亮主题切换。
+    const ui::ThemePalette p = m_darkTheme ? ui::darkPalette() : ui::lightPalette();
     switch (level)
     {
     case OperationLogLevel::Info:
-        return "#4A90D9";
+        return p.logInfo;
     case OperationLogLevel::Success:
-        return "#50C878";
+        return p.logSuccess;
     case OperationLogLevel::Communication:
-        return "#00CED1";
+        return p.logComm;
     case OperationLogLevel::Warning:
-        return "#FFA500";
+        return p.logWarning;
     default:
-        return "#FF4444";
+        return p.logError;
+    }
+}
+
+void OperationLogWidget::applyDarkTheme()
+{
+    m_darkTheme = true;
+    applyTheme(ui::darkPalette());
+}
+
+void OperationLogWidget::applyLightTheme()
+{
+    m_darkTheme = false;
+    applyTheme(ui::lightPalette());
+}
+
+void OperationLogWidget::applyTheme(const ui::ThemePalette &p)
+{
+    // 列表容器底色 / 文字随主题切换；具体级别色在 recolorAllItems 中按条目套用。
+    m_logListWidget->setStyleSheet(
+        QString("QListWidget { background-color: %1; border: none; outline: none; }"
+                "QListWidget::item { padding: 2px 4px; }")
+            .arg(p.windowBg));
+    recolorAllItems();
+}
+
+void OperationLogWidget::recolorAllItems()
+{
+    // 主题切换后，用新调色板重新着色已有日志条目（颜色不再随首次写入固定）。
+    for (int i = 0; i < m_logListWidget->count(); ++i)
+    {
+        QListWidgetItem *item = m_logListWidget->item(i);
+        const LogEntry entry = item->data(Qt::UserRole).value<LogEntry>();
+        item->setForeground(QColor(getLevelColor(entry.level)));
     }
 }

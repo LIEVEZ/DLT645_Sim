@@ -10,6 +10,7 @@ class QCheckBox;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
+namespace ui { struct ThemePalette; }
 
 /**
  * @brief 操作日志级别枚举
@@ -108,6 +109,16 @@ public:
      */
     void setAutoScroll(bool enabled);
 
+    /**
+     * @brief 应用深色主题
+     */
+    void applyDarkTheme();
+
+    /**
+     * @brief 应用浅色主题
+     */
+    void applyLightTheme();
+
 signals:
     /**
      * @brief 日志条目添加信号
@@ -125,6 +136,8 @@ private:
     void addLogItem(const LogEntry &entry);
     QString getLevelIcon(OperationLogLevel level) const;
     QString getLevelColor(OperationLogLevel level) const;
+    void applyTheme(const ui::ThemePalette &p); // 按调色板套用主题并重新着色所有条目
+    void recolorAllItems();                     // 用当前主题重新着色已有日志条目
 
     QListWidget *m_logListWidget;
     QLineEdit *m_filterEdit;
@@ -133,6 +146,7 @@ private:
     QPushButton *m_exportButton;
     int m_maxLogLines;
     bool m_autoScrollEnabled;
+    bool m_darkTheme; // 当前主题（决定日志级别色取暗/亮调色板）
 };
 
 #endif // OPERATIONLOGWIDGET_H

@@ -3,6 +3,7 @@
 #include "Models/DataItem.h"
 #include "Models/MeterModel.h"
 #include "Services/TermCatalogService.h"
+#include "Utils/UiTheme.h"
 #include "Views/Common/TermExplanationWidget.h"
 
 #include <QApplication>
@@ -1524,95 +1525,116 @@ bool DataItemManualDialog::showSpecializedDataItemTerm(const DataItem &item)
            showLoadRecordDataItemTerm(item);
 }
 
-void DataItemManualDialog::applyDarkTheme()
+namespace
 {
-    setStyleSheet(R"(
+// 数据项手册对话框 QSS 模板。占位符由全局调色板（Utils/UiTheme）替换。
+// 操作按钮采用实心强调色（accent / accentHover / accentPressed）。
+QString dataItemManualStyleTemplate()
+{
+    return QStringLiteral(R"(
         QDialog {
-            background-color: #2B2B2B;
-            color: #FFFFFF;
+            background-color: {{windowBg}};
+            color: {{text}};
         }
 
         QLabel {
-            color: #FFFFFF;
+            color: {{text}};
             background-color: transparent;
             font-family: "Microsoft YaHei";
         }
 
         QTreeWidget {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 3px;
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 4px;
         }
 
         QTreeWidget::item:selected {
-            background-color: #094771;
+            background-color: {{accent}};
+            color: {{onAccent}};
         }
 
         QTreeWidget::item:hover {
-            background-color: #4E5254;
+            background-color: {{panelHover}};
+        }
+
+        QTreeWidget::item:selected:hover {
+            background-color: {{accentHover}};
+            color: {{onAccent}};
         }
 
         QTableWidget {
-            background-color: #2B2B2B;
-            color: #FFFFFF;
-            gridline-color: #555555;
-            border: 1px solid #555555;
-            border-radius: 3px;
+            background-color: {{windowBg}};
+            color: {{text}};
+            gridline-color: {{gridLine}};
+            border: 1px solid {{border}};
+            border-radius: 4px;
         }
 
         QTableWidget::item {
             padding: 6px 8px;
-            color: #FFFFFF;
-            background-color: #2B2B2B;
+            color: {{text}};
+            background-color: {{windowBg}};
         }
 
         QTableWidget::item:selected {
-            background-color: #094771;
-            color: #FFFFFF;
+            background-color: {{accent}};
+            color: {{onAccent}};
         }
 
         QTableWidget::item:hover {
-            background-color: #3C3F41;
-            color: #FFFFFF;
+            background-color: {{panelBg}};
+            color: {{text}};
+        }
+
+        QTableWidget::item:selected:hover {
+            background-color: {{accentHover}};
+            color: {{onAccent}};
         }
 
         QHeaderView::section {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            border: 1px solid #555555;
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
             padding: 5px;
             font-weight: bold;
         }
 
         QLineEdit {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 3px;
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 4px;
             padding: 5px;
         }
 
         QLineEdit:focus {
-            border: 1px solid #094771;
+            border: 1px solid {{accent}};
         }
 
         QPushButton {
-            background-color: #0E639C;
-            color: #FFFFFF;
+            background-color: {{accent}};
+            color: {{onAccent}};
             border: none;
-            border-radius: 3px;
+            border-radius: 4px;
             padding: 6px 14px;
         }
 
         QPushButton:hover {
-            background-color: #1177BB;
+            background-color: {{accentHover}};
         }
 
         QPushButton:pressed {
-            background-color: #094771;
+            background-color: {{accentPressed}};
         }
     )");
+}
+} // namespace
+
+void DataItemManualDialog::applyDarkTheme()
+{
+    setStyleSheet(ui::applyThemeTokens(dataItemManualStyleTemplate(), ui::darkPalette()));
 
     // 同步主题到术语面板
     if (m_termExplanationWidget) {
@@ -1622,94 +1644,7 @@ void DataItemManualDialog::applyDarkTheme()
 
 void DataItemManualDialog::applyLightTheme()
 {
-    setStyleSheet(R"(
-        QDialog {
-            background-color: #FFFFFF;
-            color: #000000;
-        }
-
-        QLabel {
-            color: #000000;
-            background-color: transparent;
-            font-family: "Microsoft YaHei";
-        }
-
-        QTreeWidget {
-            background-color: #F5F5F5;
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-        }
-
-        QTreeWidget::item:selected {
-            background-color: #0078D7;
-            color: #FFFFFF;
-        }
-
-        QTreeWidget::item:hover {
-            background-color: #E5F3FF;
-        }
-
-        QTableWidget {
-            background-color: #FFFFFF;
-            color: #000000;
-            gridline-color: #CCCCCC;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-        }
-
-        QTableWidget::item {
-            padding: 6px 8px;
-            color: #000000;
-            background-color: #FFFFFF;
-        }
-
-        QTableWidget::item:selected {
-            background-color: #0078D7;
-            color: #FFFFFF;
-        }
-
-        QTableWidget::item:hover {
-            background-color: #F5F5F5;
-            color: #000000;
-        }
-
-        QHeaderView::section {
-            background-color: #F0F0F0;
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            padding: 5px;
-            font-weight: bold;
-        }
-
-        QLineEdit {
-            background-color: #FFFFFF;
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-            padding: 5px;
-        }
-
-        QLineEdit:focus {
-            border: 1px solid #0078D7;
-        }
-
-        QPushButton {
-            background-color: #0078D7;
-            color: #FFFFFF;
-            border: none;
-            border-radius: 3px;
-            padding: 6px 14px;
-        }
-
-        QPushButton:hover {
-            background-color: #006CC1;
-        }
-
-        QPushButton:pressed {
-            background-color: #005A9E;
-        }
-    )");
+    setStyleSheet(ui::applyThemeTokens(dataItemManualStyleTemplate(), ui::lightPalette()));
 
     // 同步主题到术语面板
     if (m_termExplanationWidget) {

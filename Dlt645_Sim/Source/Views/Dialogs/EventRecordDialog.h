@@ -9,6 +9,7 @@
 #include <QScrollArea>
 
 class MeterModel;
+namespace ui { struct ThemePalette; }
 
 /**
  * @brief 事件记录设置对话框
@@ -35,6 +36,7 @@ private slots:
 private:
     void setupUI();
     void loadMeterSettings();
+    void applyTheme(const ui::ThemePalette &p);
 
     MeterModel *m_meterModel;
     QLabel *m_infoLabel;

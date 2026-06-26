@@ -6,6 +6,7 @@
 class QTextEdit;
 class QLabel;
 struct TermDefinition;
+namespace ui { struct ThemePalette; }
 
 /**
  * @brief 术语解释面板组件
@@ -49,6 +50,7 @@ public:
 private:
     void setupUI();
     void showWelcomeMessage();  // 显示欢迎提示信息
+    void applyTheme(const ui::ThemePalette &p);  // 按调色板套用主题（暗/亮共用）
 
     QLabel *m_titleLabel;       // 标题（"📖 术语解释"）
     QTextEdit *m_contentEdit;   // 内容显示区域

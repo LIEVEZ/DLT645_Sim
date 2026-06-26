@@ -1,5 +1,6 @@
 #include "TermExplanationWidget.h"
 #include "Models/TermDefinition.h"
+#include "Utils/UiTheme.h"
 
 #include <QVBoxLayout>
 #include <QTextEdit>
@@ -84,44 +85,37 @@ bool TermExplanationWidget::isEmpty() const
     return m_isEmpty;
 }
 
-void TermExplanationWidget::applyDarkTheme()
+namespace
 {
-    m_darkTheme = true;
-
-    m_titleLabel->setStyleSheet(R"(
-        QLabel {
-            color: #FFFFFF;
-            font-weight: bold;
-            font-size: 13px;
-            background-color: transparent;
-        }
-    )");
-
-    m_contentEdit->setStyleSheet(R"(
+// 术语解释面板内容区 QSS 模板。占位符由全局调色板（Utils/UiTheme）替换。
+// 滚动条手柄取 borderStrong，hover 取强调色，与全局主题保持一致。
+QString termContentStyleTemplate()
+{
+    return QStringLiteral(R"(
         QTextEdit {
-            background-color: #2B2B2B;
-            color: #CCCCCC;
-            border: 1px solid #555555;
-            border-radius: 3px;
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 4px;
             padding: 6px;
             font-family: "Microsoft YaHei";
             font-size: 12px;
         }
 
         QScrollBar:vertical {
-            background-color: #2B2B2B;
+            background-color: {{panelBg}};
             width: 12px;
             border: none;
         }
 
         QScrollBar::handle:vertical {
-            background-color: #5A5A5A;
+            background-color: {{borderStrong}};
             border-radius: 6px;
             min-height: 20px;
         }
 
         QScrollBar::handle:vertical:hover {
-            background-color: #6A6A6A;
+            background-color: {{accent}};
         }
 
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
@@ -130,48 +124,33 @@ void TermExplanationWidget::applyDarkTheme()
     )");
 }
 
-void TermExplanationWidget::applyLightTheme()
+QString termTitleStyleSheet(const ui::ThemePalette &p)
 {
-    m_darkTheme = false;
-
-    m_titleLabel->setStyleSheet(R"(
+    return QString(R"(
         QLabel {
-            color: #000000;
+            color: %1;
             font-weight: bold;
             font-size: 13px;
             background-color: transparent;
         }
-    )");
+    )").arg(p.text);
+}
+} // namespace
 
-    m_contentEdit->setStyleSheet(R"(
-        QTextEdit {
-            background-color: #F5F5F5;
-            color: #333333;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-            padding: 6px;
-            font-family: "Microsoft YaHei";
-            font-size: 12px;
-        }
+void TermExplanationWidget::applyTheme(const ui::ThemePalette &p)
+{
+    m_titleLabel->setStyleSheet(termTitleStyleSheet(p));
+    m_contentEdit->setStyleSheet(ui::applyThemeTokens(termContentStyleTemplate(), p));
+}
 
-        QScrollBar:vertical {
-            background-color: #F5F5F5;
-            width: 12px;
-            border: none;
-        }
+void TermExplanationWidget::applyDarkTheme()
+{
+    m_darkTheme = true;
+    applyTheme(ui::darkPalette());
+}
 
-        QScrollBar::handle:vertical {
-            background-color: #CCCCCC;
-            border-radius: 6px;
-            min-height: 20px;
-        }
-
-        QScrollBar::handle:vertical:hover {
-            background-color: #BBBBBB;
-        }
-
-        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-            height: 0px;
-        }
-    )");
+void TermExplanationWidget::applyLightTheme()
+{
+    m_darkTheme = false;
+    applyTheme(ui::lightPalette());
 }

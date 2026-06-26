@@ -1,5 +1,7 @@
 #include "FrameParseResultWidget.h"
 
+#include "Utils/UiTheme.h"
+
 #include <QFont>
 #include <QFrame>
 #include <QGridLayout>
@@ -237,18 +239,18 @@ void FrameParseResultWidget::clearSectionWidgets()
 
 void FrameParseResultWidget::applyCurrentTheme()
 {
-    const QColor backgroundColor = m_darkTheme ? QColor(QStringLiteral("#2B2B2B"))
-                                               : QColor(QStringLiteral("#FFFFFF"));
+    const ui::ThemePalette p = m_darkTheme ? ui::darkPalette() : ui::lightPalette();
+    const QColor backgroundColor(p.windowBg);
 
-    const QString styleSheet = m_darkTheme
-                                   ? QStringLiteral(R"(
+    // 报文解析结果区 QSS 模板。banner 的 notice/error、卡片标题等语义色取自全局调色板。
+    const QString styleTemplate = QStringLiteral(R"(
         QWidget#frameParseResultWidget,
         QWidget#frameParseContent,
         QWidget#frameParseSections,
         QScrollArea#frameParseScroll,
         QWidget#frameParseSection,
         QWidget#frameParseCardGrid {
-            background-color: #2B2B2B;
+            background-color: {{windowBg}};
         }
 
         QWidget#frameParseSection,
@@ -261,28 +263,28 @@ void FrameParseResultWidget::applyCurrentTheme()
         }
 
         QLabel#frameParseBanner {
-            border-radius: 6px;
+            border-radius: 8px;
             padding: 8px 10px;
-            border: 1px solid #555555;
-            background-color: #3C3F41;
-            color: #FFFFFF;
+            border: 1px solid {{border}};
+            background-color: {{panelBg}};
+            color: {{text}};
             font-family: "Microsoft YaHei";
         }
 
         QLabel#frameParseBanner[state="notice"] {
-            background-color: #31434A;
-            border-color: #46646D;
-            color: #D9F7F4;
+            background-color: {{noticeBg}};
+            border-color: {{noticeBorder}};
+            color: {{noticeText}};
         }
 
         QLabel#frameParseBanner[state="error"] {
-            background-color: #4A2F2F;
-            border-color: #7A4C4C;
-            color: #FFDADA;
+            background-color: {{errorBg}};
+            border-color: {{errorBorder}};
+            color: {{errorText}};
         }
 
         QLabel#frameParseSectionTitle {
-            color: #19D3AE;
+            color: {{accentTitle}};
             font-family: "Microsoft YaHei";
             font-size: 14px;
             font-weight: 600;
@@ -290,107 +292,33 @@ void FrameParseResultWidget::applyCurrentTheme()
         }
 
         QFrame#frameParseCard {
-            background-color: #3C3F41;
-            border: 1px solid #555555;
-            border-radius: 6px;
+            background-color: {{panelBg}};
+            border: 1px solid {{border}};
+            border-radius: 8px;
         }
 
         QLabel#frameParseCardTitle {
-            color: #8ED9FF;
+            color: {{cardTitle}};
             font-family: "Microsoft YaHei";
             font-size: 12px;
             font-weight: 600;
         }
 
         QLabel#frameParseCardValue {
-            color: #FFFFFF;
+            color: {{text}};
             font-family: "Microsoft YaHei";
             font-size: 13px;
         }
 
         QLabel#frameParseCardDetail,
         QLabel#frameParsePlaceholder {
-            color: #B7C0C4;
-            font-family: "Microsoft YaHei";
-            font-size: 11px;
-        }
-    )")
-                                   : QStringLiteral(R"(
-        QWidget#frameParseResultWidget,
-        QWidget#frameParseContent,
-        QWidget#frameParseSections,
-        QScrollArea#frameParseScroll,
-        QWidget#frameParseSection,
-        QWidget#frameParseCardGrid {
-            background-color: #FFFFFF;
-        }
-
-        QWidget#frameParseSection,
-        QWidget#frameParseCardGrid {
-            background: transparent;
-        }
-
-        QScrollArea#frameParseScroll {
-            border: none;
-        }
-
-        QLabel#frameParseBanner {
-            border-radius: 6px;
-            padding: 8px 10px;
-            border: 1px solid #CCCCCC;
-            background-color: #F6F6F6;
-            color: #1F1F1F;
-            font-family: "Microsoft YaHei";
-        }
-
-        QLabel#frameParseBanner[state="notice"] {
-            background-color: #EAF6F3;
-            border-color: #B5D5CD;
-            color: #1D5B50;
-        }
-
-        QLabel#frameParseBanner[state="error"] {
-            background-color: #FBECEC;
-            border-color: #E3B4B4;
-            color: #9F2F2F;
-        }
-
-        QLabel#frameParseSectionTitle {
-            color: #007A66;
-            font-family: "Microsoft YaHei";
-            font-size: 14px;
-            font-weight: 600;
-            padding: 2px 0 4px 2px;
-        }
-
-        QFrame#frameParseCard {
-            background-color: #FFFFFF;
-            border: 1px solid #CCCCCC;
-            border-radius: 6px;
-        }
-
-        QLabel#frameParseCardTitle {
-            color: #006D9C;
-            font-family: "Microsoft YaHei";
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        QLabel#frameParseCardValue {
-            color: #1F1F1F;
-            font-family: "Microsoft YaHei";
-            font-size: 13px;
-        }
-
-        QLabel#frameParseCardDetail,
-        QLabel#frameParsePlaceholder {
-            color: #666666;
+            color: {{cardDetail}};
             font-family: "Microsoft YaHei";
             font-size: 11px;
         }
     )");
 
-    setStyleSheet(styleSheet);
+    setStyleSheet(ui::applyThemeTokens(styleTemplate, p));
 
     applyBackgroundPalette(this, backgroundColor);
     applyBackgroundPalette(m_scrollArea, backgroundColor);

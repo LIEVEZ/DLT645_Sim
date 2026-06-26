@@ -4,6 +4,7 @@
 #include "Models/DataItem.h"
 #include "Models/MeterModel.h"
 #include "Utils/DLT645FrameFormatter.h"
+#include "Utils/UiTheme.h"
 #include "Views/Common/FrameParseResultWidget.h"
 
 #include <QCheckBox>
@@ -213,18 +214,21 @@ void MasterQueryDialog::setDefaultIncludePrefixFE(bool includePrefixFE)
     }
 }
 
-void MasterQueryDialog::applyDarkTheme()
+namespace
 {
-    m_darkTheme = true;
-    setStyleSheet(QStringLiteral(R"(
+// 主站查询对话框 QSS 模板。占位符由全局调色板（Utils/UiTheme）替换。
+// 状态标签使用语义色：connected→success、disconnected→danger、notice→warning。
+QString masterQueryStyleTemplate()
+{
+    return QStringLiteral(R"(
         QDialog {
-            background-color: #2B2B2B;
+            background-color: {{windowBg}};
         }
 
         QGroupBox {
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 6px;
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 8px;
             margin-top: 10px;
             padding-top: 10px;
             font-weight: 600;
@@ -234,105 +238,112 @@ void MasterQueryDialog::applyDarkTheme()
             subcontrol-origin: margin;
             left: 12px;
             padding: 0 6px;
-            color: #19D3AE;
+            color: {{accentTitle}};
         }
 
         QLabel {
-            color: #FFFFFF;
+            color: {{text}};
             font-family: "Microsoft YaHei";
         }
 
         QLabel#masterStatusLabel[state="connected"] {
-            color: #22C55E;
+            color: {{success}};
         }
 
         QLabel#masterStatusLabel[state="disconnected"] {
-            color: #F87171;
+            color: {{danger}};
         }
 
         QLabel#masterNoticeLabel {
-            color: #FCD34D;
+            color: {{warning}};
         }
 
         QLineEdit, QListWidget, QComboBox, QSpinBox, QTableWidget {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            border: 1px solid #555555;
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
             border-radius: 4px;
             padding: 5px;
         }
 
         QLineEdit:focus, QListWidget:focus, QComboBox:focus, QSpinBox:focus {
-            border: 1px solid #094771;
+            border: 1px solid {{accent}};
         }
 
         QLineEdit[readOnly="true"] {
-            background-color: #35383A;
-            color: #C9D1D9;
+            background-color: {{readonlyBg}};
+            color: {{textReadonly}};
         }
 
         QComboBox QAbstractItemView {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            selection-background-color: #094771;
+            background-color: {{panelBg}};
+            color: {{text}};
+            selection-background-color: {{accent}};
         }
 
         QListWidget::item {
             padding: 6px 4px;
-            border-bottom: 1px solid #444444;
+            border-bottom: 1px solid {{gridLine}};
         }
 
         QListWidget::item:selected {
-            background-color: #094771;
-            color: #FFFFFF;
+            background-color: {{accent}};
+            color: {{onAccent}};
         }
 
         QCheckBox {
-            color: #FFFFFF;
+            color: {{text}};
             spacing: 4px;
         }
 
         QCheckBox::indicator {
             width: 16px;
             height: 16px;
-            border: 1px solid #555555;
-            border-radius: 3px;
-            background-color: #3C3F41;
+            border: 1px solid {{border}};
+            border-radius: 4px;
+            background-color: {{panelBg}};
         }
 
         QCheckBox::indicator:checked {
-            background-color: #094771;
-            border: 1px solid #094771;
+            background-color: {{accent}};
+            border: 1px solid {{accent}};
         }
 
         QPushButton {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            border: 1px solid #555555;
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
             border-radius: 4px;
             padding: 6px 14px;
         }
 
         QPushButton:hover {
-            background-color: #4A4E51;
+            background-color: {{panelHover}};
         }
 
         QPushButton:disabled {
-            color: #888888;
+            color: {{textMuted}};
         }
 
         QTableWidget {
-            gridline-color: #444444;
+            gridline-color: {{gridLine}};
         }
 
         QHeaderView::section {
-            background-color: #35383A;
-            color: #FFFFFF;
+            background-color: {{readonlyBg}};
+            color: {{text}};
             border: none;
-            border-bottom: 1px solid #555555;
+            border-bottom: 1px solid {{border}};
             padding: 6px;
         }
-    )"));
+    )");
+}
+} // namespace
+
+void MasterQueryDialog::applyDarkTheme()
+{
+    m_darkTheme = true;
+    setStyleSheet(ui::applyThemeTokens(masterQueryStyleTemplate(), ui::darkPalette()));
 
     if (m_parseResultWidget)
     {
@@ -343,123 +354,7 @@ void MasterQueryDialog::applyDarkTheme()
 void MasterQueryDialog::applyLightTheme()
 {
     m_darkTheme = false;
-    setStyleSheet(QStringLiteral(R"(
-        QDialog {
-            background-color: #FFFFFF;
-        }
-
-        QGroupBox {
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 6px;
-            margin-top: 10px;
-            padding-top: 10px;
-            font-weight: 600;
-        }
-
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            left: 12px;
-            padding: 0 6px;
-            color: #007A66;
-        }
-
-        QLabel {
-            color: #000000;
-            font-family: "Microsoft YaHei";
-        }
-
-        QLabel#masterStatusLabel[state="connected"] {
-            color: #15803D;
-        }
-
-        QLabel#masterStatusLabel[state="disconnected"] {
-            color: #DC2626;
-        }
-
-        QLabel#masterNoticeLabel {
-            color: #B45309;
-        }
-
-        QLineEdit, QListWidget, QComboBox, QSpinBox, QTableWidget {
-            background-color: #FFFFFF;
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 4px;
-            padding: 5px;
-        }
-
-        QLineEdit:focus, QListWidget:focus, QComboBox:focus, QSpinBox:focus {
-            border: 1px solid #0078D7;
-        }
-
-        QLineEdit[readOnly="true"] {
-            background-color: #F6F6F6;
-            color: #444444;
-        }
-
-        QComboBox QAbstractItemView {
-            background-color: #FFFFFF;
-            color: #000000;
-            selection-background-color: #0078D7;
-        }
-
-        QListWidget::item {
-            padding: 6px 4px;
-            border-bottom: 1px solid #E5E7EB;
-        }
-
-        QListWidget::item:selected {
-            background-color: #0078D7;
-            color: #FFFFFF;
-        }
-
-        QCheckBox {
-            color: #000000;
-            spacing: 4px;
-        }
-
-        QCheckBox::indicator {
-            width: 16px;
-            height: 16px;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-            background-color: #FFFFFF;
-        }
-
-        QCheckBox::indicator:checked {
-            background-color: #0078D7;
-            border: 1px solid #0078D7;
-        }
-
-        QPushButton {
-            background-color: #F0F0F0;
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 4px;
-            padding: 6px 14px;
-        }
-
-        QPushButton:hover {
-            background-color: #E4E4E4;
-        }
-
-        QPushButton:disabled {
-            color: #999999;
-        }
-
-        QTableWidget {
-            gridline-color: #E5E7EB;
-        }
-
-        QHeaderView::section {
-            background-color: #F6F6F6;
-            color: #000000;
-            border: none;
-            border-bottom: 1px solid #CCCCCC;
-            padding: 6px;
-        }
-    )"));
+    setStyleSheet(ui::applyThemeTokens(masterQueryStyleTemplate(), ui::lightPalette()));
 
     if (m_parseResultWidget)
     {

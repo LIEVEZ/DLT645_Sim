@@ -1,6 +1,7 @@
 #include "EventRecordDialog.h"
 #include "Models/MeterModel.h"
 #include "Models/CategoryCatalog.h"
+#include "Utils/UiTheme.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -162,18 +163,25 @@ void EventRecordDialog::onCancelClicked()
     reject();
 }
 
+void EventRecordDialog::applyTheme(const ui::ThemePalette &p)
+{
+    // 信息条采用面板色块，统一圆角 4px；滚动区与内容用窗口底色，归入全局调色板。
+    m_infoLabel->setStyleSheet(
+        QString("QLabel { padding: 8px; background-color: %1; border-radius: 4px; color: %2; }")
+            .arg(p.panelBg, p.text));
+
+    m_scrollArea->widget()->setStyleSheet(
+        QString("background-color: %1; color: %2;").arg(p.windowBg, p.text));
+    m_scrollArea->setStyleSheet(
+        QString("QScrollArea { background-color: %1; border: 1px solid %2; }").arg(p.windowBg, p.border));
+}
+
 void EventRecordDialog::applyDarkTheme()
 {
-    m_infoLabel->setStyleSheet("QLabel { padding: 8px; background-color: #2d2d2d; border-radius: 4px; color: #e0e0e0; }");
-
-    m_scrollArea->widget()->setStyleSheet("background-color: #1e1e1e; color: #e0e0e0;");
-    m_scrollArea->setStyleSheet("QScrollArea { background-color: #1e1e1e; border: 1px solid #3d3d3d; }");
+    applyTheme(ui::darkPalette());
 }
 
 void EventRecordDialog::applyLightTheme()
 {
-    m_infoLabel->setStyleSheet("QLabel { padding: 8px; background-color: #f0f0f0; border-radius: 4px; color: #333333; }");
-
-    m_scrollArea->widget()->setStyleSheet("background-color: #ffffff; color: #333333;");
-    m_scrollArea->setStyleSheet("QScrollArea { background-color: #ffffff; border: 1px solid #d0d0d0; }");
+    applyTheme(ui::lightPalette());
 }

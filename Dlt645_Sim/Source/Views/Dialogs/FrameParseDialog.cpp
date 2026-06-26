@@ -2,6 +2,7 @@
 
 #include "Models/MeterModel.h"
 #include "Utils/DLT645FrameFormatter.h"
+#include "Utils/UiTheme.h"
 #include "Views/Common/FrameParseResultWidget.h"
 
 #include <QFont>
@@ -45,17 +46,20 @@ void FrameParseDialog::setFrameHex(const QString &frameHex)
     m_inputEdit->setPlainText(normalized);
 }
 
-void FrameParseDialog::applyDarkTheme()
+namespace
 {
-    setStyleSheet(R"(
+// 帧解析对话框 QSS 模板。占位符由全局调色板（Utils/UiTheme）替换。
+QString frameParseStyleTemplate()
+{
+    return QStringLiteral(R"(
         QDialog {
-            background-color: #2B2B2B;
+            background-color: {{windowBg}};
         }
 
         QGroupBox {
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 4px;
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 8px;
             margin-top: 10px;
             padding-top: 10px;
         }
@@ -64,37 +68,44 @@ void FrameParseDialog::applyDarkTheme()
             subcontrol-origin: margin;
             left: 10px;
             padding: 0 4px;
+            color: {{accentTitle}};
         }
 
         QLabel {
-            color: #FFFFFF;
+            color: {{text}};
             font-family: "Microsoft YaHei";
         }
 
         QTextEdit {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 3px;
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 4px;
             padding: 8px;
         }
 
         QTextEdit:focus {
-            border: 1px solid #094771;
+            border: 1px solid {{accent}};
         }
 
         QPushButton {
-            background-color: #3C3F41;
-            color: #FFFFFF;
-            border: 1px solid #555555;
-            border-radius: 3px;
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 4px;
             padding: 6px 14px;
         }
 
         QPushButton:hover {
-            background-color: #4E5254;
+            background-color: {{panelHover}};
         }
     )");
+}
+} // namespace
+
+void FrameParseDialog::applyDarkTheme()
+{
+    setStyleSheet(ui::applyThemeTokens(frameParseStyleTemplate(), ui::darkPalette()));
 
     if (m_resultWidget)
     {
@@ -104,54 +115,7 @@ void FrameParseDialog::applyDarkTheme()
 
 void FrameParseDialog::applyLightTheme()
 {
-    setStyleSheet(R"(
-        QDialog {
-            background-color: #FFFFFF;
-        }
-
-        QGroupBox {
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 4px;
-            margin-top: 10px;
-            padding-top: 10px;
-        }
-
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            left: 10px;
-            padding: 0 4px;
-        }
-
-        QLabel {
-            color: #000000;
-            font-family: "Microsoft YaHei";
-        }
-
-        QTextEdit {
-            background-color: #FFFFFF;
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-            padding: 8px;
-        }
-
-        QTextEdit:focus {
-            border: 1px solid #0078D7;
-        }
-
-        QPushButton {
-            background-color: #F0F0F0;
-            color: #000000;
-            border: 1px solid #CCCCCC;
-            border-radius: 3px;
-            padding: 6px 14px;
-        }
-
-        QPushButton:hover {
-            background-color: #E0E0E0;
-        }
-    )");
+    setStyleSheet(ui::applyThemeTokens(frameParseStyleTemplate(), ui::lightPalette()));
 
     if (m_resultWidget)
     {
