@@ -117,8 +117,88 @@ ThemePalette lightPalette()
     return p;
 }
 
+namespace
+{
+// 全应用统一的按钮样式片段。模板中用 {{buttonBlock}} 占位，applyThemeTokens
+// 会先把它展开为下面这段 QSS，再统一替换其中的 {{accent}} 等颜色 token。
+//
+// 设计：
+//   - 次要按钮（默认外观）：面板底色 + 细边框，hover 时边框转强、底色提亮；
+//   - 主按钮（QPushButton:default，即对话框「确定 / 连接 / 发送」等接受动作）：
+//     钢青蓝实心 + 顶部微高光的竖向渐变，营造工业金属质感的层次；
+//   - 统一 6px 圆角、min-width / min-height 保证按钮尺寸协调；
+//   - 新增 :focus 强调边框，补齐键盘可达性（原样式缺失）。
+QString buttonBlockTemplate()
+{
+    return QStringLiteral(R"(
+        /* —— 次要按钮（默认外观） —— */
+        QPushButton {
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 6px;
+            padding: 6px 16px;
+            min-width: 72px;
+            min-height: 16px;
+            font-weight: 500;
+        }
+
+        QPushButton:hover {
+            background-color: {{panelHover}};
+            border-color: {{borderStrong}};
+        }
+
+        QPushButton:pressed {
+            background-color: {{panelPressed}};
+        }
+
+        QPushButton:focus {
+            border: 1px solid {{accent}};
+            outline: none;
+        }
+
+        QPushButton:disabled {
+            color: {{textMuted}};
+            border-color: {{border}};
+        }
+
+        /* —— 主按钮（对话框默认动作）：钢青蓝实心 + 顶部微高光渐变 —— */
+        QPushButton:default {
+            background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                              stop:0 {{accentHover}}, stop:1 {{accent}});
+            color: {{onAccent}};
+            border: 1px solid {{accentPressed}};
+        }
+
+        QPushButton:default:hover {
+            background-color: {{accentHover}};
+            border-color: {{accentHover}};
+        }
+
+        QPushButton:default:pressed {
+            background-color: {{accentPressed}};
+            border-color: {{accentPressed}};
+        }
+
+        QPushButton:default:focus {
+            border: 1px solid {{onAccent}};
+        }
+
+        QPushButton:default:disabled {
+            background-color: {{panelBg}};
+            color: {{textMuted}};
+            border: 1px solid {{border}};
+        }
+    )");
+}
+} // namespace
+
 QString applyThemeTokens(QString styleTemplate, const ThemePalette &p)
 {
+    // 先把 {{buttonBlock}} 展开为按钮样式片段（其中仍含颜色 token），
+    // 再交给下面的颜色 token 循环统一替换，确保按钮与其余控件取同一调色板。
+    styleTemplate.replace(QStringLiteral("{{buttonBlock}}"), buttonBlockTemplate());
+
     const QHash<QString, QString> tokens = {
         {"windowBg", p.windowBg},
         {"panelBg", p.panelBg},

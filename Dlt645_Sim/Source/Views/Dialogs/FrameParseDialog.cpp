@@ -88,17 +88,7 @@ QString frameParseStyleTemplate()
             border: 1px solid {{accent}};
         }
 
-        QPushButton {
-            background-color: {{panelBg}};
-            color: {{text}};
-            border: 1px solid {{border}};
-            border-radius: 4px;
-            padding: 6px 14px;
-        }
-
-        QPushButton:hover {
-            background-color: {{panelHover}};
-        }
+        {{buttonBlock}}
     )");
 }
 } // namespace

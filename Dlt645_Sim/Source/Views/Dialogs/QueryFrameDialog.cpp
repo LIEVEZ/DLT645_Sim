@@ -383,21 +383,7 @@ QString queryFrameStyleTemplate()
             color: {{onAccent}};
         }
 
-        QPushButton {
-            background-color: {{panelBg}};
-            color: {{text}};
-            border: 1px solid {{border}};
-            border-radius: 4px;
-            padding: 6px 14px;
-        }
-
-        QPushButton:hover {
-            background-color: {{panelHover}};
-        }
-
-        QPushButton:disabled {
-            color: {{textMuted}};
-        }
+        {{buttonBlock}}
 
         QCheckBox {
             color: {{text}};

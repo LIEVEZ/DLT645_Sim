@@ -169,21 +169,7 @@ QString buildStyleSheet(const ui::ThemePalette &p)
             border: 1px solid {{accent}};
         }
 
-        QPushButton {
-            background-color: {{panelBg}};
-            color: {{text}};
-            border: 1px solid {{border}};
-            border-radius: 4px;
-            padding: 5px 15px;
-        }
-
-        QPushButton:hover {
-            background-color: {{panelHover}};
-        }
-
-        QPushButton:pressed {
-            background-color: {{panelPressed}};
-        }
+        {{buttonBlock}}
 
         QComboBox {
             background-color: {{panelBg}};

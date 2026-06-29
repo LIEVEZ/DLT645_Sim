@@ -1613,21 +1613,7 @@ QString dataItemManualStyleTemplate()
             border: 1px solid {{accent}};
         }
 
-        QPushButton {
-            background-color: {{accent}};
-            color: {{onAccent}};
-            border: none;
-            border-radius: 4px;
-            padding: 6px 14px;
-        }
-
-        QPushButton:hover {
-            background-color: {{accentHover}};
-        }
-
-        QPushButton:pressed {
-            background-color: {{accentPressed}};
-        }
+        {{buttonBlock}}
     )");
 }
 } // namespace

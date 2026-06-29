@@ -1115,21 +1115,7 @@ QString communicationStyleTemplate()
             padding: 5px 0;
         }
 
-        QPushButton {
-            background-color: {{panelBg}};
-            color: {{text}};
-            border: 1px solid {{border}};
-            border-radius: 4px;
-            padding: 6px 14px;
-        }
-
-        QPushButton:hover {
-            background-color: {{panelHover}};
-        }
-
-        QPushButton:pressed {
-            background-color: {{panelPressed}};
-        }
+        {{buttonBlock}}
 
         QLineEdit,
         QComboBox {
