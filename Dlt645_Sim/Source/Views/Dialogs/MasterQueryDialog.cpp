@@ -923,7 +923,32 @@ void MasterQueryDialog::applyPortList(const QList<QSerialPortInfo> &ports)
     const QSignalBlocker blocker(m_portCombo);
     m_portCombo->clear();
 
-    for (const QSerialPortInfo &info : ports)
+    QList<QSerialPortInfo> sortedPorts = ports;
+    std::sort(sortedPorts.begin(), sortedPorts.end(), [](const QSerialPortInfo &a, const QSerialPortInfo &b) {
+        const QString nameA = a.portName();
+        const QString nameB = b.portName();
+
+        static const QRegularExpression rx(QStringLiteral("(\\D+)(\\d+)"));
+        const QRegularExpressionMatch matchA = rx.match(nameA);
+        const QRegularExpressionMatch matchB = rx.match(nameB);
+
+        if (matchA.hasMatch() && matchB.hasMatch())
+        {
+            const QString prefixA = matchA.captured(1);
+            const QString prefixB = matchB.captured(1);
+            const int numA = matchA.captured(2).toInt();
+            const int numB = matchB.captured(2).toInt();
+
+            if (prefixA == prefixB)
+            {
+                return numA < numB;
+            }
+        }
+
+        return nameA < nameB;
+    });
+
+    for (const QSerialPortInfo &info : sortedPorts)
     {
         QString text = info.portName();
         if (m_unavailablePorts.contains(info.portName()))
