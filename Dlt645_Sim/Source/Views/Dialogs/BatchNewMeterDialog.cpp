@@ -38,7 +38,7 @@ BatchNewMeterDialog::BatchNewMeterDialog(QWidget *parent)
 void BatchNewMeterDialog::setupUI()
 {
     setWindowTitle(QStringLiteral("批量新建电表"));
-    setFixedSize(460, 380);
+    setFixedSize(520, 440);
 
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->setSpacing(12);
@@ -48,6 +48,24 @@ void BatchNewMeterDialog::setupUI()
     formLayout->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
     formLayout->setHorizontalSpacing(12);
     formLayout->setVerticalSpacing(10);
+
+    const QList<QWidget *> formFields = {
+        m_aliasPrefixEdit,
+        m_aliasStartNumberSpinBox,
+        m_startAddressEdit,
+        m_countSpinBox,
+        m_operatorCodeEdit,
+        m_passwordEdit,
+        m_phaseTypeComboBox,
+    };
+    for (QWidget *field : formFields)
+    {
+        field->setMinimumHeight(32);
+    }
+
+    m_startAddressHintLabel->setMinimumWidth(58);
+    m_operatorCodeHintLabel->setMinimumWidth(50);
+    m_passwordHintLabel->setMinimumWidth(50);
 
     m_aliasPrefixEdit->setMaxLength(24);
     formLayout->addRow(QStringLiteral("别名前缀:"), m_aliasPrefixEdit);

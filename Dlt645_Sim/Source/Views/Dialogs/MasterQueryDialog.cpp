@@ -243,7 +243,7 @@ QString masterQueryStyleTemplate()
 
         QLabel {
             color: {{text}};
-            font-family: "Microsoft YaHei";
+            font-family: "Microsoft YaHei UI";
         }
 
         QLabel#masterStatusLabel[state="connected"] {
@@ -848,12 +848,12 @@ QGroupBox *MasterQueryDialog::setupResultGroup()
     QFormLayout *hexLayout = new QFormLayout();
     m_requestHexEdit = new QLineEdit(group);
     m_requestHexEdit->setReadOnly(true);
-    m_requestHexEdit->setFont(QFont(QStringLiteral("Consolas"), 10));
+    m_requestHexEdit->setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 10));
     hexLayout->addRow(QString::fromUtf8("发送 HEX"), m_requestHexEdit);
 
     m_responseHexEdit = new QLineEdit(group);
     m_responseHexEdit->setReadOnly(true);
-    m_responseHexEdit->setFont(QFont(QStringLiteral("Consolas"), 10));
+    m_responseHexEdit->setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 10));
     hexLayout->addRow(QString::fromUtf8("接收 HEX"), m_responseHexEdit);
     rootLayout->addLayout(hexLayout);
 

@@ -32,7 +32,7 @@ void MainWindow::setupUI()
     // 设置窗口属性
     setWindowTitle(QStringLiteral("DLT645 电表模拟器"));
     setMinimumSize(1200, 800);
-    resize(1440, 900);
+    resize(1600, 900);
 
     // 设置菜单栏
     setupMenuBar();

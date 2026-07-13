@@ -358,7 +358,7 @@ QString queryFrameStyleTemplate()
 
         QLabel {
             color: {{text}};
-            font-family: "Microsoft YaHei";
+            font-family: "Microsoft YaHei UI";
         }
 
         QLineEdit, QListWidget, QComboBox {
@@ -613,7 +613,7 @@ void QueryFrameDialog::setupUI()
     QLabel *spacedLabel = new QLabel(QString::fromUtf8("带空格 HEX:"), resultGroup);
     m_spacedHexEdit = new QLineEdit(resultGroup);
     m_spacedHexEdit->setReadOnly(true);
-    m_spacedHexEdit->setFont(QFont(QStringLiteral("Consolas"), 10));
+    m_spacedHexEdit->setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 10));
     m_copySpacedButton = new QPushButton(QString::fromUtf8("复制"), resultGroup);
     spacedLayout->addWidget(spacedLabel);
     spacedLayout->addWidget(m_spacedHexEdit, 1);
@@ -624,7 +624,7 @@ void QueryFrameDialog::setupUI()
     QLabel *compactLabel = new QLabel(QString::fromUtf8("紧凑 HEX:"), resultGroup);
     m_compactHexEdit = new QLineEdit(resultGroup);
     m_compactHexEdit->setReadOnly(true);
-    m_compactHexEdit->setFont(QFont(QStringLiteral("Consolas"), 10));
+    m_compactHexEdit->setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 10));
     m_copyCompactButton = new QPushButton(QString::fromUtf8("复制"), resultGroup);
     compactLayout->addWidget(compactLabel);
     compactLayout->addWidget(m_compactHexEdit, 1);

@@ -15,6 +15,7 @@ class QLineEdit;
 class QPushButton;
 class QTableWidget;
 class QTableWidgetItem;
+class QEvent;
 class MeterModel;
 class DataTableExporter;
 
@@ -119,6 +120,9 @@ public:
      */
     void addDataItem(const QString &diCode, const QString &name, const QVariant &value, const QString &unit, const QString &format = QString());
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 signals:
     /**
      * @brief 数据项选中信号
@@ -167,6 +171,7 @@ private:
     void updateItemValue(const QString &diCode, const QVariant &value);
     bool showValueDetailDialog(QTableWidgetItem *item);
     void updateDataCount();
+    void updateEmptyState();
     QList<QString> currentTableDiCodes() const;
     bool isVariableData(const QString &diCode) const;
     void readDataItem(int row);
@@ -187,6 +192,7 @@ private:
     QLabel *m_meterInfoLabel;
     QLabel *m_formatHintLabel;
     QLabel *m_dataCountLabel;
+    QLabel *m_emptyStateLabel;
     NumericDelegate *m_numericDelegate;
     QString m_currentCategory;
     QString m_meterAlias;

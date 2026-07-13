@@ -4,10 +4,12 @@
 #include <QApplication>
 #include <QStandardPaths>
 #include <QDir>
+#include <QFont>
 
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
+    a.setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 9));
 
     // 配置日志系统
     QString logDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);

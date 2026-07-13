@@ -1540,7 +1540,7 @@ QString dataItemManualStyleTemplate()
         QLabel {
             color: {{text}};
             background-color: transparent;
-            font-family: "Microsoft YaHei";
+            font-family: "Microsoft YaHei UI";
         }
 
         QTreeWidget {

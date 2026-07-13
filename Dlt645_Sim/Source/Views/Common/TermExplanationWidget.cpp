@@ -98,7 +98,7 @@ QString termContentStyleTemplate()
             border: 1px solid {{border}};
             border-radius: 4px;
             padding: 6px;
-            font-family: "Microsoft YaHei";
+            font-family: "Microsoft YaHei UI";
             font-size: 12px;
         }
 

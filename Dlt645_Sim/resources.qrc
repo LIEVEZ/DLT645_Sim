@@ -29,5 +29,6 @@
         <file alias="reset.svg">Resources/Icons/reset.svg</file>
         <file alias="randomize.svg">Resources/Icons/randomize.svg</file>
         <file alias="clear.svg">Resources/Icons/clear.svg</file>
+        <file alias="empty-data.svg">Resources/Icons/empty-data.svg</file>
     </qresource>
 </RCC>

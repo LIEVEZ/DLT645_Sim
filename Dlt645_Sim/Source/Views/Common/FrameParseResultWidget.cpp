@@ -18,7 +18,7 @@ namespace
 {
 QFont monospaceFont(int pointSize)
 {
-    return QFont(QStringLiteral("Consolas"), pointSize);
+    return QFont(QStringLiteral("Microsoft YaHei UI"), pointSize);
 }
 
 void applyBackgroundPalette(QWidget *widget, const QColor &backgroundColor)
@@ -268,7 +268,7 @@ void FrameParseResultWidget::applyCurrentTheme()
             border: 1px solid {{border}};
             background-color: {{panelBg}};
             color: {{text}};
-            font-family: "Microsoft YaHei";
+            font-family: "Microsoft YaHei UI";
         }
 
         QLabel#frameParseBanner[state="notice"] {
@@ -285,7 +285,7 @@ void FrameParseResultWidget::applyCurrentTheme()
 
         QLabel#frameParseSectionTitle {
             color: {{accentTitle}};
-            font-family: "Microsoft YaHei";
+            font-family: "Microsoft YaHei UI";
             font-size: 14px;
             font-weight: 600;
             padding: 2px 0 4px 2px;
@@ -299,21 +299,21 @@ void FrameParseResultWidget::applyCurrentTheme()
 
         QLabel#frameParseCardTitle {
             color: {{cardTitle}};
-            font-family: "Microsoft YaHei";
+            font-family: "Microsoft YaHei UI";
             font-size: 12px;
             font-weight: 600;
         }
 
         QLabel#frameParseCardValue {
             color: {{text}};
-            font-family: "Microsoft YaHei";
+            font-family: "Microsoft YaHei UI";
             font-size: 13px;
         }
 
         QLabel#frameParseCardDetail,
         QLabel#frameParsePlaceholder {
             color: {{cardDetail}};
-            font-family: "Microsoft YaHei";
+            font-family: "Microsoft YaHei UI";
             font-size: 11px;
         }
     )");

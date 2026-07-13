@@ -73,7 +73,7 @@ QString frameParseStyleTemplate()
 
         QLabel {
             color: {{text}};
-            font-family: "Microsoft YaHei";
+            font-family: "Microsoft YaHei UI";
         }
 
         QTextEdit {
@@ -148,7 +148,7 @@ void FrameParseDialog::setupUI()
 
     m_inputEdit = new QTextEdit(inputGroup);
     m_inputEdit->setPlaceholderText(QString::fromUtf8("支持带空格 HEX、紧凑 HEX、换行或制表符分隔的 HEX 帧"));
-    m_inputEdit->setFont(QFont(QStringLiteral("Consolas"), 10));
+    m_inputEdit->setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 10));
     m_inputEdit->setAcceptRichText(false);
     m_inputEdit->setFixedHeight(52);
     inputLayout->addWidget(m_inputEdit, 1);

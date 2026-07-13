@@ -43,7 +43,7 @@ struct TermDefinition {
         // 公式
         if (!formula.isEmpty()) {
             html += QString("<p style='margin-bottom:6px; background-color:#45494A; padding:4px 8px; "
-                           "border-radius:3px; font-family:Consolas,monospace;'>"
+                           "border-radius:3px; font-family:'Microsoft YaHei UI';'>"
                            "<b>公式：</b>%1</p>").arg(formula);
         }
 

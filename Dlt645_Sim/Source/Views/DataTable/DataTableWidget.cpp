@@ -13,6 +13,7 @@
 #include <QVBoxLayout>
 #include <QHeaderView>
 #include <QIcon>
+#include <QEvent>
 #include <QFileDialog>
 #include <QTextStream>
 #include <QMessageBox>
@@ -1280,7 +1281,7 @@ bool NumericDelegate::validateNumericValue(const QString &value) const
 // ==================== DataTableWidget ====================
 
 DataTableWidget::DataTableWidget(QWidget *parent)
-    : QWidget(parent), m_meterModel(nullptr), m_exporter(nullptr), m_randomizeCurrentButton(nullptr), m_currentCategory(""), m_meterAlias(""), m_meterAddress("")
+    : QWidget(parent), m_meterModel(nullptr), m_exporter(nullptr), m_randomizeCurrentButton(nullptr), m_emptyStateLabel(nullptr), m_currentCategory(""), m_meterAlias(""), m_meterAddress("")
 {
     setupUI();
 
@@ -1352,18 +1353,21 @@ void DataTableWidget::setupUI()
     // 创建重置按钮
     m_resetButton = new QPushButton("重置所有数据", this);
     m_resetButton->setIcon(QIcon(QStringLiteral(":/icons/reset.svg")));
-    m_resetButton->setMinimumWidth(138);
+    m_resetButton->setStyleSheet(QStringLiteral("padding-left: 6px; padding-right: 6px;"));
+    m_resetButton->setMinimumWidth(135);
     connect(m_resetButton, &QPushButton::clicked, this, &DataTableWidget::onResetClicked);
     toolBarLayout->addWidget(m_resetButton);
 
     // 创建随机化按钮
     m_randomizeButton = new QPushButton("随机化所有数据", this);
     m_randomizeButton->setIcon(QIcon(QStringLiteral(":/icons/randomize.svg")));
+    m_randomizeButton->setStyleSheet(QStringLiteral("padding-left: 6px; padding-right: 6px;"));
     m_randomizeButton->setMinimumWidth(150);
     connect(m_randomizeButton, &QPushButton::clicked, this, &DataTableWidget::onRandomizeClicked);
     toolBarLayout->addWidget(m_randomizeButton);
     m_randomizeCurrentButton = new QPushButton("随机化当前数据", this);
     m_randomizeCurrentButton->setIcon(QIcon(QStringLiteral(":/icons/randomize.svg")));
+    m_randomizeCurrentButton->setStyleSheet(QStringLiteral("padding-left: 6px; padding-right: 6px;"));
     m_randomizeCurrentButton->setMinimumWidth(160);
     connect(m_randomizeCurrentButton, &QPushButton::clicked, this, &DataTableWidget::onRandomizeCurrentClicked);
     toolBarLayout->addWidget(m_randomizeCurrentButton);
@@ -1371,7 +1375,8 @@ void DataTableWidget::setupUI()
     // 创建导出按钮
     m_exportButton = new QPushButton("导出", this);
     m_exportButton->setIcon(QIcon(QStringLiteral(":/icons/export.svg")));
-    m_exportButton->setMinimumWidth(88);
+    m_exportButton->setStyleSheet(QStringLiteral("padding-left: 6px; padding-right: 6px;"));
+    m_exportButton->setMinimumWidth(80);
     connect(m_exportButton, &QPushButton::clicked, this, &DataTableWidget::onExportClicked);
     toolBarLayout->addWidget(m_exportButton);
 
@@ -1399,6 +1404,13 @@ void DataTableWidget::setupUI()
     // 创建表格控件
     m_tableWidget = new QTableWidget(this);
     setupTable();
+    m_emptyStateLabel = new QLabel(m_tableWidget->viewport());
+    m_emptyStateLabel->setAlignment(Qt::AlignCenter);
+    m_emptyStateLabel->setTextFormat(Qt::RichText);
+    m_emptyStateLabel->setText(QStringLiteral("<img src=\":/icons/empty-data.svg\" width=120 height=100><br><span style=\"color:#8FA8C4;\">暂无数据</span>"));
+    m_emptyStateLabel->setFixedSize(180, 140);
+    m_emptyStateLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_tableWidget->viewport()->installEventFilter(this);
     mainLayout->addWidget(m_tableWidget);
 
     // 创建数值编辑代理
@@ -1720,6 +1732,31 @@ void DataTableWidget::updateDataCount()
 {
     int count = m_tableWidget->rowCount();
     m_dataCountLabel->setText(QString("数据项个数: %1").arg(count));
+    updateEmptyState();
+}
+
+void DataTableWidget::updateEmptyState()
+{
+    if (!m_emptyStateLabel || !m_tableWidget)
+    {
+        return;
+    }
+
+    const QRect viewportRect = m_tableWidget->viewport()->rect();
+    m_emptyStateLabel->move((viewportRect.width() - m_emptyStateLabel->width()) / 2,
+                            (viewportRect.height() - m_emptyStateLabel->height()) / 2);
+    m_emptyStateLabel->setVisible(m_tableWidget->rowCount() == 0);
+    m_emptyStateLabel->raise();
+}
+
+bool DataTableWidget::eventFilter(QObject *watched, QEvent *event)
+{
+    if (m_tableWidget && watched == m_tableWidget->viewport() && event->type() == QEvent::Resize)
+    {
+        updateEmptyState();
+    }
+
+    return QWidget::eventFilter(watched, event);
 }
 
 void DataTableWidget::addDataItem(const QString &diCode, const QString &name, const QVariant &value, const QString &unit, const QString &format)

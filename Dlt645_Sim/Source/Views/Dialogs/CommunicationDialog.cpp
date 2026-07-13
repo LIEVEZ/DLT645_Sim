@@ -388,7 +388,7 @@ void CommunicationDialog::addMessage(const CommunicationMessage &message)
 
         QTableWidgetItem *diItem = new QTableWidgetItem(displayMessageDiCode(message.fullFrame));
         diItem->setTextAlignment(Qt::AlignCenter);
-        diItem->setFont(QFont("Consolas", 9));
+        diItem->setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 9));
         m_tableMessages->setItem(row, 2, diItem);
 
         QTableWidgetItem *descriptionItem = new QTableWidgetItem(getMessageDiDescription(message.fullFrame));
@@ -398,7 +398,7 @@ void CommunicationDialog::addMessage(const CommunicationMessage &message)
         // 完整报文
         QTableWidgetItem *frameItem = new QTableWidgetItem(
             formatMessage(message, m_displayFormat));
-        frameItem->setFont(QFont("Consolas", 9));
+        frameItem->setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 9));
         m_tableMessages->setItem(row, 4, frameItem);
 
         // 设置行颜色
@@ -518,7 +518,7 @@ void CommunicationDialog::refreshMessageList()
 
             QTableWidgetItem *diItem = new QTableWidgetItem(displayMessageDiCode(message.fullFrame));
             diItem->setTextAlignment(Qt::AlignCenter);
-            diItem->setFont(QFont("Consolas", 9));
+            diItem->setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 9));
             m_tableMessages->setItem(row, 2, diItem);
 
             QTableWidgetItem *descriptionItem = new QTableWidgetItem(getMessageDiDescription(message.fullFrame));
@@ -527,7 +527,7 @@ void CommunicationDialog::refreshMessageList()
 
             QTableWidgetItem *frameItem = new QTableWidgetItem(
                 formatMessage(message, m_displayFormat));
-            frameItem->setFont(QFont("Consolas", 9));
+            frameItem->setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 9));
             m_tableMessages->setItem(row, 4, frameItem);
 
             if (message.type == MessageType::Error)
@@ -1107,7 +1107,7 @@ QString communicationStyleTemplate()
 
         QLabel {
             color: {{text}};
-            font-family: "Microsoft YaHei";
+            font-family: "Microsoft YaHei UI";
         }
 
         QLabel#infoLabel,
