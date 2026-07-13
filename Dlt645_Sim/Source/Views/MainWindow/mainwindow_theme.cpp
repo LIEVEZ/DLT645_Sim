@@ -102,6 +102,26 @@ QString buildStyleSheet(const ui::ThemePalette &p)
             color: {{text}};
         }
 
+        /* 数据表格上方「格式类型提示」卡片：柔和提示底色 + 圆角边框 */
+        QFrame#formatHintCard {
+            background-color: {{noticeBg}};
+            border: 1px solid {{noticeBorder}};
+            border-radius: 8px;
+        }
+
+        QLabel#formatHintTitle {
+            color: {{accentTitle}};
+            font-size: 12px;
+            font-weight: 600;
+            background: transparent;
+        }
+
+        QLabel#formatHintBody {
+            color: {{noticeText}};
+            font-size: 12px;
+            background: transparent;
+        }
+
         QTreeWidget {
             background-color: {{windowBg}};
             color: {{text}};

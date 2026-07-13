@@ -11,6 +11,7 @@
 #include "Models/MeterPhaseType.h"
 
 class QLabel;
+class QFrame;
 class QLineEdit;
 class QPushButton;
 class QTableWidget;
@@ -190,6 +191,7 @@ private:
     QPushButton *m_randomizeCurrentButton;
     QPushButton *m_exportButton;
     QLabel *m_meterInfoLabel;
+    QFrame *m_formatHintCard;
     QLabel *m_formatHintLabel;
     QLabel *m_dataCountLabel;
     QLabel *m_emptyStateLabel;

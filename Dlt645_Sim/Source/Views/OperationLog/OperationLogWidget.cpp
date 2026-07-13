@@ -34,14 +34,15 @@ void OperationLogWidget::setupUI()
     mainLayout->setContentsMargins(5, 5, 5, 5);
     mainLayout->setSpacing(5);
 
-    // 顶部工具栏
-    QHBoxLayout *toolBarLayout = new QHBoxLayout();
-    toolBarLayout->setSpacing(10);
-
+    // 第一行：过滤框独占一行
     m_filterEdit->setPlaceholderText("过滤日志...");
     m_filterEdit->setClearButtonEnabled(true);
     connect(m_filterEdit, &QLineEdit::textChanged, this, &OperationLogWidget::onFilterTextChanged);
-    toolBarLayout->addWidget(m_filterEdit);
+    mainLayout->addWidget(m_filterEdit);
+
+    // 第二行：自动滚动 + 清空 + 导出
+    QHBoxLayout *toolBarLayout = new QHBoxLayout();
+    toolBarLayout->setSpacing(10);
 
     m_autoScrollCheckBox->setChecked(true);
     connect(m_autoScrollCheckBox, &QCheckBox::toggled, this, &OperationLogWidget::onAutoScrollToggled);

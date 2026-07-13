@@ -11,6 +11,7 @@
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
+#include <QFrame>
 #include <QHeaderView>
 #include <QIcon>
 #include <QEvent>
@@ -1382,18 +1383,34 @@ void DataTableWidget::setupUI()
 
     mainLayout->addLayout(toolBarLayout);
 
-    // 创建格式类型提示标签
-    m_formatHintLabel = new QLabel(this);
+    // 创建格式类型提示卡片（标题 + 正文，样式随全局主题切换）
+    m_formatHintCard = new QFrame(this);
+    m_formatHintCard->setObjectName(QStringLiteral("formatHintCard"));
+    m_formatHintCard->setFrameShape(QFrame::StyledPanel);
+    m_formatHintCard->setAttribute(Qt::WA_StyledBackground, true);
+
+    QVBoxLayout *hintLayout = new QVBoxLayout(m_formatHintCard);
+    hintLayout->setContentsMargins(12, 10, 12, 10);
+    hintLayout->setSpacing(6);
+
+    QLabel *hintTitle = new QLabel(QStringLiteral("格式类型提示"), m_formatHintCard);
+    hintTitle->setObjectName(QStringLiteral("formatHintTitle"));
+    hintLayout->addWidget(hintTitle);
+
+    m_formatHintLabel = new QLabel(m_formatHintCard);
+    m_formatHintLabel->setObjectName(QStringLiteral("formatHintBody"));
     m_formatHintLabel->setWordWrap(true);
+    m_formatHintLabel->setTextFormat(Qt::RichText);
     m_formatHintLabel->setText(
-        "格式类型提示：\n"
-        "• AA=直接转换为字符显示\n"
-        "• AS=转 ASCII 字符显示\n"
-        "• xx=除以 10 再转换为字符显示，即在两数之间加小数点\n"
-        "• F9=大于等于 80 是负数，90 是 -10，F9 是 -79，用于电能的正负表示\n"
-        "• bin=后续是表名，键值与帧中数据是一样的不用转换，当成键值去查就行了，bin 格式，只取一个结果\n"
-        "• bit=直接转字符，再转 2 进制，再从控制表中查，列出 bit 中所有类型");
-    mainLayout->addWidget(m_formatHintLabel);
+        "<b>AA</b> — 直接转换为字符显示<br>"
+        "<b>AS</b> — 转 ASCII 字符显示<br>"
+        "<b>xx</b> — 除以 10 再转换为字符显示，即在两数之间加小数点<br>"
+        "<b>F9</b> — 大于等于 80 是负数，90 是 -10，F9 是 -79，用于电能的正负表示<br>"
+        "<b>bin</b> — 后续是表名，键值与帧中数据一致不用转换，当成键值查表，只取一个结果<br>"
+        "<b>bit</b> — 直接转字符，再转 2 进制，再从控制表中查，列出 bit 中所有类型");
+    hintLayout->addWidget(m_formatHintLabel);
+
+    mainLayout->addWidget(m_formatHintCard);
 
     // 创建数据项个数统计标签
     m_dataCountLabel = new QLabel(this);
