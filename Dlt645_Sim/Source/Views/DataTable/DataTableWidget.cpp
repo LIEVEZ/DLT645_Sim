@@ -12,6 +12,7 @@
 #include <QTableWidgetItem>
 #include <QVBoxLayout>
 #include <QHeaderView>
+#include <QIcon>
 #include <QFileDialog>
 #include <QTextStream>
 #include <QMessageBox>
@@ -1350,23 +1351,27 @@ void DataTableWidget::setupUI()
 
     // 创建重置按钮
     m_resetButton = new QPushButton("重置所有数据", this);
-    m_resetButton->setMinimumWidth(120);
+    m_resetButton->setIcon(QIcon(QStringLiteral(":/icons/reset.svg")));
+    m_resetButton->setMinimumWidth(138);
     connect(m_resetButton, &QPushButton::clicked, this, &DataTableWidget::onResetClicked);
     toolBarLayout->addWidget(m_resetButton);
 
     // 创建随机化按钮
     m_randomizeButton = new QPushButton("随机化所有数据", this);
-    m_randomizeButton->setMinimumWidth(120);
+    m_randomizeButton->setIcon(QIcon(QStringLiteral(":/icons/randomize.svg")));
+    m_randomizeButton->setMinimumWidth(150);
     connect(m_randomizeButton, &QPushButton::clicked, this, &DataTableWidget::onRandomizeClicked);
     toolBarLayout->addWidget(m_randomizeButton);
     m_randomizeCurrentButton = new QPushButton("随机化当前数据", this);
-    m_randomizeCurrentButton->setMinimumWidth(120);
+    m_randomizeCurrentButton->setIcon(QIcon(QStringLiteral(":/icons/randomize.svg")));
+    m_randomizeCurrentButton->setMinimumWidth(160);
     connect(m_randomizeCurrentButton, &QPushButton::clicked, this, &DataTableWidget::onRandomizeCurrentClicked);
     toolBarLayout->addWidget(m_randomizeCurrentButton);
 
     // 创建导出按钮
     m_exportButton = new QPushButton("导出", this);
-    m_exportButton->setMinimumWidth(120);
+    m_exportButton->setIcon(QIcon(QStringLiteral(":/icons/export.svg")));
+    m_exportButton->setMinimumWidth(88);
     connect(m_exportButton, &QPushButton::clicked, this, &DataTableWidget::onExportClicked);
     toolBarLayout->addWidget(m_exportButton);
 

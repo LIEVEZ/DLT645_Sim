@@ -13,6 +13,7 @@
 #include "Views/OperationLog/OperationLogWidget.h"
 
 #include <QAction>
+#include <QIcon>
 #include <QHBoxLayout>
 #include <QKeySequence>
 #include <QLabel>
@@ -23,7 +24,6 @@
 #include <QSize>
 #include <QSplitter>
 #include <QStatusBar>
-#include <QStyle>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -120,9 +120,9 @@ void MainWindow::setupUI()
     m_mainSplitter->addWidget(leftContainer);
     m_mainSplitter->addWidget(centerContainer);
     m_mainSplitter->addWidget(rightContainer);
-    m_mainSplitter->setSizes(QList<int>() << 300 << 800 << 300);
+    m_mainSplitter->setSizes(QList<int>() << 250 << 950 << 240);
     m_mainSplitter->setStretchFactor(0, 1);
-    m_mainSplitter->setStretchFactor(1, 3);
+    m_mainSplitter->setStretchFactor(1, 4);
     m_mainSplitter->setStretchFactor(2, 1);
 
     mainLayout->addWidget(m_mainSplitter);
@@ -259,7 +259,7 @@ void MainWindow::setupMenuBar()
 
     QAction *dataItemManualAction = toolsMenu->addAction(QStringLiteral("数据项手册(&M)"));
     dataItemManualAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+H")));
-    dataItemManualAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogInfoView));
+    dataItemManualAction->setIcon(QIcon(QStringLiteral(":/icons/manual.svg")));
     connect(dataItemManualAction, &QAction::triggered, this, &MainWindow::onDataItemManualDialog);
 
     // 帮助菜单
@@ -291,7 +291,7 @@ void MainWindow::setupToolBar()
     m_newConnectionAction->setShortcut(QKeySequence("Ctrl+N"));
     m_newConnectionAction->setToolTip(QStringLiteral("打开串口/TCP 配置对话框"));
     m_newConnectionAction->setText(QStringLiteral("新建连接"));
-    m_newConnectionAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogNewFolder));
+    m_newConnectionAction->setIcon(QIcon(QStringLiteral(":/icons/new-connection.svg")));
     connect(m_newConnectionAction, &QAction::triggered, this, &MainWindow::onNewConnection);
     toolBar->addAction(m_newConnectionAction);
     toolBar->addSeparator();
@@ -301,7 +301,7 @@ void MainWindow::setupToolBar()
     m_newMeterAction->setShortcut(QKeySequence("Ctrl+M"));
     m_newMeterAction->setToolTip(QStringLiteral("打开电表配置对话框"));
     m_newMeterAction->setText(QStringLiteral("新建电表"));
-    m_newMeterAction->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
+    m_newMeterAction->setIcon(QIcon(QStringLiteral(":/icons/new-meter.svg")));
     connect(m_newMeterAction, &QAction::triggered, this, &MainWindow::onNewMeterDialog);
     toolBar->addAction(m_newMeterAction);
     toolBar->addSeparator();
@@ -310,7 +310,7 @@ void MainWindow::setupToolBar()
     m_batchNewMeterAction->setShortcut(QKeySequence("Ctrl+B"));
     m_batchNewMeterAction->setToolTip(QStringLiteral("在当前连接下批量新建电表"));
     m_batchNewMeterAction->setText(QStringLiteral("批量新建"));
-    m_batchNewMeterAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogNewFolder));
+    m_batchNewMeterAction->setIcon(QIcon(QStringLiteral(":/icons/batch-new-meter.svg")));
     connect(m_batchNewMeterAction, &QAction::triggered, this, &MainWindow::onBatchNewMeterDialog);
     toolBar->addAction(m_batchNewMeterAction);
     toolBar->addSeparator();
@@ -320,7 +320,7 @@ void MainWindow::setupToolBar()
     m_openConnectionAction->setShortcut(QKeySequence("Ctrl+O"));
     m_openConnectionAction->setToolTip(QStringLiteral("激活选中的通信连接"));
     m_openConnectionAction->setText(QStringLiteral("打开连接"));
-    m_openConnectionAction->setIcon(style()->standardIcon(QStyle::SP_DialogOpenButton));
+    m_openConnectionAction->setIcon(QIcon(QStringLiteral(":/icons/open-connection.svg")));
     connect(m_openConnectionAction, &QAction::triggered, this, &MainWindow::onOpenConnection);
     toolBar->addAction(m_openConnectionAction);
     m_openConnectionSeparatorAction = toolBar->addSeparator();
@@ -330,7 +330,7 @@ void MainWindow::setupToolBar()
     m_closeConnectionAction->setShortcut(QKeySequence("Ctrl+W"));
     m_closeConnectionAction->setToolTip(QStringLiteral("断开当前通信连接"));
     m_closeConnectionAction->setText(QStringLiteral("关闭连接"));
-    m_closeConnectionAction->setIcon(style()->standardIcon(QStyle::SP_DialogCloseButton));
+    m_closeConnectionAction->setIcon(QIcon(QStringLiteral(":/icons/close-connection.svg")));
     connect(m_closeConnectionAction, &QAction::triggered, this, &MainWindow::onCloseConnection);
     toolBar->addAction(m_closeConnectionAction);
     m_closeConnectionSeparatorAction = toolBar->addSeparator();
@@ -340,7 +340,7 @@ void MainWindow::setupToolBar()
     m_commInteractionAction->setShortcut(QKeySequence("Ctrl+I"));
     m_commInteractionAction->setToolTip(QStringLiteral("打开通信调试窗口"));
     m_commInteractionAction->setText(QStringLiteral("通信交互"));
-    m_commInteractionAction->setIcon(style()->standardIcon(QStyle::SP_MessageBoxInformation));
+    m_commInteractionAction->setIcon(QIcon(QStringLiteral(":/icons/communication.svg")));
     connect(m_commInteractionAction, &QAction::triggered, this, &MainWindow::onCommunicationInteraction);
     toolBar->addAction(m_commInteractionAction);
     toolBar->addSeparator();
@@ -348,7 +348,7 @@ void MainWindow::setupToolBar()
     m_masterQueryAction = new QAction(QStringLiteral("主站查询"), this);
     m_masterQueryAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+I")));
     m_masterQueryAction->setToolTip(QStringLiteral("打开独立主站查询窗口"));
-    m_masterQueryAction->setIcon(style()->standardIcon(QStyle::SP_ArrowRight));
+    m_masterQueryAction->setIcon(QIcon(QStringLiteral(":/icons/master-query.svg")));
     connect(m_masterQueryAction, &QAction::triggered, this, &MainWindow::onMasterQueryWindow);
     toolBar->addAction(m_masterQueryAction);
     toolBar->addSeparator();
@@ -356,7 +356,7 @@ void MainWindow::setupToolBar()
     m_queryFrameAction = new QAction(QStringLiteral("查询帧生成"), this);
     m_queryFrameAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+G")));
     m_queryFrameAction->setToolTip(QStringLiteral("打开 DLT645 查询帧生成窗口"));
-    m_queryFrameAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogContentsView));
+    m_queryFrameAction->setIcon(QIcon(QStringLiteral(":/icons/query-frame.svg")));
     connect(m_queryFrameAction, &QAction::triggered, this, &MainWindow::onQueryFrameGenerator);
     toolBar->addAction(m_queryFrameAction);
     toolBar->addSeparator();
@@ -364,7 +364,7 @@ void MainWindow::setupToolBar()
     m_frameParseAction = new QAction(QStringLiteral("解析帧"), this);
     m_frameParseAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+G")));
     m_frameParseAction->setToolTip(QStringLiteral("打开 DLT645 帧解析窗口"));
-    m_frameParseAction->setIcon(style()->standardIcon(QStyle::SP_FileDialogDetailedView));
+    m_frameParseAction->setIcon(QIcon(QStringLiteral(":/icons/frame-parse.svg")));
     connect(m_frameParseAction, &QAction::triggered, this, &MainWindow::onFrameParseDialog);
     toolBar->addAction(m_frameParseAction);
 }

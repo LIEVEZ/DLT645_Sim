@@ -135,29 +135,34 @@ void MainWindow::updateRealTimeDataDisplay(bool advancePhase)
 
 void MainWindow::onLoggerLogEntryAdded(LogLevel level, const QDateTime &timestamp, const QString &message)
 {
-    Q_UNUSED(timestamp);
     if (!m_operationLogWidget)
     {
         return;
     }
 
-    // 根据日志级别添加到操作日志
+    OperationLogLevel operationLevel = OperationLogLevel::Info;
+    QString category = QStringLiteral("系统");
+
+    // 调试日志不显示，其余日志保留 Logger 产生时的原始时间戳。
     switch (level)
     {
     case LogLevel::Debug:
-        // 调试日志不显示到操作日志窗口
-        break;
+        return;
     case LogLevel::Info:
-        m_operationLogWidget->addInfo(message);
+        operationLevel = OperationLogLevel::Info;
         break;
     case LogLevel::Warning:
-        m_operationLogWidget->addWarning(message);
+        operationLevel = OperationLogLevel::Warning;
+        category = QStringLiteral("警告");
         break;
     case LogLevel::Error:
     case LogLevel::Critical:
-        m_operationLogWidget->addError(message);
+        operationLevel = OperationLogLevel::Error;
+        category = QStringLiteral("错误");
         break;
     }
+
+    m_operationLogWidget->addLogEntry(LogEntry(timestamp, operationLevel, category, message));
 }
 
 void MainWindow::onSearchTextChanged(const QString &text)

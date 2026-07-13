@@ -24,6 +24,10 @@ QString buildStyleSheet(const ui::ThemePalette &p)
             background-color: {{windowBg}};
         }
 
+        QMainWindow, QMainWindow QWidget, QMenu, QToolTip {
+            font-family: "Microsoft YaHei UI";
+        }
+
         QMenuBar {
             background-color: {{panelBg}};
             color: {{text}};
@@ -96,7 +100,6 @@ QString buildStyleSheet(const ui::ThemePalette &p)
 
         QLabel {
             color: {{text}};
-            font-family: "Microsoft YaHei";
         }
 
         QTreeWidget {

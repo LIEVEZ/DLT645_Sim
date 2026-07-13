@@ -9,55 +9,55 @@ ThemePalette darkPalette()
 {
     ThemePalette p;
     // 背景层级：中性灰朝青微偏
-    p.windowBg = "#262B2E";
-    p.panelBg = "#353A3D";
-    p.panelHover = "#3F4549";
-    p.panelPressed = "#2A2F32";
-    p.readonlyBg = "#2E3336";
+    p.windowBg = "#0C223B";
+    p.panelBg = "#142E4A";
+    p.panelHover = "#1E4265";
+    p.panelPressed = "#102844";
+    p.readonlyBg = "#102945";
     // 边框
-    p.border = "#4C5256";
-    p.borderStrong = "#565D61";
-    p.gridLine = "#343A3D";
+    p.border = "#365978";
+    p.borderStrong = "#47708F";
+    p.gridLine = "#23425F";
     // 文字：微着色白
-    p.text = "#E6EBED";
-    p.textMuted = "rgba(230, 235, 237, 0.42)";
-    p.textReadonly = "#C9D1D9";
+    p.text = "#DCEAFF";
+    p.textMuted = "rgba(190, 210, 235, 0.48)";
+    p.textReadonly = "#AFC4DC";
     p.onAccent = "#FFFFFF";
     // 强调：钢青蓝
-    p.accent = "#2D8FB3";
-    p.accentHover = "#34A0C4";
-    p.accentPressed = "#247A9A";
-    p.accentTitle = "#5FB8D4";
+    p.accent = "#1677FF";
+    p.accentHover = "#328BFF";
+    p.accentPressed = "#0E5FCF";
+    p.accentTitle = "#55A7FF";
     // 语义色
     p.success = "#22C55E";
     p.danger = "#F87171";
     p.warning = "#FCD34D";
     // 日志级别色（暗底，接入钢青蓝体系：Info/通信取品牌色亮调，其余复用语义色）
-    p.logInfo = "#7FC4DE";    // 信息：钢青蓝亮调
+    p.logInfo = "#78B7FF";    // 信息：亮蓝
     p.logSuccess = "#22C55E"; // 成功：语义绿
-    p.logComm = "#5FB8D4";    // 通信：强调钢青蓝亮调
+    p.logComm = "#55A7FF";    // 通信：强调亮蓝
     p.logWarning = "#FCD34D"; // 警告：语义黄
     p.logError = "#F87171";   // 错误：语义红
     // Banner
-    p.noticeBg = "#31434A";
-    p.noticeBorder = "#46646D";
-    p.noticeText = "#D9F7F4";
-    p.errorBg = "#4A2F2F";
-    p.errorBorder = "#7A4C4C";
+    p.noticeBg = "#17405F";
+    p.noticeBorder = "#326B91";
+    p.noticeText = "#D8EEFF";
+    p.errorBg = "#3B2130";
+    p.errorBorder = "#733C51";
     p.errorText = "#FFDADA";
     // 报文解析卡片
-    p.cardTitle = "#8ED9FF";
-    p.cardDetail = "#B7C0C4";
+    p.cardTitle = "#78B7FF";
+    p.cardDetail = "#AFC4DC";
     // 工具栏
-    p.toolbarTop = "#525A5E";
-    p.toolbarBottom = "#464E51";
-    p.toolbarEdge = "#353B3D";
+    p.toolbarTop = "#1B3A5B";
+    p.toolbarBottom = "#142F4D";
+    p.toolbarEdge = "#2B4F6D";
     p.tbSeparator = "rgba(255, 255, 255, 0.18)";
     p.tbHover = "rgba(255, 255, 255, 0.08)";
     p.tbHoverEdge = "rgba(255, 255, 255, 0.18)";
-    p.tbPressed = "rgba(45, 143, 179, 0.72)";
-    p.tbPressedEdge = "rgba(95, 184, 212, 0.55)";
-    p.barBg = "#41484B";
+    p.tbPressed = "rgba(22, 119, 255, 0.42)";
+    p.tbPressedEdge = "rgba(85, 167, 255, 0.72)";
+    p.barBg = "#122D49";
     return p;
 }
 

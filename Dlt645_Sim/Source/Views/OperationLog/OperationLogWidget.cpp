@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QIODevice>
 #include <QLineEdit>
 #include <QListWidget>
@@ -49,10 +50,12 @@ void OperationLogWidget::setupUI()
     toolBarLayout->addStretch();
 
     m_clearButton->setMaximumWidth(80);
+    m_clearButton->setIcon(QIcon(QStringLiteral(":/icons/clear.svg")));
     connect(m_clearButton, &QPushButton::clicked, this, &OperationLogWidget::onClearClicked);
     toolBarLayout->addWidget(m_clearButton);
 
     m_exportButton->setMaximumWidth(80);
+    m_exportButton->setIcon(QIcon(QStringLiteral(":/icons/export.svg")));
     connect(m_exportButton, &QPushButton::clicked, this, &OperationLogWidget::onExportClicked);
     toolBarLayout->addWidget(m_exportButton);
 
@@ -192,11 +195,10 @@ void OperationLogWidget::onAutoScrollToggled(bool checked)
 
 void OperationLogWidget::addLogItem(const LogEntry &entry)
 {
-    QString icon = getLevelIcon(entry.level);
     QString color = getLevelColor(entry.level);
 
     QString text = QString("[%1] [%2] %3")
-                       .arg(icon)
+                       .arg(entry.timestamp.toString(QStringLiteral("HH:mm:ss")))
                        .arg(entry.category)
                        .arg(entry.message);
 

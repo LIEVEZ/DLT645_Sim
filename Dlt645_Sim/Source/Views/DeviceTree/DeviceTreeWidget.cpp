@@ -14,6 +14,7 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QApplication>
+#include <QIcon>
 #include <QClipboard>
 
 namespace
@@ -115,14 +116,17 @@ void DeviceTreeWidget::setupUI()
     toolBarLayout->setContentsMargins(0, 0, 0, 0);
 
     m_refreshButton->setMaximumWidth(60);
+    m_refreshButton->setIcon(QIcon(QStringLiteral(":/icons/refresh.svg")));
     connect(m_refreshButton, &QPushButton::clicked, this, &DeviceTreeWidget::onRefreshClicked);
     toolBarLayout->addWidget(m_refreshButton);
 
     m_expandAllButton->setMaximumWidth(60);
+    m_expandAllButton->setIcon(QIcon(QStringLiteral(":/icons/expand.svg")));
     connect(m_expandAllButton, &QPushButton::clicked, this, &DeviceTreeWidget::onExpandAllClicked);
     toolBarLayout->addWidget(m_expandAllButton);
 
     m_collapseAllButton->setMaximumWidth(60);
+    m_collapseAllButton->setIcon(QIcon(QStringLiteral(":/icons/collapse.svg")));
     connect(m_collapseAllButton, &QPushButton::clicked, this, &DeviceTreeWidget::onCollapseAllClicked);
     toolBarLayout->addWidget(m_collapseAllButton);
 
@@ -728,8 +732,9 @@ QTreeWidgetItem *DeviceTreeWidget::createMeterNode(const MeterInfo &info)
     item->setData(0, Qt::UserRole + 7, info.eventRecordPresent); // 存储事件记录是否存在
 
     // 设置电表图标
-    item->setText(0, QString("📊 %1 [%2] (%3)")
+    item->setText(0, QString("%1 [%2] (%3)")
                          .arg(info.alias, info.address, meterPhaseTypeToDisplayName(info.phaseType)));
+    item->setIcon(0, QIcon(QStringLiteral(":/icons/meter.svg")));
 
     return item;
 }
@@ -738,8 +743,9 @@ QTreeWidgetItem *DeviceTreeWidget::createCategoryItem(const QString &name, ItemT
 {
     QTreeWidgetItem *item = new QTreeWidgetItem();
     // 根据是否可展开选择不同的图标
-    QString icon = expandable ? "📁" : "📄";
-    item->setText(0, QString("%1 %2").arg(icon, name));
+    Q_UNUSED(expandable);
+    item->setText(0, name);
+    item->setIcon(0, QIcon(QStringLiteral(":/icons/folder.svg")));
     item->setData(0, Qt::UserRole + 1, static_cast<int>(type));
 
     return item;
@@ -748,7 +754,8 @@ QTreeWidgetItem *DeviceTreeWidget::createCategoryItem(const QString &name, ItemT
 QTreeWidgetItem *DeviceTreeWidget::createDataItem(const QString &diCode, const QString &name)
 {
     QTreeWidgetItem *item = new QTreeWidgetItem();
-    item->setText(0, QString("📄 %1").arg(name));
+    item->setText(0, name);
+    item->setIcon(0, QIcon(QStringLiteral(":/icons/read.svg")));
     item->setData(0, Qt::UserRole, diCode); // 存储DI码
     item->setData(0, Qt::UserRole + 1, static_cast<int>(ItemType::Data));
 
@@ -978,29 +985,29 @@ void DeviceTreeWidget::onCustomContextMenuRequested(const QPoint &pos)
             QString connectionAlias = item->data(0, Qt::UserRole).toString();
             bool isConnected = item->data(0, Qt::UserRole + 2).toBool();
 
-            m_contextMenu->addAction(QIcon(":/icons/add.png"), "新建电表", [this, connectionAlias]()
+            m_contextMenu->addAction(QIcon(":/icons/new-meter.svg"), "新建电表", [this, connectionAlias]()
                                      { emit newMeterRequested(connectionAlias); });
-            m_contextMenu->addAction(QIcon(":/icons/add.png"), QStringLiteral("批量新建电表"), [this, connectionAlias]()
+            m_contextMenu->addAction(QIcon(":/icons/batch-new-meter.svg"), QStringLiteral("批量新建电表"), [this, connectionAlias]()
                                      { emit batchNewMeterRequested(connectionAlias); });
             m_contextMenu->addSeparator();
 
             if (isConnected)
             {
-                m_contextMenu->addAction(QIcon(":/icons/disconnect.png"), "关闭连接", [this, connectionAlias]()
+                m_contextMenu->addAction(QIcon(":/icons/close-connection.svg"), "关闭连接", [this, connectionAlias]()
                                          { emit closeConnectionRequested(connectionAlias); });
             }
             else
             {
-                m_contextMenu->addAction(QIcon(":/icons/connect.png"), "打开连接", [this, connectionAlias]()
+                m_contextMenu->addAction(QIcon(":/icons/open-connection.svg"), "打开连接", [this, connectionAlias]()
                                          { emit openConnectionRequested(connectionAlias); });
             }
 
             m_contextMenu->addSeparator();
-            m_contextMenu->addAction(QIcon(":/icons/delete.png"), "删除连接", [this, connectionAlias]()
+            m_contextMenu->addAction(QIcon(":/icons/delete.svg"), "删除连接", [this, connectionAlias]()
                                      { emit deleteConnectionRequested(connectionAlias); });
-            m_contextMenu->addAction(QIcon(":/icons/delete.png"), QStringLiteral("删除所有电表"), [this, connectionAlias]()
+            m_contextMenu->addAction(QIcon(":/icons/delete.svg"), QStringLiteral("删除所有电表"), [this, connectionAlias]()
                                      { emit deleteAllMetersRequested(connectionAlias); });
-            m_contextMenu->addAction(QIcon(":/icons/settings.png"), "编辑", [this, connectionAlias]()
+            m_contextMenu->addAction(QIcon(":/icons/settings.svg"), "编辑", [this, connectionAlias]()
                                      { emit editConnectionRequested(connectionAlias); });
             break;
         }
@@ -1008,19 +1015,19 @@ void DeviceTreeWidget::onCustomContextMenuRequested(const QPoint &pos)
         case ItemType::Meter:
         {
             QString meterAlias = item->data(0, Qt::UserRole).toString();
-            m_contextMenu->addAction(QIcon(":/icons/read.png"), "读取所有数据", [this, meterAlias]()
+            m_contextMenu->addAction(QIcon(":/icons/read.svg"), "读取所有数据", [this, meterAlias]()
                                      { emit readAllDataRequested(meterAlias); });
-            m_contextMenu->addAction(QIcon(":/icons/write.png"), "批量设置", [this, meterAlias]()
+            m_contextMenu->addAction(QIcon(":/icons/write.svg"), "批量设置", [this, meterAlias]()
                                      { emit batchSetDataRequested(meterAlias); });
             m_contextMenu->addSeparator();
-            m_contextMenu->addAction(QIcon(":/icons/settings.png"), "事件记录设置", [this, meterAlias]()
+            m_contextMenu->addAction(QIcon(":/icons/settings.svg"), "事件记录设置", [this, meterAlias]()
                                      {
                                         QString connectionAlias = getSelectedConnectionAlias();
                                         emit eventRecordSettingsRequested(connectionAlias, meterAlias); });
             m_contextMenu->addSeparator();
-            m_contextMenu->addAction(QIcon(":/icons/export.png"), "导出", [this, meterAlias]() { /* TODO: 导出电表数据 */ });
+            m_contextMenu->addAction(QIcon(":/icons/export.svg"), "导出", [this, meterAlias]() { /* TODO: 导出电表数据 */ });
             m_contextMenu->addSeparator();
-            m_contextMenu->addAction(QIcon(":/icons/delete.png"), "删除电表", [this, meterAlias]()
+            m_contextMenu->addAction(QIcon(":/icons/delete.svg"), "删除电表", [this, meterAlias]()
                                      {
                                         QString connectionAlias = getSelectedConnectionAlias();
                                         emit deleteMeterRequested(connectionAlias, meterAlias); });
@@ -1156,11 +1163,11 @@ void DeviceTreeWidget::updateConnectionStatusIcon(QTreeWidgetItem *connectionIte
     QString port = connectionItem->data(0, Qt::UserRole + 3).toString();
 
     // 设置显示文本：链接图标 + 别名 + 端口 + 状态圆点
-    QString statusDot = connected ? "🟢" : "🔴";
-    connectionItem->setText(0, QString("🔗 %1 %2 %3").arg(alias, port, statusDot));
-
-    // 设置链接图标
-    connectionItem->setIcon(0, QIcon(":/icons/link.png"));
+    connectionItem->setText(0, QString("%1 %2").arg(alias, port));
+    const QString statusIcon = connected
+                                   ? QStringLiteral(":/icons/status-connected.svg")
+                                   : QStringLiteral(":/icons/status-disconnected.svg");
+    connectionItem->setIcon(0, QIcon(statusIcon));
 }
 
 void DeviceTreeWidget::updateConnectionMeterCount(QTreeWidgetItem *connectionItem)

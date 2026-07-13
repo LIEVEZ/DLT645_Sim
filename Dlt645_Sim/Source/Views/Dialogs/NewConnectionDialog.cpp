@@ -23,8 +23,8 @@ void NewConnectionDialog::setupUI()
 {
     setWindowTitle("新建连接");
     setMinimumWidth(450);
-    setMinimumHeight(400);
-    setFixedSize(450, 400);
+    setMinimumHeight(450);
+    setFixedSize(450, 450);
 
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
     mainLayout->setSpacing(10);
@@ -79,6 +79,19 @@ void NewConnectionDialog::setupSerialConfig()
     QFormLayout *formLayout = new QFormLayout(serialPage);
     formLayout->setSpacing(15);
     formLayout->setContentsMargins(20, 20, 20, 20);
+
+    const QList<QComboBox *> serialCombos = {
+        m_serialPortCombo,
+        m_baudRateCombo,
+        m_dataBitsCombo,
+        m_stopBitsCombo,
+        m_parityCombo,
+        m_flowControlCombo,
+    };
+    for (QComboBox *combo : serialCombos)
+    {
+        combo->setMinimumHeight(32);
+    }
 
     // 串口
     QHBoxLayout *portLayout = new QHBoxLayout();
