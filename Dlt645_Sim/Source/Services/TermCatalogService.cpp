@@ -30,7 +30,7 @@ bool TermCatalogService::loadFromJson()
     QByteArray data;
 
     // 尝试从资源文件加载
-    QFile file(":/resources/Resources/terms_glossary.json");
+    QFile file(":/resources/terms_glossary.json");
     if (file.open(QIODevice::ReadOnly)) {
         data = file.readAll();
         file.close();

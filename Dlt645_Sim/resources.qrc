@@ -1,34 +1,34 @@
 <RCC>
     <qresource prefix="/resources">
-        <file>Resources/terms_glossary.json</file>
+        <file alias="terms_glossary.json">Source/Assets/terms_glossary.json</file>
     </qresource>
     <qresource prefix="/icons">
-        <file alias="new-connection.svg">Resources/Icons/new-connection.svg</file>
-        <file alias="new-meter.svg">Resources/Icons/new-meter.svg</file>
-        <file alias="batch-new-meter.svg">Resources/Icons/batch-new-meter.svg</file>
-        <file alias="open-connection.svg">Resources/Icons/open-connection.svg</file>
-        <file alias="close-connection.svg">Resources/Icons/close-connection.svg</file>
-        <file alias="communication.svg">Resources/Icons/communication.svg</file>
-        <file alias="master-query.svg">Resources/Icons/master-query.svg</file>
-        <file alias="query-frame.svg">Resources/Icons/query-frame.svg</file>
-        <file alias="frame-parse.svg">Resources/Icons/frame-parse.svg</file>
-        <file alias="manual.svg">Resources/Icons/manual.svg</file>
-        <file alias="refresh.svg">Resources/Icons/refresh.svg</file>
-        <file alias="expand.svg">Resources/Icons/expand.svg</file>
-        <file alias="collapse.svg">Resources/Icons/collapse.svg</file>
-        <file alias="export.svg">Resources/Icons/export.svg</file>
-        <file alias="delete.svg">Resources/Icons/delete.svg</file>
-        <file alias="settings.svg">Resources/Icons/settings.svg</file>
-        <file alias="read.svg">Resources/Icons/read.svg</file>
-        <file alias="write.svg">Resources/Icons/write.svg</file>
-        <file alias="link.svg">Resources/Icons/link.svg</file>
-        <file alias="meter.svg">Resources/Icons/meter.svg</file>
-        <file alias="folder.svg">Resources/Icons/folder.svg</file>
-        <file alias="status-connected.svg">Resources/Icons/status-connected.svg</file>
-        <file alias="status-disconnected.svg">Resources/Icons/status-disconnected.svg</file>
-        <file alias="reset.svg">Resources/Icons/reset.svg</file>
-        <file alias="randomize.svg">Resources/Icons/randomize.svg</file>
-        <file alias="clear.svg">Resources/Icons/clear.svg</file>
-        <file alias="empty-data.svg">Resources/Icons/empty-data.svg</file>
+        <file alias="new-connection.svg">Source/Assets/Icons/new-connection.svg</file>
+        <file alias="new-meter.svg">Source/Assets/Icons/new-meter.svg</file>
+        <file alias="batch-new-meter.svg">Source/Assets/Icons/batch-new-meter.svg</file>
+        <file alias="open-connection.svg">Source/Assets/Icons/open-connection.svg</file>
+        <file alias="close-connection.svg">Source/Assets/Icons/close-connection.svg</file>
+        <file alias="communication.svg">Source/Assets/Icons/communication.svg</file>
+        <file alias="master-query.svg">Source/Assets/Icons/master-query.svg</file>
+        <file alias="query-frame.svg">Source/Assets/Icons/query-frame.svg</file>
+        <file alias="frame-parse.svg">Source/Assets/Icons/frame-parse.svg</file>
+        <file alias="manual.svg">Source/Assets/Icons/manual.svg</file>
+        <file alias="refresh.svg">Source/Assets/Icons/refresh.svg</file>
+        <file alias="expand.svg">Source/Assets/Icons/expand.svg</file>
+        <file alias="collapse.svg">Source/Assets/Icons/collapse.svg</file>
+        <file alias="export.svg">Source/Assets/Icons/export.svg</file>
+        <file alias="delete.svg">Source/Assets/Icons/delete.svg</file>
+        <file alias="settings.svg">Source/Assets/Icons/settings.svg</file>
+        <file alias="read.svg">Source/Assets/Icons/read.svg</file>
+        <file alias="write.svg">Source/Assets/Icons/write.svg</file>
+        <file alias="link.svg">Source/Assets/Icons/link.svg</file>
+        <file alias="meter.svg">Source/Assets/Icons/meter.svg</file>
+        <file alias="folder.svg">Source/Assets/Icons/folder.svg</file>
+        <file alias="status-connected.svg">Source/Assets/Icons/status-connected.svg</file>
+        <file alias="status-disconnected.svg">Source/Assets/Icons/status-disconnected.svg</file>
+        <file alias="reset.svg">Source/Assets/Icons/reset.svg</file>
+        <file alias="randomize.svg">Source/Assets/Icons/randomize.svg</file>
+        <file alias="clear.svg">Source/Assets/Icons/clear.svg</file>
+        <file alias="empty-data.svg">Source/Assets/Icons/empty-data.svg</file>
     </qresource>
 </RCC>
