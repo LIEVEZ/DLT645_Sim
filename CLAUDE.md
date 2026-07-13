@@ -1,6 +1,6 @@
 # DLT645_Sim - DLT645-2007 多功能电能表模拟器
 
-> 更新时间：2026-06-26
+> 更新时间：2026-07-13
 
 ## 项目愿景
 
@@ -26,6 +26,8 @@ DLT645_Sim 是一个基于 Qt5 Widgets 的工业级 DLT645-2007 协议电能表�
 | 网络通信 | Qt Network (QTcpSocket) | - |
 | 数据库 | Qt SQL | - |
 | 数据格式 | JSON 配置 | - |
+| 图标系统 | SVG 矢量图标（Qt Resource 内嵌） | - |
+| 主题 | UiTheme 全局调色板（设计 token） | - |
 
 ### 分层架构
 
@@ -57,6 +59,7 @@ DLT645_Sim 是一个基于 Qt5 Widgets 的工业级 DLT645-2007 协议电能表�
 │                   协议与基础工具层                            │
 │  BCDHelper / ChecksumHelper / DLT645DataHelper / Logger     │
 │  DLT645FrameFormatter / DLT645BlockHandler / DLT645ValueFormatter │
+│  UiTheme（全局调色板/设计token） / ConnectionInfoMapper      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -97,9 +100,9 @@ graph TD
 | 模块路径 | 职责描述 | 关键文件 |
 |---------|---------|---------|
 | [`Dlt645_Sim/Source/Controllers/`](./Dlt645_Sim/Source/Controllers/) | 通信与协议控制 | SerialController, TcpController, ProtocolController, ConnectionManager, MasterQueryController |
-| [`Dlt645_Sim/Source/Models/`](./Dlt645_Sim/Source/Models/) | 电表领域模型 | MeterModel（拆分为 MeterModelPrivate* 多文件）, DataItem, ConnectionConfig, ConnectionInfo, MeterInfo, CategoryCatalog, MeterPhaseType, TermDefinition |
+| [`Dlt645_Sim/Source/Models/`](./Dlt645_Sim/Source/Models/) | 电表领域模型 | MeterModel（拆分为 MeterModelPrivate* 多文件）, DataItem, ConnectionConfig, ConnectionInfo, ConnectionInfoMapper, MeterInfo, CategoryCatalog, MeterPhaseType, TermDefinition |
 | [`Dlt645_Sim/Source/Services/`](./Dlt645_Sim/Source/Services/) | 协议与数据服务 | ProtocolParser, DataGenerator, MeterDataStore, ConfigurationSerializer, TermCatalogService |
-| [`Dlt645_Sim/Source/Utils/`](./Dlt645_Sim/Source/Utils/) | 基础工具类 | BCDHelper, ChecksumHelper, DLT645DataHelper, Logger, DLT645FrameFormatter, DLT645BlockHandler, DLT645ValueFormatter |
+| [`Dlt645_Sim/Source/Utils/`](./Dlt645_Sim/Source/Utils/) | 基础工具类 | BCDHelper, ChecksumHelper, DLT645DataHelper, Logger（+LoggerTypes）, DLT645FrameFormatter（+Fields/ValueDisplay 头）, DLT645BlockHandler, DLT645ValueFormatter, UiTheme（全局调色板/设计 token） |
 | [`Dlt645_Sim/Source/ViewModels/`](./Dlt645_Sim/Source/ViewModels/) | 视图模型 | MainWindowViewModel |
 | [`Dlt645_Sim/Source/Views/`](./Dlt645_Sim/Source/Views/) | UI界面组件 | MainWindow（拆分为 mainwindow_* 多文件）, DeviceTreeWidget, DataTableWidget, OperationLogWidget, CommunicationBarWidget, Common（FrameParseResultWidget/TermExplanationWidget）, Dialogs |
 
@@ -217,7 +220,9 @@ make -j4
 5. **UI 框架**：`mainwindow.h` 是装配中心（实现拆分为 `mainwindow_*.cpp`）
 6. **术语解释**：`TermCatalogService.h` + `TermDefinition.h` + `TermExplanationWidget.h`
 7. **报文解析展示**：`DLT645FrameFormatter.h` + `FrameParseResultWidget.h` + `FrameParseDialog.h`
-8. **工具类**：`Utils/` 目录下各类独立工具
+8. **主题与配色**：`UiTheme.h`（全局调色板 / 设计 token，改色的唯一入口）
+9. **图标资源**：`resources.qrc` + `Resources/Icons/*.svg`（SVG 矢量图标）
+10. **工具类**：`Utils/` 目录下各类独立工具
 
 ### 核心概念
 
@@ -226,9 +231,12 @@ make -j4
 - **DataCategory**：七类数据分类（电能量/最大需量/变量/事件/参变量/冻结/负荷记录）
 - **ProtocolFrame**：DLT645-2007 协议帧结构体
 - **ControlCode**：控制码枚举（读数据 0x11、写数据 0x14 等）
-- **ConnectionConfig / ConnectionInfo**：连接配置与运行态信息（串口/TCP 参数）
+- **ConnectionConfig / ConnectionInfo**：连接配置与运行态信息（串口/TCP 参数）；`ConnectionInfoMapper` 负责由配置生成运行态信息
+- **UiTheme**：全局 UI 调色板（设计 token），统一管理主窗口与各对话框/控件的配色（海军蓝/钢青蓝主题），改色只需修改 `UiTheme.cpp` 的 darkPalette()/lightPalette()
 - **MasterQueryController**：主站查询控制器，独立串口模拟主站主动发起查询
 - **TermCatalogService**：术语目录服务（单例），加载与检索电表术语库供术语解释功能使用
+- **UiTheme**：全局 UI 调色板（设计 token），统一主窗口与各对话框/控件的配色，消除散落各文件的硬编码颜色；当前采用工业「钢青蓝 / 海军蓝」主题，改色只需修改 `darkPalette()` / `lightPalette()`
+- **ConnectionInfoMapper**：将 `ConnectionConfig` 映射为运行态 `ConnectionInfo`（含连接状态）的无状态转换器
 - **DLT645FrameFormatter**：报文格式化器，将原始帧解析为分区分卡片的可视化结果（FrameParseDisplayResult）
 
 ### 关键数据流
@@ -249,6 +257,8 @@ DataTable ← MeterModel ← DataGenerator  ← 外部主站/网关
 - **修改报文解析展示**：调整 `DLT645FrameFormatter` 系列与 `FrameParseResultWidget`
 - **维护术语库**：通过 `TermCatalogService` 加载/检索，UI 在 `TermExplanationWidget`
 - **增加 UI 组件**：在 `Views/` 目录创建新组件，通过 `mainwindow_setup.cpp` 装配
+- **调整主题配色**：修改 `Utils/UiTheme.cpp` 的 darkPalette()/lightPalette()，全应用自动同步
+- **新增/替换图标**：在 `Resources/Icons/` 放置 SVG，并在 `resources.qrc` 注册
 - **增加工具函数**：在 `Utils/` 目录添加独立工具类
 
 ### DLT645-2007 协议要点
@@ -261,6 +271,16 @@ DataTable ← MeterModel ← DataGenerator  ← 外部主站/网关
 - **DI 编码**：4 字节数据标识，如 00 00 00 00（组合有功总电能）
 
 ## 变更记录
+
+### [2026-07-13] - UI 主题重构与图标系统扫描
+- 重新扫描项目结构，识别 58 个头文件、61 个源文件
+- 新增 `Utils/UiTheme`：全局调色板（设计 token），消除原先散落在 8 个文件、300+ 处的硬编码颜色；深色主题改为工业「海军蓝 / 钢青蓝」配色，改色只需修改 darkPalette()/lightPalette()
+- 集成 SVG 矢量图标系统：`resources.qrc` + `Resources/Icons/*.svg`（27 个图标，Qt Resource 内嵌）
+- 新增 `Models/ConnectionInfoMapper`：ConnectionConfig → ConnectionInfo 映射工具
+- 新增 `Source/Version.h`（软件版本 V1.0.0）、`Utils/LoggerTypes.h`、`DLT645FrameFormatterFields.h`、`DLT645FrameFormatterValueDisplay.h`
+- 对话框布局与全局字体优化，增加空数据状态展示（empty-data 图标）
+- 解决主站查询串口号排序问题、费率相关问题
+- 预留空目录：`Models/DataIdentifier`、`Views/StatusBar`、`Views/ToolBar`
 
 ### [2026-06-26] - 功能扩展与架构细化扫描
 - 重新扫描项目结构，识别 57 个头文件、60 个源文件
@@ -296,5 +316,5 @@ MIT License - Copyright (c) 2026 LIEVEZ
 
 **维护者**：LIEVEZ  
 **项目地址**：https://github.com/LIEVEZ/DLT645_Sim  
-**文档版本**：v1.1  
+**文档版本**：v1.2  
 **状态**：✅ 生产就绪
