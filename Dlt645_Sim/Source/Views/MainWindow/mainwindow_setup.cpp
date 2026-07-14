@@ -4,7 +4,6 @@
 #include "Controllers/ProtocolController.h"
 #include "Controllers/SerialController.h"
 #include "Controllers/TcpController.h"
-#include "Services/DataGenerator.h"
 #include "ViewModels/MainWindowViewModel.h"
 
 #include "Utils/Logger.h"
@@ -175,10 +174,6 @@ void MainWindow::setupConnections()
             this, &MainWindow::onRawDataReceived);
     connect(m_protocolController, &ProtocolController::rawDataSent,
             this, &MainWindow::onRawDataSent);
-
-    // 连接数据生成器信号
-    connect(m_dataGenerator, &DataGenerator::dataUpdated,
-            this, &MainWindow::onDataUpdated);
 
     // 连接 Logger 信号到操作日志
     connect(Logger::instance(), &Logger::logEntryAdded,

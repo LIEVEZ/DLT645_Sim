@@ -1,4 +1,6 @@
 #include "ProtocolController.h"
+#include "Models/DataItem.h"
+#include "Utils/DLT645DataHelper.h"
 #include "Utils/Logger.h"
 #include <algorithm>
 
@@ -162,7 +164,9 @@ void ProtocolController::processReceivedData(const QByteArray &data)
         }
         else if (controlCode == static_cast<quint8>(ControlCode::WriteAddress))
         {
-            const QString newAddress = ProtocolParser::bytesToAddress(frame.dataField.mid(5, 6));
+            // 0x15 数据域即 6 字节新地址（BCD 低位在前，传输时整体 +0x33）
+            const QString newAddress = ProtocolParser::bytesToAddress(
+                DLT645DataHelper::subtract33(frame.dataField.left(6)));
             if (ProtocolParser::isValidAddress(newAddress))
             {
                 requestMeterModel->setMeterAddress(newAddress);
@@ -289,54 +293,6 @@ bool ProtocolController::tryTakeNextReceivedFrame(ProtocolFrame &frame, QByteArr
     return false;
 }
 
-void ProtocolController::sendReadRequest(const QString &diCode)
-{
-    if (!hasActiveTransport())
-    {
-        LOG_WARNING("Cannot send read request: no transport connection is open");
-        return;
-    }
-    if (!m_meterModel)
-    {
-        LOG_WARNING("Cannot send read request: no current meter selected");
-        return;
-    }
-
-    QByteArray address = ProtocolParser::addressToBytes(m_meterModel->getMeterAddress());
-    ProtocolFrame frame = m_protocolParser->buildReadRequest(address, diCode, m_meterModel->getIncludePrefixFE());
-    const QByteArray frameData = ProtocolParser::frameToRawBytes(frame, m_meterModel->getIncludePrefixFE());
-
-    if (sendTransportData(frameData))
-    {
-        emit frameSent(frame, frameData);
-        LOG_INFO(QString("Sent read request for DI: %1").arg(diCode));
-    }
-}
-
-void ProtocolController::sendWriteRequest(const QString &diCode, const QVariant &value)
-{
-    if (!hasActiveTransport())
-    {
-        LOG_WARNING("Cannot send write request: no transport connection is open");
-        return;
-    }
-    if (!m_meterModel)
-    {
-        LOG_WARNING("Cannot send write request: no current meter selected");
-        return;
-    }
-
-    QByteArray address = ProtocolParser::addressToBytes(m_meterModel->getMeterAddress());
-    ProtocolFrame frame = m_protocolParser->buildWriteRequest(address, diCode, value, m_meterModel->getIncludePrefixFE());
-    const QByteArray frameData = ProtocolParser::frameToRawBytes(frame, m_meterModel->getIncludePrefixFE());
-
-    if (sendTransportData(frameData))
-    {
-        emit frameSent(frame, frameData);
-        LOG_INFO(QString("Sent write request for DI: %1, value: %2").arg(diCode).arg(value.toString()));
-    }
-}
-
 void ProtocolController::setAutoResponseEnabled(bool enabled)
 {
     m_autoResponseEnabled = enabled;
@@ -440,7 +396,7 @@ void ProtocolController::onResponseTimerTimeout()
             {
                 ProtocolFrame response = m_protocolParser->buildErrorResponse(requestFrame, 0x02);
                 sendResponse(response, meterModel);
-                emit protocolError(0x02, QStringLiteral("褰撳墠鐢佃〃鏈惎鐢ㄨ浜嬩欢璁板綍: %1").arg(diCode));
+                emit protocolError(0x02, QStringLiteral("当前电表未启用该事件记录: %1").arg(diCode));
             }
             else if (meterModel->isDataItemSupported(diCode))
             {
@@ -492,10 +448,9 @@ void ProtocolController::processWriteRequest(const ProtocolFrame &frame, MeterMo
         return;
     }
 
-    const bool hasLegacyPayloadLength =
-        frame.dataField.size() > 5 && static_cast<quint8>(frame.dataField[4]) == frame.dataField.size() - 5;
-    const int valueOffset = hasLegacyPayloadLength ? 5 : 12;
-    QByteArray valueBytes = frame.dataField.mid(valueOffset);
+    // 标准写数据帧数据域：DI(4) + 权限PA(1) + 密码(3) + 操作者代码(4) + 数据
+    constexpr int kWriteValueOffset = 12;
+    QByteArray valueBytes = frame.dataField.mid(kWriteValueOffset);
     QVariant value;
 
     std::reverse(valueBytes.begin(), valueBytes.end());
@@ -506,33 +461,49 @@ void ProtocolController::processWriteRequest(const ProtocolFrame &frame, MeterMo
         valueBytes[i] = byte;
     }
 
-    if (diCode == "0x04000401")
-    {
-        value = ProtocolParser::bytesToAddress(valueBytes);
-    }
-    else if (diCode == "0x04000701" ||
-             diCode == "0x04000702" ||
-             diCode == "0x04000703" ||
-             diCode == "0x04000704" ||
-             diCode == "0x04000705")
+    if (diCode == "0x04000701" ||
+        diCode == "0x04000702" ||
+        diCode == "0x04000703" ||
+        diCode == "0x04000704" ||
+        diCode == "0x04000705")
     {
         if (valueBytes.size() >= 1)
         {
             value = static_cast<int>(static_cast<quint8>(valueBytes[0]));
         }
     }
-    else if (valueBytes.size() >= 4)
+    else if (!valueBytes.isEmpty())
     {
-        value = BCDHelper::bcdToDecimal(valueBytes, 2);
+        // 按数据项 format 解码写入值，保证小数位与读路径对称
+        // （旧实现固定按 2 位小数，写电压/电流等会存错值）
+        QString format;
+        int decimalPlaces = 0;
+        if (meterModel)
+        {
+            const DataItem dataItem = meterModel->getDataItemRaw(diCode);
+            format = dataItem.format;
+            decimalPlaces = dataItem.decimalPlaces;
+        }
+
+        const QString decoded = DLT645DataHelper::decodePayloadByFormat(valueBytes, format, decimalPlaces);
+        bool numericOk = false;
+        const double numericValue = decoded.toDouble(&numericOk);
+        if (numericOk)
+        {
+            value = numericValue;
+        }
+        else if (!decoded.isEmpty())
+        {
+            value = decoded;
+        }
+        else if (valueBytes.size() >= 4)
+        {
+            value = BCDHelper::bcdToDecimal(valueBytes, decimalPlaces);
+        }
     }
 
     if (meterModel && meterModel->setDataValue(diCode, value))
     {
-        if (diCode == "0x04000401")
-        {
-            meterModel->setMeterAddress(value.toString());
-        }
-
         LOG_INFO(QString("Data written: %1 = %2").arg(diCode).arg(value.toString()));
 
         if (m_autoResponseEnabled)

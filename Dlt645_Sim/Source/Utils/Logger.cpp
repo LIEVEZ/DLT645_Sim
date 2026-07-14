@@ -139,37 +139,45 @@ void Logger::setFileOutputEnabled(bool enabled)
 
 void Logger::writeLog(LogLevel level, const QString &message)
 {
-    QMutexLocker locker(&m_mutex);
-
-    // 检查日志级别
-    if (level < m_logLevel)
+    QDateTime now;
     {
-        return;
+        QMutexLocker locker(&m_mutex);
+
+        // 检查日志级别
+        if (level < m_logLevel)
+        {
+            return;
+        }
+
+        now = QDateTime::currentDateTime();
+        const QString formattedMessage = formatLogMessage(level, message);
+
+        // 控制台输出（'\n' 而非 std::endl，避免逐条刷新流）
+        if (m_consoleOutputEnabled)
+        {
+            std::cout << formattedMessage.toStdString() << '\n';
+        }
+
+        // 文件输出
+        if (m_fileOutputEnabled && m_logStream)
+        {
+            // 检查是否需要轮转
+            rotateLogFileIfNeeded();
+
+            *m_logStream << formattedMessage << "\n";
+            // Warning 及以上立即落盘；低级别日志依赖流缓冲，避免高频通信时逐条磁盘 I/O
+            if (level >= LogLevel::Warning)
+            {
+                m_logStream->flush();
+            }
+
+            // 更新当前文件大小
+            m_currentFileSize += formattedMessage.toUtf8().size() + 1; // +1 for newline
+        }
     }
 
-    QDateTime now = QDateTime::currentDateTime();
-    QString formattedMessage = formatLogMessage(level, message);
-
-    // 控制台输出
-    if (m_consoleOutputEnabled)
-    {
-        std::cout << formattedMessage.toStdString() << std::endl;
-    }
-
-    // 文件输出
-    if (m_fileOutputEnabled && m_logStream)
-    {
-        // 检查是否需要轮转
-        rotateLogFileIfNeeded();
-
-        *m_logStream << formattedMessage << "\n";
-        m_logStream->flush();
-
-        // 更新当前文件大小
-        m_currentFileSize += formattedMessage.toUtf8().size() + 1; // +1 for newline
-    }
-
-    // 发射信号
+    // 在互斥锁外发射信号：直连槽（如 UI 日志窗口）可能耗时甚至再次打日志，
+    // 持锁发射会造成 UI 卡顿乃至非递归锁死锁
     emit logEntryAdded(level, now, message);
 }
 

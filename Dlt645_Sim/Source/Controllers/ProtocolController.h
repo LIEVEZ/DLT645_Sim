@@ -43,19 +43,6 @@ public:
     void processReceivedData(const QByteArray &data);
 
     /**
-     * @brief 发送读数据请求
-     * @param diCode 数据标识
-     */
-    void sendReadRequest(const QString &diCode);
-
-    /**
-     * @brief 发送写数据请求
-     * @param diCode 数据标识
-     * @param value 数据值
-     */
-    void sendWriteRequest(const QString &diCode, const QVariant &value);
-
-    /**
      * @brief 启用/禁用自动应答
      * @param enabled 是否启用
      */

@@ -17,7 +17,7 @@ win32-g++ {
 # In order to do so, uncomment the following line.
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
-# 婧愭枃浠?
+# 源文件
 SOURCES += \
     Source/main.cpp \
     Source/Views/MainWindow/mainwindow.cpp \
@@ -55,7 +55,6 @@ SOURCES += \
     Source/Models/MeterModelQueries.cpp \
     Source/ViewModels/MainWindowViewModel.cpp \
     Source/Services/ProtocolParser.cpp \
-    Source/Services/DataGenerator.cpp \
     Source/Services/MeterDataStore.cpp \
     Source/Services/ConfigurationSerializer.cpp \
     Source/Services/TermCatalogService.cpp \
@@ -81,7 +80,7 @@ SOURCES += \
     Source/Views/Dialogs/DataItemManualDialog.cpp \
     Source/Views/Dialogs/QueryFrameDialog.cpp
 
-# 澶存枃浠?
+# 头文件
 HEADERS += \
     Source/Version.h \
     Source/Views/MainWindow/mainwindow.h \
@@ -103,6 +102,7 @@ HEADERS += \
     Source/Models/DataItem.h \
     Source/Models/MeterInfo.h \
     Source/Models/MeterModel.h \
+    Source/Models/MeterPhaseType.h \
     Source/Models/TermDefinition.h \
     Source/Models/MeterModelInitializationEventPrivate.h \
     Source/Models/MeterModelPrivate.h \
@@ -115,7 +115,6 @@ HEADERS += \
     Source/Models/MeterModelPrivateRuntime.h \
     Source/ViewModels/MainWindowViewModel.h \
     Source/Services/ProtocolParser.h \
-    Source/Services/DataGenerator.h \
     Source/Services/MeterDataStore.h \
     Source/Services/ConfigurationSerializer.h \
     Source/Services/TermCatalogService.h \
@@ -141,7 +140,7 @@ HEADERS += \
     Source/Views/Dialogs/DataItemManualDialog.h \
     Source/Views/Dialogs/QueryFrameDialog.h
 
-# UI鏂囦欢
+# UI文件
 FORMS += \
     Source/Views/MainWindow/mainwindow.ui
 

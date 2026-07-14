@@ -22,7 +22,6 @@ struct ProtocolFrame;
 class QAction;
 class CommunicationDialog;
 class ConnectionManager;
-class DataGenerator;
 class DataTableWidget;
 class DeviceTreeWidget;
 class EventRecordDialog;
@@ -55,7 +54,6 @@ private slots:
     void onNewMeterDialog();
     void onOpenConnection();
     void onCloseConnection();
-    void onDataUpdated();
     void onRealTimeDataRotationTimeout();
     void onConnectionStateChanged(bool connected);
     void onProtocolFrameReceived(const ProtocolFrame &frame, const QByteArray &rawFrame);
@@ -125,7 +123,6 @@ private:
     TcpController *m_tcpController;
     ConnectionManager *m_connectionManager;
     ProtocolController *m_protocolController;
-    DataGenerator *m_dataGenerator;
     MainWindowViewModel *m_viewModel;
     OperationLogWidget *m_operationLogWidget;
     DataTableWidget *m_dataTableWidget;

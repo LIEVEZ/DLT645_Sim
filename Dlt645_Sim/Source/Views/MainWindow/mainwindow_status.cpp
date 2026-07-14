@@ -8,12 +8,6 @@
 #include <QAction>
 #include <QLabel>
 #include <QWidget>
-void MainWindow::onDataUpdated()
-{
-    // 数据更新时刷新界面
-    updateRealTimeDataDisplay(false);
-}
-
 void MainWindow::onRealTimeDataRotationTimeout()
 {
     updateRealTimeDataDisplay(true);

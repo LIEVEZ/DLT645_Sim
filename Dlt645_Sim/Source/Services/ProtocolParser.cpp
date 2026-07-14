@@ -102,7 +102,7 @@ ProtocolFrame ProtocolParser::parseFrame(const QByteArray &data)
     index += 6;
 
     // 检查第二个起始符
-    if (static_cast<quint8>(data[index]) != 0x68)
+    if (data.size() < index + 1 || static_cast<quint8>(data[index]) != 0x68)
     {
         emit parseError("Invalid second start flag");
         return frame;
@@ -219,75 +219,6 @@ ProtocolFrame ProtocolParser::buildReadAddressRequest(const QByteArray &address,
     frame.controlCode = static_cast<quint8>(ControlCode::ReadAddress);
     frame.dataField.clear();
     frame.dataLength = 0x00;
-
-    frame.checksum = 0;
-    QByteArray frameData = frame.toByteArray();
-    frame.checksum = ChecksumHelper::calculateChecksum(frameData.left(frameData.size() - 2));
-    frame.endFlag = 0x16;
-
-    return frame;
-}
-
-ProtocolFrame ProtocolParser::buildWriteRequest(const QByteArray &address, const QString &diCode, const QVariant &value, bool includePrefixFE)
-{
-    Q_UNUSED(includePrefixFE);
-    ProtocolFrame frame;
-
-    frame.startFlag = 0x68;
-    frame.address = address;
-    frame.startFlag2 = 0x68;
-    frame.controlCode = static_cast<quint8>(ControlCode::WriteData);
-
-    // 数据域：数据标识（4字节）+ 数据长度（1字节）+ 数据值
-    QByteArray diBytes = diCodeToBytes(diCode);
-    QByteArray valueBytes;
-
-    // 根据值类型转换
-    if (value.type() == QVariant::String)
-    {
-        QString strValue = value.toString();
-        // 移除所有非数字字符
-        strValue.remove(QRegExp("[^0-9]"));
-        // 补齐到偶数长度
-        if (strValue.length() % 2 != 0)
-        {
-            strValue.prepend('0');
-        }
-        // 转换为BCD码
-        for (int i = 0; i < strValue.length(); i += 2)
-        {
-            QString byteStr = strValue.mid(i, 2);
-            quint8 byte = static_cast<quint8>(byteStr.toInt(nullptr, 16));
-            valueBytes.append(byte);
-        }
-    }
-    else if (value.type() == QVariant::Double || value.type() == QVariant::Int)
-    {
-        // 数值类型转换为BCD码
-        double numValue = value.toDouble();
-        // 转换为整数（假设小数位数为2）
-        qint64 intValue = static_cast<qint64>(numValue * 100);
-        QString strValue = QString::number(intValue).rightJustified(12, '0');
-        // 转换为BCD码
-        for (int i = 0; i < strValue.length(); i += 2)
-        {
-            QString byteStr = strValue.mid(i, 2);
-            quint8 byte = static_cast<quint8>(byteStr.toInt(nullptr, 16));
-            valueBytes.append(byte);
-        }
-    }
-
-    // DLT645协议：数据域需要倒序处理
-    // 对每个字节加0x33处理
-    for (int i = 0; i < valueBytes.size(); ++i)
-    {
-        valueBytes[i] = static_cast<char>(valueBytes[i] + 0x33);
-    }
-
-    std::reverse(valueBytes.begin(), valueBytes.end());
-
-    frame.dataField = diBytes + QByteArray(1, static_cast<quint8>(valueBytes.size())) + valueBytes;
-    frame.dataLength = static_cast<quint8>(frame.dataField.size());
 
     frame.checksum = 0;
     QByteArray frameData = frame.toByteArray();
@@ -521,18 +452,21 @@ ProtocolFrame ProtocolParser::buildReadResponse(const ProtocolFrame &requestFram
 
 ProtocolFrame ProtocolParser::buildWriteResponse(const ProtocolFrame &requestFrame, bool success)
 {
+    // DL/T 645-2007：写数据正常应答无数据域（如 0x14 -> 0x94、L=0），
+    // 失败时按异常应答帧返回错误码。
+    if (!success)
+    {
+        return buildErrorResponse(requestFrame, 0x03);
+    }
+
     ProtocolFrame frame;
 
     frame.startFlag = 0x68;
     frame.address = requestFrame.address;
     frame.startFlag2 = 0x68;
     frame.controlCode = requestFrame.controlCode | 0x80;
-
-    // 数据域：数据标识（4字节）+ 数据长度（1字节）+ 状态字（1字节）
-    QByteArray diBytes = requestFrame.dataField.left(4);
-    quint8 status = success ? 0x00 : 0xFF;
-    frame.dataField = diBytes + QByteArray(1, 0x01) + QByteArray(1, status);
-    frame.dataLength = static_cast<quint8>(frame.dataField.size());
+    frame.dataField.clear();
+    frame.dataLength = 0x00;
 
     frame.checksum = 0;
     QByteArray frameData = frame.toByteArray();

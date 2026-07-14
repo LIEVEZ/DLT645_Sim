@@ -12,15 +12,15 @@
  */
 struct ProtocolFrame
 {
-    quint8 startFlag;     // 起始符 (0x68)
-    QByteArray address;   // 地址域 (6字节)
-    quint8 startFlag2;    // 起始符2 (0x68)
-    quint8 controlCode;   // 控制码
-    quint8 dataLength;    // 数据域长度
-    QByteArray dataField; // 数据域
-    quint8 checksum;      // 校验和
-    quint8 endFlag;       // 结束符 (0x16)
-    int parsedSize;       // 实际解析的字节数（不包括前导码）
+    quint8 startFlag = 0;       // 起始符 (0x68)
+    QByteArray address;         // 地址域 (6字节)
+    quint8 startFlag2 = 0;      // 起始符2 (0x68)
+    quint8 controlCode = 0;     // 控制码
+    quint8 dataLength = 0;      // 数据域长度
+    QByteArray dataField;       // 数据域
+    quint8 checksum = 0;        // 校验和
+    quint8 endFlag = 0;         // 结束符 (0x16)
+    int parsedSize = 0;         // 实际解析的字节数（不包括前导码）
     bool checksumValid = false; // 校验和是否通过（仅 parseFrame 接收解析时设置）
 
     bool isValid() const;
@@ -30,53 +30,46 @@ struct ProtocolFrame
 
 /**
  * @brief 控制码枚举
+ *
+ * 取值依据 DL/T 645-2007 控制码功能表（应答时最高位置 1，异常应答再置 D6）。
  */
 enum class ControlCode : quint8
 {
+    // 广播校时
+    BroadcastTime = 0x08,
+
     // 读数据
     ReadData = 0x11,
 
     // 读后续数据
     ReadNextData = 0x12,
 
-    // 读后续数据响应
-    ReadNextDataResponse = 0x92,
+    // 读通信地址
+    ReadAddress = 0x13,
 
     // 写数据
     WriteData = 0x14,
 
-    // 读通信地址
-    ReadAddress = 0x13,
-
     // 写通信地址
     WriteAddress = 0x15,
 
-    // 广播校时
-    BroadcastTime = 0x16,
-
-    // 写设备地址
-    WriteDeviceAddress = 0x17,
-
     // 冻结命令
-    FreezeData = 0x18,
-
-    // 读冻结数据
-    ReadFreezeData = 0x19,
+    FreezeData = 0x16,
 
     // 更改通信速率
-    ChangeBaudRate = 0x1A,
+    ChangeBaudRate = 0x17,
 
     // 修改密码
-    ChangePassword = 0x1B,
+    ChangePassword = 0x18,
 
     // 最大需量清零
-    ClearDemand = 0x1C,
+    ClearDemand = 0x19,
 
     // 电表清零
-    ClearMeter = 0x1D,
+    ClearMeter = 0x1A,
 
     // 事件清零
-    ClearEvent = 0x1E
+    ClearEvent = 0x1B
 };
 
 /**
@@ -118,14 +111,16 @@ public:
     ProtocolFrame buildReadAddressRequest(const QByteArray &address, bool includePrefixFE = true);
 
     /**
-     * @brief 构建写数据请求帧
+     * @brief 构建写数据请求帧（标准格式：DI + 权限 + 密码 + 操作者代码 + 数据）
      * @param address 电表地址
      * @param diCode 数据标识
      * @param value 数据值
+     * @param permission 权限级别（2位数字）
+     * @param password 密码（6位数字）
+     * @param operatorCode 操作者代码（8位数字）
      * @param includePrefixFE 是否包含前导FE
      * @return 协议帧
      */
-    ProtocolFrame buildWriteRequest(const QByteArray &address, const QString &diCode, const QVariant &value, bool includePrefixFE = true);
     ProtocolFrame buildWriteRequest(const QByteArray &address,
                                     const QString &diCode,
                                     const QVariant &value,

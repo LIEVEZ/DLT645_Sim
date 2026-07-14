@@ -141,8 +141,8 @@ void OperationLogWidget::onClearClicked()
 void OperationLogWidget::onExportClicked()
 {
     QString fileName = QFileDialog::getSaveFileName(this, "导出日志",
-                                                    "文本文件 (*.txt);;所有文件 (*.*)",
-                                                    "operation_log.txt");
+                                                    "operation_log.txt",
+                                                    "文本文件 (*.txt);;所有文件 (*.*)");
 
     if (fileName.isEmpty())
     {
