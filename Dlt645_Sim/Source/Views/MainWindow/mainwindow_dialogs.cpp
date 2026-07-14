@@ -1,6 +1,6 @@
 #include "mainwindow.h"
+#include "Controllers/ConnectionManager.h"
 #include "Controllers/ProtocolController.h"
-#include "Controllers/SerialController.h"
 #include "ViewModels/MainWindowViewModel.h"
 
 #include "Views/Dialogs/CommunicationDialog.h"
@@ -43,17 +43,7 @@ void MainWindow::updateMasterQueryDialogState()
         return;
     }
 
-    QStringList unavailablePorts;
-    if (m_serialController && m_serialController->isOpen())
-    {
-        const QString portName = m_serialController->getConfig().portName;
-        if (!portName.isEmpty())
-        {
-            unavailablePorts.append(portName);
-        }
-    }
-
-    m_masterQueryDialog->setUnavailablePorts(unavailablePorts);
+    m_masterQueryDialog->setUnavailablePorts(m_connectionManager->connectedSerialPorts());
 }
 
 void MainWindow::updateQueryFrameDialogState()
@@ -99,7 +89,7 @@ void MainWindow::onCommunicationInteraction()
 
     // 创建通信交互窗口
     m_communicationDialog = new CommunicationDialog(m_viewModel->currentConnectionAlias(), this);
-    m_communicationDialog->setMeterModel(m_protocolController->meterModel());
+    m_communicationDialog->setMeterModel(m_currentMeterModel);
 
     if (m_viewModel->isDarkTheme())
     {

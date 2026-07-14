@@ -142,38 +142,22 @@ void MainWindow::setupConnections()
                 updateConnectionStatus(m_viewModel->isConnected());
                 updateCommunicationDialogState();
                 updateMasterQueryDialogState(); });
-    connect(m_viewModel, &MainWindowViewModel::hasMeterChanged,
-            m_protocolController, &ProtocolController::setHasMeter);
-
-    // 连接协议控制器和通信控制器
-    m_protocolController->setSerialController(m_serialController);
-    m_protocolController->setTcpController(m_tcpController);
-
     // 连接通信状态信号
     connect(m_connectionManager, &ConnectionManager::connectionStateChanged,
             this, &MainWindow::onConnectionStateChanged);
     connect(m_connectionManager, &ConnectionManager::errorOccurred,
-            this, [this](const QString &errorString)
+            this, [this](const QString &connectionAlias, const QString &errorString)
             {
                 if (m_operationLogWidget)
                 {
-                    m_operationLogWidget->addError(errorString);
+                    m_operationLogWidget->addError(QString("%1: %2")
+                                                       .arg(connectionAlias, errorString));
                 }
                 QMessageBox::warning(this, QStringLiteral("Connection Error"), errorString);
-                m_viewModel->markConnectionClosed(m_viewModel->currentConnectionAlias());
+                m_viewModel->markConnectionClosed(connectionAlias);
                 updateConnectionStatus(false);
                 updateCommunicationDialogState();
             });
-
-    // 连接协议控制器信号
-    connect(m_protocolController, &ProtocolController::frameReceived,
-            this, &MainWindow::onProtocolFrameReceived);
-    connect(m_protocolController, &ProtocolController::frameSent,
-            this, &MainWindow::onProtocolFrameSent);
-    connect(m_protocolController, &ProtocolController::rawDataReceived,
-            this, &MainWindow::onRawDataReceived);
-    connect(m_protocolController, &ProtocolController::rawDataSent,
-            this, &MainWindow::onRawDataSent);
 
     // 连接 Logger 信号到操作日志
     connect(Logger::instance(), &Logger::logEntryAdded,

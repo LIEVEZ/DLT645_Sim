@@ -55,11 +55,15 @@ private slots:
     void onOpenConnection();
     void onCloseConnection();
     void onRealTimeDataRotationTimeout();
-    void onConnectionStateChanged(bool connected);
-    void onProtocolFrameReceived(const ProtocolFrame &frame, const QByteArray &rawFrame);
-    void onProtocolFrameSent(const ProtocolFrame &frame, const QByteArray &rawFrame);
-    void onRawDataReceived(const QByteArray &data);
-    void onRawDataSent(const QByteArray &data);
+    void onConnectionStateChanged(const QString &connectionAlias, bool connected);
+    void onProtocolFrameReceived(const QString &connectionAlias,
+                                 const ProtocolFrame &frame,
+                                 const QByteArray &rawFrame);
+    void onProtocolFrameSent(const QString &connectionAlias,
+                             const ProtocolFrame &frame,
+                             const QByteArray &rawFrame);
+    void onRawDataReceived(const QString &connectionAlias, const QByteArray &data);
+    void onRawDataSent(const QString &connectionAlias, const QByteArray &data);
     void onCommunicationInteraction();
     void onMasterQueryWindow();
     void onCommunicationDialogClosed();
@@ -110,19 +114,22 @@ private:
     MeterInfo findMeterInfo(const QString &connectionAlias, const QString &meterAlias) const;
     void removeMeterModel(const QString &address);
     void clearMeterModels(const QStringList &addresses);
-    MeterModel *createMeterModel(const MeterInfo &meterInfo);
+    MeterModel *createMeterModel(const QString &connectionAlias, const MeterInfo &meterInfo);
+    ProtocolController *ensureProtocolController(const QString &connectionAlias);
+    ProtocolController *protocolController(const QString &connectionAlias) const;
+    void attachProtocolTransport(const QString &connectionAlias);
+    void removeProtocolController(const QString &connectionAlias);
+    void refreshProtocolMeters();
     bool openConnectionInternal(const QString &connectionAlias, const ConnectionConfig &config, bool addConnectionNode);
-    void closeConnectionInternal(const QString &connectionAlias);    void applyCurrentMeter(const MeterInfo &meterInfo);
+    void closeConnectionInternal(const QString &connectionAlias);
+    void applyCurrentMeter(const MeterInfo &meterInfo);
     void clearCurrentMeter();
     void refreshMeterPresence();
     void updateRealTimeDataDisplay(bool advancePhase = false);
 
     Ui::MainWindow *ui;
 
-    SerialController *m_serialController;
-    TcpController *m_tcpController;
     ConnectionManager *m_connectionManager;
-    ProtocolController *m_protocolController;
     MainWindowViewModel *m_viewModel;
     OperationLogWidget *m_operationLogWidget;
     DataTableWidget *m_dataTableWidget;
@@ -158,6 +165,7 @@ private:
     FrameParseDialog *m_frameParseDialog;
     DataItemManualDialog *m_dataItemManualDialog;
     MeterDataStore *m_meterDataStore;
+    QMap<QString, ProtocolController *> m_protocolControllers;
     QMap<QString, MeterModel *> m_meterModelsByAddress;
     MeterModel *m_currentMeterModel;
 };

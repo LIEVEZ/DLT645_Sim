@@ -29,11 +29,6 @@ void MainWindow::onNewConnection()
 
 void MainWindow::onOpenConnection()
 {
-    if (m_viewModel->isCloseConnectionVisible())
-    {
-        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("已经有连接打开，请先关闭现有连接"));
-        return;
-    }
     if (m_viewModel->currentConnectionAlias().isEmpty())
     {
         QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("请先选择一个连接"));
@@ -68,35 +63,35 @@ void MainWindow::onCloseConnection()
     LOG_INFO(QString("Connection closed: %1").arg(connectionAlias));
 }
 
-void MainWindow::onConnectionStateChanged(bool connected)
+void MainWindow::onConnectionStateChanged(const QString &connectionAlias, bool connected)
 {
     if (connected)
     {
-        m_viewModel->markConnectionOpening(m_viewModel->currentConnectionAlias(), true);
+        m_viewModel->markConnectionOpening(connectionAlias, true);
     }
     else
     {
-        m_viewModel->markConnectionClosed(m_viewModel->currentConnectionAlias());
+        m_viewModel->markConnectionClosed(connectionAlias);
     }
     updateConnectionStatus(connected);
 
-    // 更新设备树中当前连接节点的状态
-    if (!m_viewModel->currentConnectionAlias().isEmpty())
+    // 按信号携带的连接别名更新节点，避免切换连接时污染其他节点状态。
+    if (!connectionAlias.isEmpty())
     {
         DeviceTreeWidget *deviceTree = deviceTreeWidget();
         if (deviceTree)
         {
-            deviceTree->setConnectionStatus(m_viewModel->currentConnectionAlias(), connected);
+            deviceTree->setConnectionStatus(connectionAlias, connected);
         }
     }
 
     if (connected)
     {
-        LOG_INFO("Connection established");
+        LOG_INFO(QString("Connection established: %1").arg(connectionAlias));
     }
     else
     {
-        LOG_INFO("Connection closed");
+        LOG_INFO(QString("Connection closed: %1").arg(connectionAlias));
     }
 }
 
@@ -123,6 +118,9 @@ bool MainWindow::openConnectionInternal(const QString &connectionAlias, const Co
         }
         return false;
     }
+
+    attachProtocolTransport(alias);
+    refreshProtocolMeters();
 
     const bool connectedNow = openResult.connected;
     if (deviceTree)
@@ -167,10 +165,13 @@ bool MainWindow::openConnectionInternal(const QString &connectionAlias, const Co
 
 void MainWindow::closeConnectionInternal(const QString &connectionAlias)
 {
-    const QString alias = connectionAlias.isEmpty() ? m_viewModel->currentConnectionAlias() : connectionAlias;
+    const QString alias = connectionAlias.isEmpty()
+                              ? m_viewModel->currentConnectionAlias()
+                              : connectionAlias;
+
     if (m_connectionManager)
     {
-        m_connectionManager->closeConnection();
+        m_connectionManager->closeConnection(alias);
     }
     m_viewModel->markConnectionClosed(alias);
     DeviceTreeWidget *deviceTree = deviceTreeWidget();
@@ -190,9 +191,10 @@ void MainWindow::onConnectionSelected(const QString &connectionAlias)
 
 void MainWindow::onOpenConnectionRequested(const QString &connectionAlias)
 {
-    if (m_viewModel->isCloseConnectionVisible())
+    if (m_connectionManager->isOpen(connectionAlias) ||
+        m_connectionManager->isConnecting(connectionAlias))
     {
-        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("已经有连接打开，请先关闭现有连接"));
+        QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("连接已经打开"));
         return;
     }
     if (!m_viewModel->hasConnectionConfig(connectionAlias))
@@ -206,7 +208,8 @@ void MainWindow::onOpenConnectionRequested(const QString &connectionAlias)
 
 void MainWindow::onCloseConnectionRequested(const QString &connectionAlias)
 {
-    if (!m_viewModel->isCloseConnectionVisible())
+    if (!m_connectionManager->isOpen(connectionAlias) &&
+        !m_connectionManager->isConnecting(connectionAlias))
     {
         QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("连接已经关闭"));
         return;
@@ -226,7 +229,8 @@ void MainWindow::onDeleteConnectionRequested(const QString &connectionAlias)
     {
         const QStringList connectionMeterAddresses = collectMeterAddressesForConnection(connectionAlias);
 
-        if (m_viewModel->isCloseConnectionVisible())
+        if (m_connectionManager->isOpen(connectionAlias) ||
+            m_connectionManager->isConnecting(connectionAlias))
         {
             closeConnectionInternal(connectionAlias);
         }
@@ -239,6 +243,9 @@ void MainWindow::onDeleteConnectionRequested(const QString &connectionAlias)
         }
 
         clearMeterModels(connectionMeterAddresses);
+
+        removeProtocolController(connectionAlias);
+        m_connectionManager->removeConnection(connectionAlias);
 
         m_viewModel->removeConnectionConfig(connectionAlias);
         refreshMeterPresence();
@@ -256,7 +263,8 @@ void MainWindow::onEditConnectionRequested(const QString &connectionAlias)
         return;
     }
 
-    if (m_viewModel->isCloseConnectionVisible() && m_viewModel->currentConnectionAlias() == connectionAlias)
+    if (m_connectionManager->isOpen(connectionAlias) ||
+        m_connectionManager->isConnecting(connectionAlias))
     {
         QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("请先关闭当前连接，再编辑连接配置"));
         return;
@@ -293,9 +301,19 @@ void MainWindow::onEditConnectionRequested(const QString &connectionAlias)
         return;
     }
 
+    const QStringList connectionMeterAddresses = collectMeterAddressesForConnection(connectionAlias);
+    ProtocolController *oldProtocolController = protocolController(connectionAlias);
+    if (oldProtocolController)
+    {
+        oldProtocolController->setSerialController(nullptr);
+        oldProtocolController->setTcpController(nullptr);
+    }
+    m_connectionManager->removeConnection(connectionAlias);
+
     if (updatedConfig.alias != connectionAlias)
     {
         m_viewModel->removeConnectionConfig(connectionAlias);
+        removeProtocolController(connectionAlias);
     }
     m_viewModel->upsertConnectionConfig(updatedConfig);
 
@@ -303,6 +321,17 @@ void MainWindow::onEditConnectionRequested(const QString &connectionAlias)
     {
         deviceTree->updateConnection(connectionAlias, ConnectionInfoMapper::fromConfig(updatedConfig, false));
     }
+
+    ProtocolController *updatedProtocolController = ensureProtocolController(updatedConfig.alias);
+    for (const QString &address : connectionMeterAddresses)
+    {
+        MeterModel *meterModel = m_meterModelsByAddress.value(address, nullptr);
+        if (meterModel)
+        {
+            updatedProtocolController->registerMeterModel(address, meterModel);
+        }
+    }
+    refreshProtocolMeters();
 
     m_viewModel->selectConnection(updatedConfig.alias);
 

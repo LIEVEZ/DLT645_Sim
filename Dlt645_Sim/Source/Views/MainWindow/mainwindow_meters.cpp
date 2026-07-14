@@ -99,6 +99,8 @@ void MainWindow::onBatchNewMeterDialog()
 
 void MainWindow::onBatchNewMeterRequested(const QString &connectionAlias)
 {
+    m_viewModel->selectConnection(connectionAlias);
+
     DeviceTreeWidget *deviceTree = deviceTreeWidget();
     if (!deviceTree)
     {
@@ -152,7 +154,7 @@ void MainWindow::onBatchNewMeterRequested(const QString &connectionAlias)
             break;
         }
 
-        createMeterModel(meterInfo);
+        createMeterModel(connectionAlias, meterInfo);
         lastMeterInfo = meterInfo;
         ++addedCount;
     }
@@ -244,7 +246,13 @@ void MainWindow::removeMeterModel(const QString &address)
     }
 
     MeterModel *meterModel = m_meterModelsByAddress.take(address);
-    m_protocolController->unregisterMeterModel(address);
+    for (ProtocolController *controller : m_protocolControllers)
+    {
+        if (controller)
+        {
+            controller->unregisterMeterModel(address);
+        }
+    }
     if (meterModel)
     {
         meterModel->deleteLater();
@@ -289,7 +297,8 @@ void MainWindow::attachMeterPersistence(MeterModel *meterModel)
                 } });
 }
 
-MeterModel *MainWindow::createMeterModel(const MeterInfo &meterInfo)
+MeterModel *MainWindow::createMeterModel(const QString &connectionAlias,
+                                         const MeterInfo &meterInfo)
 {
     if (meterInfo.address.isEmpty())
     {
@@ -331,19 +340,28 @@ MeterModel *MainWindow::createMeterModel(const MeterInfo &meterInfo)
         meterModel->setEventRecordPresent(meterInfo.eventRecordPresent);
     }
 
-    m_protocolController->registerMeterModel(meterInfo.address, meterModel);
+    ProtocolController *controller = ensureProtocolController(connectionAlias);
+    if (controller)
+    {
+        controller->registerMeterModel(meterInfo.address, meterModel);
+    }
     return meterModel;
 }
 
 void MainWindow::applyCurrentMeter(const MeterInfo &meterInfo)
 {
-    MeterModel *meterModel = createMeterModel(meterInfo);
+    const QString connectionAlias = m_viewModel->currentConnectionAlias();
+    MeterModel *meterModel = createMeterModel(connectionAlias, meterInfo);
     m_currentMeterModel = meterModel;
     m_realTimePhaseIndex = 0;
 
     if (m_currentMeterModel)
     {
-        m_protocolController->setMeterModel(m_currentMeterModel);
+        ProtocolController *controller = protocolController(connectionAlias);
+        if (controller)
+        {
+            controller->setMeterModel(m_currentMeterModel);
+        }
     }
 
     if (m_dataTableWidget)
@@ -368,7 +386,13 @@ void MainWindow::clearCurrentMeter()
 {
     m_currentMeterModel = nullptr;
     m_realTimePhaseIndex = 0;
-    m_protocolController->setMeterModel(nullptr);
+    for (ProtocolController *controller : m_protocolControllers)
+    {
+        if (controller)
+        {
+            controller->setMeterModel(nullptr);
+        }
+    }
 
     if (m_dataTableWidget)
     {
@@ -393,7 +417,7 @@ void MainWindow::refreshMeterPresence()
     const QStringList meterAddresses = collectMeterAddresses();
     const bool hasMeter = !meterAddresses.isEmpty();
 
-    m_protocolController->setKnownMeterAddresses(meterAddresses);
+    refreshProtocolMeters();
     m_viewModel->setKnownMeterPresence(hasMeter);
     if (!hasMeter)
     {
@@ -504,8 +528,10 @@ void MainWindow::onDeleteMeterRequested(const QString &connectionAlias, const QS
 
 void MainWindow::onNewMeterRequested(const QString &connectionAlias)
 {
+    m_viewModel->selectConnection(connectionAlias);
+
     // 检查连接是否已经打开
-    if (!m_viewModel->isConnected())
+    if (!m_viewModel->isConnectionConnected(connectionAlias))
     {
         QMessageBox::warning(this, QStringLiteral("提示"), QStringLiteral("请先打开连接"));
         return;
@@ -592,7 +618,7 @@ void MainWindow::onEventRecordSettingsRequested(const QString &connectionAlias, 
     MeterModel *meterModel = m_meterModelsByAddress.value(meterInfo.address, nullptr);
     if (!meterModel)
     {
-        meterModel = createMeterModel(meterInfo);
+        meterModel = createMeterModel(connectionAlias, meterInfo);
     }
 
     if (!meterModel)

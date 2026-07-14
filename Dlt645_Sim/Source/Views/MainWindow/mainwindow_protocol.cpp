@@ -1,11 +1,14 @@
 #include "mainwindow.h"
 #include "Services/ProtocolParser.h"
+#include "ViewModels/MainWindowViewModel.h"
 
 #include "Views/Dialogs/CommunicationDialog.h"
 #include "Views/OperationLog/OperationLogWidget.h"
 
 #include <QDateTime>
-void MainWindow::onProtocolFrameReceived(const ProtocolFrame &frame, const QByteArray &rawFrame)
+void MainWindow::onProtocolFrameReceived(const QString &connectionAlias,
+                                         const ProtocolFrame &frame,
+                                         const QByteArray &rawFrame)
 {
     // LOG_INFO(QString("Frame received: %1").arg(frame.toString()));
     const quint8 baseControlCode = frame.controlCode & 0x7F;
@@ -15,10 +18,12 @@ void MainWindow::onProtocolFrameReceived(const ProtocolFrame &frame, const QByte
     // 添加到操作日志
     if (m_operationLogWidget)
     {
-        m_operationLogWidget->addCommunication(QString("接收帧: %1").arg(frame.toString()));
+        m_operationLogWidget->addCommunication(QString("[%1] 接收帧: %2")
+                                                    .arg(connectionAlias, frame.toString()));
     }
 
-    if (!m_communicationDialog)
+    if (!m_communicationDialog ||
+        m_viewModel->currentConnectionAlias() != connectionAlias)
     {
         return;
     }
@@ -34,7 +39,9 @@ void MainWindow::onProtocolFrameReceived(const ProtocolFrame &frame, const QByte
     m_communicationDialog->addMessage(message);
 }
 
-void MainWindow::onProtocolFrameSent(const ProtocolFrame &frame, const QByteArray &rawFrame)
+void MainWindow::onProtocolFrameSent(const QString &connectionAlias,
+                                     const ProtocolFrame &frame,
+                                     const QByteArray &rawFrame)
 {
     // LOG_INFO(QString("===Frame sent: %1").arg(frame.toString()));
     const quint8 baseControlCode = frame.controlCode & 0x7F;
@@ -44,10 +51,12 @@ void MainWindow::onProtocolFrameSent(const ProtocolFrame &frame, const QByteArra
     // 添加到操作日志
     if (m_operationLogWidget)
     {
-        m_operationLogWidget->addCommunication(QString("发送帧: %1").arg(frame.toString()));
+        m_operationLogWidget->addCommunication(QString("[%1] 发送帧: %2")
+                                                    .arg(connectionAlias, frame.toString()));
     }
 
-    if (!m_communicationDialog)
+    if (!m_communicationDialog ||
+        m_viewModel->currentConnectionAlias() != connectionAlias)
     {
         return;
     }
@@ -63,12 +72,14 @@ void MainWindow::onProtocolFrameSent(const ProtocolFrame &frame, const QByteArra
     m_communicationDialog->addMessage(message);
 }
 
-void MainWindow::onRawDataReceived(const QByteArray &data)
+void MainWindow::onRawDataReceived(const QString &connectionAlias, const QByteArray &data)
 {
+    Q_UNUSED(connectionAlias);
     Q_UNUSED(data);
 }
 
-void MainWindow::onRawDataSent(const QByteArray &data)
+void MainWindow::onRawDataSent(const QString &connectionAlias, const QByteArray &data)
 {
+    Q_UNUSED(connectionAlias);
     Q_UNUSED(data);
 }

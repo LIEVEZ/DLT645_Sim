@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "Controllers/ConnectionManager.h"
 #include "Models/ConnectionInfoMapper.h"
 #include "ViewModels/MainWindowViewModel.h"
 
@@ -111,10 +112,7 @@ void MainWindow::onImportConfiguration()
         return;
     }
 
-    if (m_viewModel->isCloseConnectionVisible())
-    {
-        closeConnectionInternal(m_viewModel->currentConnectionAlias());
-    }
+    m_connectionManager->closeAllConnections();
 
     DeviceTreeWidget *deviceTree = deviceTreeWidget();
     if (!deviceTree)
@@ -127,6 +125,8 @@ void MainWindow::onImportConfiguration()
 
     for (const QString &alias : existingConnectionAliases)
     {
+        removeProtocolController(alias);
+        m_connectionManager->removeConnection(alias);
         m_viewModel->removeConnectionConfig(alias);
     }
 
@@ -154,7 +154,7 @@ void MainWindow::onImportConfiguration()
 
             if (deviceTree->addMeter(importedConnection.config.alias, meterInfo))
             {
-                createMeterModel(meterInfo);
+                createMeterModel(importedConnection.config.alias, meterInfo);
                 lastMeterInfo = meterInfo;
             }
         }

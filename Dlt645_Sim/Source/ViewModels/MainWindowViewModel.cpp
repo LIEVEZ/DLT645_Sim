@@ -6,18 +6,18 @@ const QString kDefaultMeterAddress = QStringLiteral("000000000000");
 }
 
 MainWindowViewModel::MainWindowViewModel(QObject *parent)
-    : QObject(parent), m_connected(false), m_connecting(false), m_connectionSelected(false), m_darkTheme(true), m_hasMeter(false), m_currentMeterAddress(kDefaultMeterAddress)
+    : QObject(parent), m_connectionSelected(false), m_darkTheme(true), m_hasMeter(false), m_currentMeterAddress(kDefaultMeterAddress)
 {
 }
 
 bool MainWindowViewModel::isConnected() const
 {
-    return m_connected;
+    return isConnectionConnected(m_currentConnectionAlias);
 }
 
 bool MainWindowViewModel::isConnecting() const
 {
-    return m_connecting;
+    return isConnectionConnecting(m_currentConnectionAlias);
 }
 
 bool MainWindowViewModel::isConnectionSelected() const
@@ -40,6 +40,21 @@ QString MainWindowViewModel::currentConnectionAlias() const
     return m_currentConnectionAlias;
 }
 
+bool MainWindowViewModel::isConnectionConnected(const QString &alias) const
+{
+    return !alias.isEmpty() && m_connectedConnections.contains(alias);
+}
+
+bool MainWindowViewModel::isConnectionConnecting(const QString &alias) const
+{
+    return !alias.isEmpty() && m_connectingConnections.contains(alias);
+}
+
+bool MainWindowViewModel::hasActiveConnections() const
+{
+    return !m_connectedConnections.isEmpty() || !m_connectingConnections.isEmpty();
+}
+
 QString MainWindowViewModel::currentMeterAddress() const
 {
     return m_currentMeterAddress;
@@ -47,22 +62,22 @@ QString MainWindowViewModel::currentMeterAddress() const
 
 QString MainWindowViewModel::connectionStatusText() const
 {
-    if (m_connecting)
+    if (isConnecting())
     {
         return QStringLiteral("Connecting");
     }
 
-    return m_connected ? QStringLiteral("Connected") : QStringLiteral("Disconnected");
+    return isConnected() ? QStringLiteral("Connected") : QStringLiteral("Disconnected");
 }
 
 QColor MainWindowViewModel::connectionStatusColor() const
 {
-    if (m_connecting)
+    if (isConnecting())
     {
         return QColor("#F5C542");
     }
 
-    return m_connected ? QColor("#50C878") : QColor("#F14C4C");
+    return isConnected() ? QColor("#50C878") : QColor("#F14C4C");
 }
 
 QString MainWindowViewModel::meterAddressText() const
@@ -72,12 +87,12 @@ QString MainWindowViewModel::meterAddressText() const
 
 bool MainWindowViewModel::isOpenConnectionVisible() const
 {
-    return !m_connected && !m_connecting;
+    return !isCloseConnectionVisible();
 }
 
 bool MainWindowViewModel::isCloseConnectionVisible() const
 {
-    return m_connected || m_connecting;
+    return isConnected() || isConnecting();
 }
 
 bool MainWindowViewModel::isNewMeterEnabled() const
@@ -87,7 +102,7 @@ bool MainWindowViewModel::isNewMeterEnabled() const
 
 bool MainWindowViewModel::isCommunicationInteractionEnabled() const
 {
-    return m_connected && !m_connecting;
+    return isConnected() && !isConnecting();
 }
 
 bool MainWindowViewModel::hasConnectionConfig(const QString &alias) const
@@ -119,37 +134,47 @@ void MainWindowViewModel::removeConnectionConfig(const QString &alias)
     {
         m_currentConnectionAlias.clear();
         m_connectionSelected = false;
-        m_connected = false;
-        m_connecting = false;
     }
+
+    m_connectedConnections.remove(alias);
+    m_connectingConnections.remove(alias);
 
     emit stateChanged();
 }
 
 void MainWindowViewModel::setConnected(bool connected)
 {
-    const bool nextConnecting = connected ? false : m_connecting;
-    if (m_connected == connected && m_connecting == nextConnecting)
+    if (m_currentConnectionAlias.isEmpty())
     {
         return;
     }
 
-    m_connected = connected;
-    m_connecting = nextConnecting;
-    emit stateChanged();
+    if (connected)
+    {
+        markConnectionOpening(m_currentConnectionAlias, true);
+    }
+    else
+    {
+        markConnectionClosed(m_currentConnectionAlias);
+    }
 }
 
 void MainWindowViewModel::setConnecting(bool connecting)
 {
-    const bool nextConnected = connecting ? false : m_connected;
-    if (m_connecting == connecting && m_connected == nextConnected)
+    if (m_currentConnectionAlias.isEmpty())
     {
         return;
     }
 
-    m_connecting = connecting;
-    m_connected = nextConnected;
-    emit stateChanged();
+    if (connecting)
+    {
+        markConnectionOpening(m_currentConnectionAlias, false);
+    }
+    else
+    {
+        m_connectingConnections.remove(m_currentConnectionAlias);
+        emit stateChanged();
+    }
 }
 
 void MainWindowViewModel::setConnectionSelected(bool selected)
@@ -252,37 +277,46 @@ void MainWindowViewModel::selectConnection(const QString &alias)
 
 void MainWindowViewModel::markConnectionOpening(const QString &alias, bool connected)
 {
-    const bool selected = !alias.isEmpty();
-    const bool connecting = !connected;
-    if (m_currentConnectionAlias == alias &&
-        m_connectionSelected == selected &&
-        m_connected == connected &&
-        m_connecting == connecting)
+    if (alias.isEmpty())
     {
         return;
     }
 
-    m_currentConnectionAlias = alias;
-    m_connectionSelected = selected;
-    m_connected = connected;
-    m_connecting = connecting;
+    const bool connecting = !connected;
+    if (isConnectionConnected(alias) == connected &&
+        isConnectionConnecting(alias) == connecting)
+    {
+        return;
+    }
+
+    if (!m_connectionSelected && !alias.isEmpty())
+    {
+        m_currentConnectionAlias = alias;
+        m_connectionSelected = true;
+    }
+    if (connected)
+    {
+        m_connectedConnections.insert(alias);
+        m_connectingConnections.remove(alias);
+    }
+    else if (connecting)
+    {
+        m_connectingConnections.insert(alias);
+        m_connectedConnections.remove(alias);
+    }
     emit stateChanged();
 }
 
 void MainWindowViewModel::markConnectionClosed(const QString &alias)
 {
-    const bool selected = !alias.isEmpty();
-    if (m_currentConnectionAlias == alias &&
-        m_connectionSelected == selected &&
-        !m_connected &&
-        !m_connecting)
+    if (alias.isEmpty() ||
+        (!m_connectedConnections.contains(alias) &&
+         !m_connectingConnections.contains(alias)))
     {
         return;
     }
 
-    m_currentConnectionAlias = alias;
-    m_connectionSelected = selected;
-    m_connected = false;
-    m_connecting = false;
+    m_connectedConnections.remove(alias);
+    m_connectingConnections.remove(alias);
     emit stateChanged();
 }

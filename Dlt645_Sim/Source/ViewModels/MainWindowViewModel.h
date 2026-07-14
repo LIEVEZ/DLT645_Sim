@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QColor>
 #include <QMap>
+#include <QSet>
 #include "Models/ConnectionConfig.h"
 
 class MainWindowViewModel : public QObject
@@ -21,6 +22,10 @@ public:
 
     QString currentConnectionAlias() const;
     QString currentMeterAddress() const;
+
+    bool isConnectionConnected(const QString &alias) const;
+    bool isConnectionConnecting(const QString &alias) const;
+    bool hasActiveConnections() const;
 
     QString connectionStatusText() const;
     QColor connectionStatusColor() const;
@@ -55,13 +60,13 @@ signals:
     void hasMeterChanged(bool hasMeter);
 
 private:
-    bool m_connected;
-    bool m_connecting;
     bool m_connectionSelected;
     bool m_darkTheme;
     bool m_hasMeter;
     QString m_currentConnectionAlias;
     QString m_currentMeterAddress;
+    QSet<QString> m_connectedConnections;
+    QSet<QString> m_connectingConnections;
     QMap<QString, ConnectionConfig> m_connectionConfigs;
 };
 
