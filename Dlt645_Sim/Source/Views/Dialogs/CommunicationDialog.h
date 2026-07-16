@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QDialog>
 #include <QList>
+#include <QMap>
 #include <QString>
 #include <QtGlobal>
 
@@ -119,6 +120,7 @@ public:
      */
     void applyLightTheme();
     void setMeterModel(MeterModel *meterModel);
+    void setMeterModels(const QMap<QString, MeterModel *> &meterModelsByAddress);
 
     /**
      * @brief 添加通信报文
@@ -190,6 +192,7 @@ private:
     QString formatHex(const QByteArray &data) const;
     QString formatAscii(const QByteArray &data) const;
     QString getMessageDiDescription(const QByteArray &fullFrame) const;
+    MeterModel *meterModelForFrame(const QByteArray &fullFrame) const;
     QString getControlCodeName(quint8 code) const;
     QString getMessageTypeIcon(MessageType type) const;
     QString getDirectionIcon(MessageDirection direction) const;
@@ -203,6 +206,7 @@ private:
     int m_baudRate;
     bool m_isConnected;
     MeterModel *m_meterModel;
+    QMap<QString, MeterModel *> m_meterModelsByAddress;
 
     // UI控件
     QWidget *m_connectionInfoBar;  // 连接信息栏容器

@@ -418,6 +418,7 @@ void MainWindow::refreshMeterPresence()
     const bool hasMeter = !meterAddresses.isEmpty();
 
     refreshProtocolMeters();
+    updateCommunicationDialogState();
     m_viewModel->setKnownMeterPresence(hasMeter);
     if (!hasMeter)
     {

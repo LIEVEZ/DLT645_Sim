@@ -9,6 +9,7 @@
 #include "Views/Dialogs/DataItemManualDialog.h"
 #include "Views/Dialogs/MasterQueryDialog.h"
 #include "Views/Dialogs/QueryFrameDialog.h"
+#include "Views/DeviceTree/DeviceTreeWidget.h"
 
 #include <QMessageBox>
 #include <QString>
@@ -32,6 +33,23 @@ void MainWindow::updateCommunicationDialogState()
             m_communicationDialog->setConnectionInfo(config.tcpAddress, config.tcpPort);
         }
     }
+
+    QMap<QString, MeterModel *> meterModelsByAddress;
+    DeviceTreeWidget *deviceTree = deviceTreeWidget();
+    if (deviceTree)
+    {
+        const QList<MeterInfo> meterInfos =
+            deviceTree->meterInfosForConnection(m_viewModel->currentConnectionAlias());
+        for (const MeterInfo &meterInfo : meterInfos)
+        {
+            MeterModel *meterModel = m_meterModelsByAddress.value(meterInfo.address, nullptr);
+            if (meterModel)
+            {
+                meterModelsByAddress.insert(meterInfo.address, meterModel);
+            }
+        }
+    }
+    m_communicationDialog->setMeterModels(meterModelsByAddress);
 
     m_communicationDialog->setConnectionStatus(m_viewModel->isConnected());
 }
@@ -113,8 +131,7 @@ void MainWindow::onCommunicationInteraction()
         }
     }
 
-    // 设置连接状态
-    m_communicationDialog->setConnectionStatus(m_viewModel->isConnected());
+    updateCommunicationDialogState();
 
     // 连接窗口关闭信号
     connect(m_communicationDialog, &CommunicationDialog::dialogClosed,

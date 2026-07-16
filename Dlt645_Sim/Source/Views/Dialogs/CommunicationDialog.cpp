@@ -31,44 +31,44 @@
 
 namespace
 {
-QString displayMessageDiCode(const QByteArray &fullFrame)
-{
-    const QByteArray protocolFrame = DLT645DataHelper::stripLeadingFE(fullFrame);
-    if (protocolFrame.size() < 12)
+    QString displayMessageDiCode(const QByteArray &fullFrame)
     {
-        return QStringLiteral("-");
-    }
+        const QByteArray protocolFrame = DLT645DataHelper::stripLeadingFE(fullFrame);
+        if (protocolFrame.size() < 12)
+        {
+            return QStringLiteral("-");
+        }
 
-    const quint8 controlCode = static_cast<quint8>(protocolFrame[8]);
-    const quint8 baseControlCode = controlCode & 0x7F;
-    const bool hasDataIdentifier = baseControlCode == 0x11 ||
-                                   baseControlCode == 0x12 ||
-                                   baseControlCode == 0x14 ||
-                                   baseControlCode == 0x18 ||
-                                   baseControlCode == 0x19;
-    if (!hasDataIdentifier)
-    {
-        return QStringLiteral("-");
-    }
+        const quint8 controlCode = static_cast<quint8>(protocolFrame[8]);
+        const quint8 baseControlCode = controlCode & 0x7F;
+        const bool hasDataIdentifier = baseControlCode == 0x11 ||
+                                       baseControlCode == 0x12 ||
+                                       baseControlCode == 0x14 ||
+                                       baseControlCode == 0x18 ||
+                                       baseControlCode == 0x19;
+        if (!hasDataIdentifier)
+        {
+            return QStringLiteral("-");
+        }
 
-    const int declaredDataLength = static_cast<quint8>(protocolFrame[9]);
-    const int availableDataLength = protocolFrame.size() - 12;
-    const int actualDataLength = qMin(declaredDataLength, qMax(0, availableDataLength));
-    if (actualDataLength < 4)
-    {
-        return QStringLiteral("-");
-    }
+        const int declaredDataLength = static_cast<quint8>(protocolFrame[9]);
+        const int availableDataLength = protocolFrame.size() - 12;
+        const int actualDataLength = qMin(declaredDataLength, qMax(0, availableDataLength));
+        if (actualDataLength < 4)
+        {
+            return QStringLiteral("-");
+        }
 
-    const QString diCode = ProtocolParser::extractDIFromDataField(protocolFrame.mid(10, actualDataLength));
-    if (diCode.isEmpty())
-    {
-        return QStringLiteral("-");
-    }
+        const QString diCode = ProtocolParser::extractDIFromDataField(protocolFrame.mid(10, actualDataLength));
+        if (diCode.isEmpty())
+        {
+            return QStringLiteral("-");
+        }
 
-    QString display = diCode;
-    display.remove(QStringLiteral("0x"), Qt::CaseInsensitive);
-    return display.toUpper();
-}
+        QString display = diCode;
+        display.remove(QStringLiteral("0x"), Qt::CaseInsensitive);
+        return display.toUpper();
+    }
 }
 
 CommunicationDialog::CommunicationDialog(const QString &connectionName, QWidget *parent)
@@ -96,7 +96,23 @@ CommunicationDialog::~CommunicationDialog()
 
 void CommunicationDialog::setMeterModel(MeterModel *meterModel)
 {
+    if (m_meterModel == meterModel)
+    {
+        return;
+    }
+
     m_meterModel = meterModel;
+    refreshMessageList();
+}
+
+void CommunicationDialog::setMeterModels(const QMap<QString, MeterModel *> &meterModelsByAddress)
+{
+    if (m_meterModelsByAddress == meterModelsByAddress)
+    {
+        return;
+    }
+
+    m_meterModelsByAddress = meterModelsByAddress;
     refreshMessageList();
 }
 
@@ -446,13 +462,15 @@ bool CommunicationDialog::exportMessages(const QString &filePath)
         return false;
     }
 
-    auto exportField = [](QString value) {
+    auto exportField = [](QString value)
+    {
         value.replace(QChar('\t'), QChar(' '));
         value.replace(QChar('\r'), QChar(' '));
         value.replace(QChar('\n'), QChar(' '));
         return value;
     };
-    auto excelTextField = [&exportField](QString value) {
+    auto excelTextField = [&exportField](QString value)
+    {
         value = exportField(value);
         value.replace(QStringLiteral("\""), QStringLiteral("\"\""));
         return QStringLiteral("=\"%1\"").arg(value);
@@ -803,9 +821,10 @@ QString CommunicationDialog::getMessageDiDescription(const QByteArray &fullFrame
     diCode = QStringLiteral("0x") + diCode.toUpper().rightJustified(8, QChar('0'));
 
     QString description;
-    if (m_meterModel)
+    MeterModel *meterModel = meterModelForFrame(fullFrame);
+    if (meterModel)
     {
-        description = m_meterModel->getDataName(diCode);
+        description = meterModel->getDataName(diCode);
     }
 
     if (description.isEmpty())
@@ -815,6 +834,28 @@ QString CommunicationDialog::getMessageDiDescription(const QByteArray &fullFrame
     }
 
     return description.isEmpty() ? QStringLiteral("-") : description;
+}
+
+MeterModel *CommunicationDialog::meterModelForFrame(const QByteArray &fullFrame) const
+{
+    const QByteArray protocolFrame = DLT645DataHelper::stripLeadingFE(fullFrame);
+    if (protocolFrame.size() >= 7)
+    {
+        const QString meterAddress = ProtocolParser::bytesToAddress(protocolFrame.mid(1, 6));
+        MeterModel *meterModel = m_meterModelsByAddress.value(meterAddress, nullptr);
+        if (meterModel)
+        {
+            return meterModel;
+        }
+    }
+
+    if (m_meterModel)
+    {
+        return m_meterModel;
+    }
+
+    static MeterModel defaultMeterModel;
+    return &defaultMeterModel;
 }
 
 QString CommunicationDialog::getControlCodeName(quint8 code) const
@@ -926,152 +967,10 @@ void CommunicationDialog::updateMessageDetail(int row)
     const CommunicationMessage &message = m_messages[row];
 
     m_detailWidget->setParseResult(
-        DLT645FrameFormatter::buildParseDisplayResult(message.fullFrame, m_meterModel, message.checksumValid));
+        DLT645FrameFormatter::buildParseDisplayResult(message.fullFrame,
+                                                      meterModelForFrame(message.fullFrame),
+                                                      message.checksumValid));
     return;
-
-#if 0
-
-    QString detail;
-
-    // 帧结构解析
-    QString frameParse;
-    parseFrame(message.fullFrame, frameParse);
-    detail += frameParse + "\n";
-
-    detail += QString::fromUtf8("数据解析：\n");
-
-    const QByteArray protocolFrame = DLT645DataHelper::stripLeadingFE(message.fullFrame);
-    if (protocolFrame.size() >= 12)
-    {
-        const quint8 dataLength = static_cast<quint8>(protocolFrame[9]);
-        const int actualDataLength = qMin(static_cast<int>(dataLength), protocolFrame.size() - 12);
-        const QByteArray dataField = protocolFrame.mid(10, qMax(actualDataLength, 0));
-        const quint8 baseControlCode = message.controlCode & 0x7F;
-        const bool isResponse = (message.controlCode & 0x80) != 0;
-
-        QString diCode;
-        QString description;
-        QString unit;
-        QByteArray decodedPayload;
-        QString payloadLabel;
-
-        if (dataField.size() >= 4 && (baseControlCode == 0x11 || baseControlCode == 0x14))
-        {
-            diCode = ProtocolParser::extractDIFromDataField(dataField);
-        }
-
-        if (baseControlCode == 0x11)
-        {
-            if (isResponse)
-            {
-                decodedPayload = DLT645DataHelper::subtract33(dataField.mid(4));
-                payloadLabel = QString::fromUtf8("应答数据");
-            }
-            else
-            {
-                decodedPayload = dataField.mid(4);
-                payloadLabel = QString::fromUtf8("请求参数");
-            }
-        }
-        else if (baseControlCode == 0x14)
-        {
-            if (isResponse)
-            {
-                decodedPayload = dataField.mid(5);
-                payloadLabel = QString::fromUtf8("写入状态");
-            }
-            else if (dataField.size() > 5)
-            {
-                const int payloadLength = static_cast<quint8>(dataField[4]);
-                decodedPayload = DLT645DataHelper::subtract33(dataField.mid(5, payloadLength > 0 ? payloadLength : -1));
-                payloadLabel = QString::fromUtf8("写入数据");
-            }
-        }
-
-        if (!diCode.isEmpty())
-        {
-            detail += QString::fromUtf8("数据项标识：") + diCode + "\n";
-            if (m_meterModel)
-            {
-                const DataItem dataItem = m_meterModel->getDataItem(diCode);
-                description = dataItem.description;
-                unit = dataItem.unit;
-
-                if (!description.isEmpty())
-                {
-                    detail += QString::fromUtf8("数据项名称：") + description + "\n";
-                }
-
-                if (!decodedPayload.isEmpty())
-                {
-                    const QString decodedValue = DLT645DataHelper::decodePayloadForItem(m_meterModel, diCode, decodedPayload, &description, &unit);
-                    detail += payloadLabel + QString::fromUtf8("(解码字节)：") + formatHex(decodedPayload) + "\n";
-                    detail += QString::fromUtf8("解析值：") + decodedValue;
-                    if (!unit.isEmpty() && unit != "-")
-                    {
-                        detail += " " + unit;
-                    }
-                    detail += "\n";
-                }
-
-                // 只在应答帧(Response)时显示MeterModel当前值，请求帧(Request)不显示
-                if (message.type == MessageType::Response)
-                {
-                    const QVariant modelValue = m_meterModel->getDataValue(diCode);
-                    if (modelValue.isValid())
-                    {
-                        DataItem currentItem = dataItem;
-                        currentItem.value = modelValue;
-                        const QString modelText = currentItem.getFormattedValue();
-                        if (!modelText.isEmpty())
-                        {
-                            detail += QString::fromUtf8("MeterModel当前值：") + modelText;
-                            if (!unit.isEmpty() && unit != "-")
-                            {
-                                detail += " " + unit;
-                            }
-                            detail += "\n";
-                        }
-                    }
-                }
-            }
-        }
-        else if (!decodedPayload.isEmpty())
-        {
-            detail += payloadLabel + QString::fromUtf8("：") + formatHex(decodedPayload) + "\n";
-        }
-    }
-
-    detail += QString::fromUtf8("\n校验和状态：") + (message.checksumValid ? QString::fromUtf8("OK 有效") : QString::fromUtf8("X 无效")) + "\n";
-    m_textDetail->setText(detail);
-    return;
-
-    // 数据解析
-    detail += "数据解析：\n";
-
-    // 从数据域中提取数据标识（前4个字节）
-    // 帧结构：68(1) + 地址(6) + 68(1) + 控制码(1) + 长度(1) + 数据域(N) + 校验和(1) + 16(1)
-    // 数据域起始位置：1 + 6 + 1 + 1 + 1 = 10
-    int dataFieldStart = 10;
-    if (message.fullFrame.size() >= dataFieldStart + 4)
-    {
-        QByteArray diBytes = message.fullFrame.mid(dataFieldStart, 4);
-        QString diHex = formatHex(diBytes).remove(' ').remove("0x");
-        detail += "数据标识：0x" + diHex + "\n";
-        detail += "数据项：" + getControlCodeName(message.controlCode) + "\n";
-    }
-    else
-    {
-        detail += "数据标识：N/A\n";
-        detail += "数据项：" + getControlCodeName(message.controlCode) + "\n";
-    }
-    detail += "数据值：" + message.parsedData + "\n";
-
-    // 校验和状态
-    detail += QString::fromUtf8("\n校验和状态：") + (message.checksumValid ? QString::fromUtf8("OK 有效") : QString::fromUtf8("X 无效")) + QString::fromUtf8("\n");
-
-    m_textDetail->setText(detail);
-#endif
 }
 
 void CommunicationDialog::closeEvent(QCloseEvent *event)
@@ -1082,10 +981,10 @@ void CommunicationDialog::closeEvent(QCloseEvent *event)
 
 namespace
 {
-// 通信监视对话框 QSS 模板。占位符由全局调色板（Utils/UiTheme）替换。
-QString communicationStyleTemplate()
-{
-    return QStringLiteral(R"(
+    // 通信监视对话框 QSS 模板。占位符由全局调色板（Utils/UiTheme）替换。
+    QString communicationStyleTemplate()
+    {
+        return QStringLiteral(R"(
         QDialog {
             background-color: {{windowBg}};
         }
@@ -1203,7 +1102,7 @@ QString communicationStyleTemplate()
             background-color: {{borderStrong}};
         }
     )");
-}
+    }
 } // namespace
 
 void CommunicationDialog::applyDarkTheme()
