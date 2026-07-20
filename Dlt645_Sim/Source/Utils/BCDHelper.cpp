@@ -11,12 +11,18 @@ bool isSignedF9Format(const QStringList &tokens)
     return !tokens.isEmpty() && tokens.first().trimmed() == QStringLiteral("F9");
 }
 
+bool isSignedPowerFactorFormat(const QStringList &tokens)
+{
+    return !tokens.isEmpty() && tokens.first().trimmed() == QStringLiteral("PF");
+}
+
 int countFormatDataBytes(const QStringList &tokens)
 {
     int count = 0;
     for (const QString &token : tokens)
     {
-        if (token.trimmed() != QStringLiteral("."))
+        const QString trimmedToken = token.trimmed();
+        if (trimmedToken != QStringLiteral(".") && trimmedToken != QStringLiteral("PF"))
         {
             ++count;
         }
@@ -113,6 +119,34 @@ QString encodeSignedF9Value(double numericValue, const QStringList &tokens)
     }
 
     return result;
+}
+
+QString encodeSignedPowerFactorValue(double numericValue, const QStringList &tokens)
+{
+    const bool negative = numericValue < 0.0;
+    const double absoluteValue = std::fabs(numericValue);
+    const int totalDigits = countFormatDataBytes(tokens) * 2;
+    const int decimalDigits = countFormatDecimalDigits(tokens);
+    const qint64 scaledValue = qRound64(absoluteValue * std::pow(10.0, decimalDigits));
+
+    QString digits = QString::number(scaledValue).rightJustified(totalDigits, QChar('0'));
+    if (digits.length() > totalDigits)
+    {
+        digits = digits.right(totalDigits);
+    }
+
+    if (negative && scaledValue != 0 && !digits.isEmpty())
+    {
+        bool ok = false;
+        quint8 mostSignificantByte = static_cast<quint8>(digits.left(2).toUInt(&ok, 16));
+        if (ok)
+        {
+            mostSignificantByte = static_cast<quint8>(mostSignificantByte | 0x80);
+            digits.replace(0, 2, QStringLiteral("%1").arg(mostSignificantByte, 2, 16, QChar('0')).toUpper());
+        }
+    }
+
+    return digits;
 }
 }
 
@@ -354,6 +388,10 @@ QString BCDHelper::formatValueToString(const QVariant &value, const QString &for
     if (isSignedF9Format(originalFormatList))
     {
         return encodeSignedF9Value(numValue, originalFormatList);
+    }
+    if (isSignedPowerFactorFormat(originalFormatList))
+    {
+        return encodeSignedPowerFactorValue(numValue, originalFormatList);
     }
 
     QString result;
@@ -649,7 +687,8 @@ QByteArray BCDHelper::stringToByteArray(const QString &str)
 QString BCDHelper::decodeValueFromFormat(const QByteArray &data, const QString &format)
 {
     const QStringList tokens = format.split(",", Qt::SkipEmptyParts);
-    if (data.isEmpty() || tokens.isEmpty() || !isSignedF9Format(tokens))
+    if (data.isEmpty() || tokens.isEmpty() ||
+        (!isSignedF9Format(tokens) && !isSignedPowerFactorFormat(tokens)))
     {
         return QString();
     }

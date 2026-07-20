@@ -259,7 +259,8 @@ int DLT645DataHelper::bytesRequiredForFormat(const QString &format)
     int count = 0;
     for (const QString &token : tokens)
     {
-        if (token.trimmed() != ".")
+        const QString trimmedToken = token.trimmed();
+        if (trimmedToken != "." && trimmedToken != "PF")
         {
             ++count;
         }

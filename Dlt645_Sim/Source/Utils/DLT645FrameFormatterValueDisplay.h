@@ -356,6 +356,10 @@ inline QString displayValueForFormatPart(const QByteArray &bytes, const QString 
     {
         return displaySignedF9DecimalFromLittleEndianBcd(bytes, trimmedFormat);
     }
+    if (trimmedFormat.startsWith(QStringLiteral("PF")))
+    {
+        return displaySignedF9DecimalFromLittleEndianBcd(bytes, trimmedFormat);
+    }
     if (trimmedFormat == QStringLiteral("AA,AA,AA,AA,AA,AA"))
     {
         const QString dateTime = displayDateTimeSeconds(bytes);

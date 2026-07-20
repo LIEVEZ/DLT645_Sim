@@ -37,11 +37,11 @@ void MeterModel::initializeVariableData()
     m_dataItems["0x0205FF00"] = DataItem("0x0205FF00", "瞬时视在功率数据块", QVariantList(), "-", "AA,.,AA,AA:AA,.,AA,AA:AA,.,AA,AA:AA,.,AA,AA", false, 4);
 
     // 功率因数
-    m_dataItems["0x02060000"] = DataItem("0x02060000", "总功率因数", 1.0, "none", "xx,AA", false, 3);
-    m_dataItems["0x02060100"] = DataItem("0x02060100", "A相功率因数", 1.0, "none", "xx,AA", false, 3);
-    m_dataItems["0x02060200"] = DataItem("0x02060200", "B相功率因数", 1.0, "none", "xx,AA", false, 3);
-    m_dataItems["0x02060300"] = DataItem("0x02060300", "C相功率因数", 1.0, "none", "xx,AA", false, 3);
-    m_dataItems["0x0206FF00"] = DataItem("0x0206FF00", "功率因数数据块", QVariantList(), "-", "xx,AA:xx,AA:xx,AA:xx,AA", false, 3);
+    m_dataItems["0x02060000"] = DataItem("0x02060000", "总功率因数", 1.0, "none", "PF,xx,AA", false, 3);
+    m_dataItems["0x02060100"] = DataItem("0x02060100", "A相功率因数", 1.0, "none", "PF,xx,AA", false, 3);
+    m_dataItems["0x02060200"] = DataItem("0x02060200", "B相功率因数", 1.0, "none", "PF,xx,AA", false, 3);
+    m_dataItems["0x02060300"] = DataItem("0x02060300", "C相功率因数", 1.0, "none", "PF,xx,AA", false, 3);
+    m_dataItems["0x0206FF00"] = DataItem("0x0206FF00", "功率因数数据块", QVariantList(), "-", "PF,xx,AA:PF,xx,AA:PF,xx,AA:PF,xx,AA", false, 3);
 
     // 相角
     m_dataItems["0x02070100"] = DataItem("0x02070100", "A相相角", 0.0, "°", "AA,xx", false, 1);
