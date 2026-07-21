@@ -102,6 +102,50 @@ QString buildStyleSheet(const ui::ThemePalette &p)
             color: {{text}};
         }
 
+        QFrame#meterInfoCard {
+            background-color: {{panelBg}};
+            border: 1px solid {{border}};
+            border-radius: 7px;
+        }
+
+        QLabel#meterInfoHeading {
+            color: {{accentTitle}};
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        QLabel#meterInfoCaption {
+            color: {{textMuted}};
+            font-size: 11px;
+            font-weight: 500;
+        }
+
+        QLabel#meterInfoValue,
+        QLabel#meterInfoAddress {
+            color: {{text}};
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        QLabel#meterInfoAddress {
+            padding: 3px 7px;
+            background-color: {{windowBg}};
+            border: 1px solid {{border}};
+            border-radius: 4px;
+        }
+
+        QLabel#meterInfoAddress::selection {
+            background-color: {{accent}};
+            color: {{onAccent}};
+        }
+
+        QFrame#meterInfoSeparator {
+            color: {{border}};
+            background-color: {{border}};
+            min-width: 1px;
+            max-width: 1px;
+        }
+
         /* 数据表格上方「格式类型提示」卡片：柔和提示底色 + 圆角边框 */
         QFrame#formatHintCard {
             background-color: {{noticeBg}};

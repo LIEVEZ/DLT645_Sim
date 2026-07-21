@@ -191,6 +191,9 @@ private:
     QPushButton *m_randomizeCurrentButton;
     QPushButton *m_exportButton;
     QLabel *m_meterInfoLabel;
+    QLabel *m_meterAliasLabel;
+    QLabel *m_meterAddressLabel;
+    QLabel *m_meterPhaseLabel;
     QFrame *m_formatHintCard;
     QLabel *m_formatHintLabel;
     QLabel *m_dataCountLabel;

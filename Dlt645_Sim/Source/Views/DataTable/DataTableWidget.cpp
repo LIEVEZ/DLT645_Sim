@@ -1329,13 +1329,50 @@ void DataTableWidget::setupUI()
     mainLayout->setContentsMargins(5, 5, 5, 5);
     mainLayout->setSpacing(5);
 
-    // 创建电表信息标签
-    m_meterInfoLabel = new QLabel(this);
-    m_meterInfoLabel->setText("Meter Info");
-    mainLayout->addWidget(m_meterInfoLabel);
+    // 使用独立字段承载电表信息，保证表号可以直接选中复制。
+    QFrame *meterInfoCard = new QFrame(this);
+    meterInfoCard->setObjectName(QStringLiteral("meterInfoCard"));
+    meterInfoCard->setAttribute(Qt::WA_StyledBackground, true);
+    QHBoxLayout *meterInfoLayout = new QHBoxLayout(meterInfoCard);
+    meterInfoLayout->setContentsMargins(12, 8, 10, 8);
+    meterInfoLayout->setSpacing(8);
 
-    // 添加间距
-    mainLayout->addSpacing(10);
+    m_meterInfoLabel = new QLabel(QStringLiteral("电表信息"), meterInfoCard);
+    m_meterInfoLabel->setObjectName(QStringLiteral("meterInfoHeading"));
+    meterInfoLayout->addWidget(m_meterInfoLabel);
+
+    QFrame *infoSeparator = new QFrame(meterInfoCard);
+    infoSeparator->setObjectName(QStringLiteral("meterInfoSeparator"));
+    infoSeparator->setFrameShape(QFrame::VLine);
+    infoSeparator->setFrameShadow(QFrame::Plain);
+    meterInfoLayout->addWidget(infoSeparator);
+
+    QLabel *aliasCaption = new QLabel(QStringLiteral("别名"), meterInfoCard);
+    aliasCaption->setObjectName(QStringLiteral("meterInfoCaption"));
+    meterInfoLayout->addWidget(aliasCaption);
+    m_meterAliasLabel = new QLabel(QStringLiteral("未命名"), meterInfoCard);
+    m_meterAliasLabel->setObjectName(QStringLiteral("meterInfoValue"));
+    m_meterAliasLabel->setMinimumWidth(90);
+    meterInfoLayout->addWidget(m_meterAliasLabel);
+
+    QLabel *addressCaption = new QLabel(QStringLiteral("表号"), meterInfoCard);
+    addressCaption->setObjectName(QStringLiteral("meterInfoCaption"));
+    meterInfoLayout->addWidget(addressCaption);
+    m_meterAddressLabel = new QLabel(QStringLiteral("未设置"), meterInfoCard);
+    m_meterAddressLabel->setObjectName(QStringLiteral("meterInfoAddress"));
+    m_meterAddressLabel->setTextInteractionFlags(Qt::TextSelectableByMouse |
+                                                  Qt::TextSelectableByKeyboard);
+    m_meterAddressLabel->setToolTip(QStringLiteral("可选中表号后复制"));
+    meterInfoLayout->addWidget(m_meterAddressLabel);
+
+    QLabel *phaseCaption = new QLabel(QStringLiteral("相别"), meterInfoCard);
+    phaseCaption->setObjectName(QStringLiteral("meterInfoCaption"));
+    meterInfoLayout->addWidget(phaseCaption);
+    m_meterPhaseLabel = new QLabel(QStringLiteral("三相表"), meterInfoCard);
+    m_meterPhaseLabel->setObjectName(QStringLiteral("meterInfoValue"));
+    meterInfoLayout->addWidget(m_meterPhaseLabel);
+    meterInfoLayout->addStretch();
+    mainLayout->addWidget(meterInfoCard);
 
     // 顶部工具栏
     QHBoxLayout *toolBarLayout = new QHBoxLayout();
@@ -1695,16 +1732,12 @@ void DataTableWidget::setMeterInfo(const QString &alias, const QString &address,
     }
 
     updateExportButtonState();
-    if (alias.isEmpty() && address.isEmpty())
-    {
-        m_meterInfoLabel->setText("电表信息");
-    }
-    else
-    {
-        QString phaseTypeText = meterPhaseTypeToDisplayName(phaseType);
-        m_meterInfoLabel->setText(QString("电表信息：[%1] [%2] [%3]")
-                                      .arg(alias, address, phaseTypeText));
-    }
+
+    const QString phaseTypeText = meterPhaseTypeToDisplayName(phaseType);
+    m_meterInfoLabel->setText(QStringLiteral("电表信息"));
+    m_meterAliasLabel->setText(alias.isEmpty() ? QStringLiteral("未命名") : alias);
+    m_meterAddressLabel->setText(address.isEmpty() ? QStringLiteral("未设置") : address);
+    m_meterPhaseLabel->setText(phaseTypeText);
 }
 
 bool DataTableWidget::updateDataItem(const QString &diCode, const QVariant &value)
