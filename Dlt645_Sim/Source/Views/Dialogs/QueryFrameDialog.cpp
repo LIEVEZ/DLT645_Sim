@@ -182,7 +182,7 @@ namespace
     QList<ParameterCategoryDefinition> parameterCategoryDefinitions()
     {
         return {
-            {QStringLiteral("基本参数"), {QStringLiteral("0x0400")}},
+            {QStringLiteral("基本参数"), {QStringLiteral("0x0400"), QStringLiteral("0x1C0104")}},
             {QStringLiteral("第一套时区时段"), {QStringLiteral("0x0401")}},
             {QStringLiteral("第二套时区时段"), {QStringLiteral("0x0402")}},
             {QStringLiteral("公共假日"), {QStringLiteral("0x0403")}},

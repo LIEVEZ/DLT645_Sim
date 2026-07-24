@@ -127,6 +127,7 @@ private slots:
 private:
     void processReadRequest(const ProtocolFrame &frame, MeterModel *meterModel);
     void processWriteRequest(const ProtocolFrame &frame, MeterModel *meterModel);
+    void processWriteAuthStatusRequest(const ProtocolFrame &frame, MeterModel *meterModel);
     void sendResponse(const ProtocolFrame &response, MeterModel *meterModel = nullptr);
     void verifyPassword(const ProtocolFrame &frame, MeterModel *meterModel);
     bool tryTakeNextReceivedFrame(ProtocolFrame &frame, QByteArray &rawFrame);

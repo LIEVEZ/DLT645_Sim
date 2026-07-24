@@ -2,6 +2,7 @@
 #include "DataTableExporter.h"
 #include "Utils/Logger.h"
 #include "../../Models/MeterModel.h"
+#include "../../Models/CategoryCatalog.h"
 #include "../../Models/DataItem.h"
 #include "../../Models/MeterPhaseType.h"
 #include "../../Models/MeterModelPrivateSupport.h"
@@ -1112,53 +1113,9 @@ namespace
         return filteredCodes;
     }
 
-    QList<ParameterCategoryDefinition> parameterCategoryDefinitions()
-    {
-        return {
-            {QStringLiteral("基本参数"), {QStringLiteral("0x0400")}},
-            {QStringLiteral("第一套时区时段"), {QStringLiteral("0x0401")}},
-            {QStringLiteral("第二套时区时段"), {QStringLiteral("0x0402")}},
-            {QStringLiteral("公共假日"), {QStringLiteral("0x0403")}},
-            {QStringLiteral("显示参数"), {QStringLiteral("0x0404")}},
-            {QStringLiteral("费率电价"), {QStringLiteral("0x040501"), QStringLiteral("0x040502")}},
-            {QStringLiteral("阶梯电价"), {QStringLiteral("0x040600"), QStringLiteral("0x040601"), QStringLiteral("0x040602"), QStringLiteral("0x040603")}},
-            {QStringLiteral("事件参数"), {QStringLiteral("0x0409")}}};
-    }
-
     QList<QString> filterParameterCodesByCategory(const QList<QString> &allCodes, const QString &categoryName)
     {
-        const QString normalizedCategoryName = categoryName.trimmed();
-        QStringList matchedPrefixes;
-        const QList<ParameterCategoryDefinition> definitions = parameterCategoryDefinitions();
-        for (const ParameterCategoryDefinition &definition : definitions)
-        {
-            if (definition.name == normalizedCategoryName)
-            {
-                matchedPrefixes = definition.prefixes;
-                break;
-            }
-        }
-
-        if (matchedPrefixes.isEmpty())
-        {
-            return allCodes;
-        }
-
-        QList<QString> filteredCodes;
-        filteredCodes.reserve(allCodes.size());
-        for (const QString &diCode : allCodes)
-        {
-            for (const QString &prefix : matchedPrefixes)
-            {
-                if (diCode.startsWith(prefix))
-                {
-                    filteredCodes.append(diCode);
-                    break;
-                }
-            }
-        }
-
-        return filteredCodes;
+        return CategoryCatalog::filterParameterCodesByCategory(allCodes, categoryName);
     }
 
     NumericEditSpec editSpecForFormat(const QString &format)

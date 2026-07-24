@@ -103,6 +103,9 @@ void MeterModel::initializeParameterData()
     m_dataItems["0x04001301"] = DataItem("0x04001301", "无线通信在线及信号强弱指示", 132, "-", "AA", true, 0);
     m_dataItems["0x04001401"] = DataItem("0x04001401", "跳闸延时时间", 15, "分钟", "AA,AA", true, 0);
 
+    // 厂商扩展：认证状态（控制码 0x2A 读 / 0x2F 写，数据 1 字节：0x00 关闭 / 0xAA 开启）
+    m_dataItems["0x1C0104CD"] = DataItem("0x1C0104CD", "认证状态", 0xAA, "-", "AA", true, 0);
+
     QVariantList firstSetYearZones;
     QVariantList secondSetYearZones;
     for (int zoneIndex = 0; zoneIndex < kMaxYearZoneCount; ++zoneIndex)

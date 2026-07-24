@@ -927,7 +927,7 @@ void DataItemManualDialog::populateTree()
         else if (diCode.startsWith("0x01")) demandCount++;
         else if (diCode.startsWith("0x02")) variableCount++;
         else if (diCode.startsWith("0x03")) eventCount++;
-        else if (diCode.startsWith("0x04")) parameterCount++;
+        else if (diCode.startsWith("0x04") || diCode.startsWith("0x1C")) parameterCount++;
         else if (diCode.startsWith("0x05")) freezeCount++;
         else if (diCode.startsWith("0x06")) loadRecordCount++;
     }
@@ -1017,7 +1017,7 @@ void DataItemManualDialog::filterTable(const QString &keyword)
             else if (m_currentCategory == QString::fromUtf8("最大需量") && item.diCode.startsWith("0x01")) categoryMatch = true;
             else if (m_currentCategory == QString::fromUtf8("变量") && item.diCode.startsWith("0x02")) categoryMatch = true;
             else if (m_currentCategory == QString::fromUtf8("事件记录") && item.diCode.startsWith("0x03")) categoryMatch = true;
-            else if (m_currentCategory == QString::fromUtf8("参变量") && item.diCode.startsWith("0x04")) categoryMatch = true;
+            else if (m_currentCategory == QString::fromUtf8("参变量") && (item.diCode.startsWith("0x04") || item.diCode.startsWith("0x1C"))) categoryMatch = true;
             else if (m_currentCategory == QString::fromUtf8("冻结") && item.diCode.startsWith("0x05")) categoryMatch = true;
             else if (m_currentCategory == QString::fromUtf8("负荷记录") && item.diCode.startsWith("0x06")) categoryMatch = true;
         }
@@ -1050,7 +1050,7 @@ QList<DataItem> DataItemManualDialog::getDataItemsByCategory(const QString &cate
             match = true;
         } else if (categoryName == QString::fromUtf8("事件记录") && item.diCode.startsWith("0x03")) {
             match = true;
-        } else if (categoryName == QString::fromUtf8("参变量") && item.diCode.startsWith("0x04")) {
+        } else if (categoryName == QString::fromUtf8("参变量") && (item.diCode.startsWith("0x04") || item.diCode.startsWith("0x1C"))) {
             match = true;
         } else if (categoryName == QString::fromUtf8("冻结") && item.diCode.startsWith("0x05")) {
             match = true;
@@ -1154,7 +1154,8 @@ bool DataItemManualDialog::isEventDataItem(const DataItem &item) const
 
 bool DataItemManualDialog::isParameterDataItem(const DataItem &item) const
 {
-    return item.diCode.startsWith(QStringLiteral("0x04"), Qt::CaseInsensitive);
+    return item.diCode.startsWith(QStringLiteral("0x04"), Qt::CaseInsensitive) ||
+           item.diCode.startsWith(QStringLiteral("0x1C"), Qt::CaseInsensitive);
 }
 
 bool DataItemManualDialog::isFreezeDataItem(const DataItem &item) const

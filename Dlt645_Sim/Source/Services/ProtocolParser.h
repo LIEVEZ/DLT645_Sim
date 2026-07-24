@@ -69,7 +69,13 @@ enum class ControlCode : quint8
     ClearMeter = 0x1A,
 
     // 事件清零
-    ClearEvent = 0x1B
+    ClearEvent = 0x1B,
+
+    // 厂商扩展：读认证状态（应答 0xAA）
+    ReadAuthStatus = 0x2A,
+
+    // 厂商扩展：写认证状态（应答 0xAF，无密码/操作者代码）
+    WriteAuthStatus = 0x2F
 };
 
 /**
@@ -159,6 +165,17 @@ public:
      * @param dataField 数据域
      * @return 数据标识字符串
      */
+    /**
+     * @brief 认证状态厂商扩展控制码（0x2A/0x2F 及其应答）是否使用“长度域比实际数据域少 1 字节”规则
+     */
+    static bool usesAuthStatusLengthQuirk(quint8 controlCode);
+
+    /**
+     * @brief 根据控制码与长度域得到实际数据域字节数
+     * 认证状态读写：长度域 > 0 时实际长度 = 长度域 + 1（写成功应答 L=0 除外）
+     */
+    static int effectiveDataFieldLength(quint8 controlCode, quint8 lengthField);
+
     static QString extractDIFromDataField(const QByteArray &dataField);
 
     /**

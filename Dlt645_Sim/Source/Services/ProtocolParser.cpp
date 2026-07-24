@@ -128,14 +128,15 @@ ProtocolFrame ProtocolParser::parseFrame(const QByteArray &data)
     frame.dataLength = static_cast<quint8>(data[index]);
     index++;
 
-    // 读取数据域
-    if (data.size() < index + frame.dataLength)
+    // 读取数据域（认证状态厂商扩展：长度域可比实际数据域少 1 字节）
+    const int actualDataLength = effectiveDataFieldLength(frame.controlCode, frame.dataLength);
+    if (data.size() < index + actualDataLength)
     {
         emit parseError("Incomplete data field");
         return frame;
     }
-    frame.dataField = data.mid(index, frame.dataLength);
-    index += frame.dataLength;
+    frame.dataField = data.mid(index, actualDataLength);
+    index += actualDataLength;
 
     // 读取校验和
     if (data.size() < index + 1)
@@ -355,6 +356,25 @@ ProtocolFrame ProtocolParser::buildReadResponse(const ProtocolFrame &requestFram
         return frame;
     }
 
+    // 认证状态：1 字节原始值（0x00 关闭 / 0xAA 开启），不走 BCD 十进制格式化
+    // 厂商扩展：长度域填 4（DI 长度），实际数据域为 DI(4)+状态(1) 共 5 字节
+    if (diCode == QStringLiteral("0x1C0104CD"))
+    {
+        const quint8 rawValue = static_cast<quint8>(dataValue.toUInt() & 0xFF);
+        valueBytes.append(static_cast<char>(rawValue));
+        add33(valueBytes);
+
+        frame.dataField = diBytes + valueBytes;
+        frame.dataLength = 0x04;
+
+        frame.checksum = 0;
+        QByteArray frameData = frame.toByteArray();
+        frame.checksum = ChecksumHelper::calculateChecksum(frameData.left(frameData.size() - 2));
+        frame.endFlag = 0x16;
+
+        return frame;
+    }
+
     QString format = "";
     if (m_meterModel && !diCode.isEmpty())
     {
@@ -499,6 +519,23 @@ ProtocolFrame ProtocolParser::buildErrorResponse(const ProtocolFrame &requestFra
     return frame;
 }
 
+
+bool ProtocolParser::usesAuthStatusLengthQuirk(quint8 controlCode)
+{
+    const quint8 baseControl = controlCode & 0x7F;
+    return baseControl == static_cast<quint8>(ControlCode::ReadAuthStatus) ||
+           baseControl == static_cast<quint8>(ControlCode::WriteAuthStatus);
+}
+
+int ProtocolParser::effectiveDataFieldLength(quint8 controlCode, quint8 lengthField)
+{
+    // 认证状态读写：长度域表示“名义长度”，实际数据域多 1 字节；L=0 写应答不扩展
+    if (usesAuthStatusLengthQuirk(controlCode) && lengthField > 0)
+    {
+        return static_cast<int>(lengthField) + 1;
+    }
+    return static_cast<int>(lengthField);
+}
 QString ProtocolParser::extractDIFromDataField(const QByteArray &dataField)
 {
     if (dataField.size() >= 4)

@@ -353,13 +353,16 @@ void appendCard(FrameParseSection &section,
     const quint8 secondStartFlag = hasSecondStartFlag ? static_cast<quint8>(protocolFrame[7]) : 0;
     const quint8 controlCode = hasControlCode ? static_cast<quint8>(protocolFrame[8]) : 0;
     const quint8 dataLength = hasLength ? static_cast<quint8>(protocolFrame[9]) : 0;
-    const int expectedSize = hasLength ? (12 + dataLength) : 12;
+    const int actualDataLength = hasLength
+                                        ? ProtocolParser::effectiveDataFieldLength(controlCode, dataLength)
+                                        : 0;
+    const int expectedSize = hasLength ? (12 + actualDataLength) : 12;
     const bool hasCompleteFrame = hasLength && protocolFrame.size() >= expectedSize;
 
     QByteArray displayedDataField;
     if (protocolFrame.size() > 10)
     {
-        displayedDataField = hasCompleteFrame ? protocolFrame.mid(10, dataLength) : protocolFrame.mid(10);
+        displayedDataField = hasCompleteFrame ? protocolFrame.mid(10, actualDataLength) : protocolFrame.mid(10);
     }
 
     QString structureText;
@@ -454,10 +457,15 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
     const quint8 secondStartFlag = hasSecondStartFlag ? static_cast<quint8>(protocolFrame[7]) : 0;
     const quint8 controlCode = hasControlCode ? static_cast<quint8>(protocolFrame[8]) : 0;
     const quint8 dataLength = hasLength ? static_cast<quint8>(protocolFrame[9]) : 0;
-    const int expectedSize = hasLength ? (12 + dataLength) : 12;
+    const int actualDataLength = hasLength
+                                        ? ProtocolParser::effectiveDataFieldLength(controlCode, dataLength)
+                                        : 0;
+    const int expectedSize = hasLength ? (12 + actualDataLength) : 12;
     const bool hasCompleteFrame = hasLength && protocolFrame.size() >= expectedSize;
-    const int actualDataLength = hasLength ? qMin(static_cast<int>(dataLength), qMax(0, protocolFrame.size() - 12)) : 0;
-    const QByteArray dataField = protocolFrame.mid(10, actualDataLength);
+    const int clippedDataLength = hasLength
+                                      ? qMin(actualDataLength, qMax(0, protocolFrame.size() - 12))
+                                      : 0;
+    const QByteArray dataField = protocolFrame.mid(10, clippedDataLength);
 
     QString detailText;
     if (leadingCount > 0)
@@ -979,12 +987,20 @@ QString DLT645FrameFormatter::controlCodeName(quint8 code)
         return QString::fromUtf8("电表清零");
     case 0x1C:
         return QString::fromUtf8("事件清零");
+    case 0x2A:
+        return QString::fromUtf8("读认证状态");
+    case 0x2F:
+        return QString::fromUtf8("写认证状态");
     case 0x91:
         return QString::fromUtf8("正常应答");
     case 0x92:
         return QString::fromUtf8("后续应答");
     case 0x94:
         return QString::fromUtf8("写数据应答");
+    case 0xAA:
+        return QString::fromUtf8("读认证状态应答");
+    case 0xAF:
+        return QString::fromUtf8("写认证状态应答");
     case 0xD1:
         return QString::fromUtf8("异常应答");
     case 0xD2:
@@ -1036,8 +1052,9 @@ FrameParseDisplayResult DLT645FrameFormatter::buildParseDisplayResult(const QByt
         }
         else
         {
+            const quint8 controlCode = static_cast<quint8>(protocolFrame[8]);
             const quint8 dataLength = static_cast<quint8>(protocolFrame[9]);
-            const int expectedSize = 12 + dataLength;
+            const int expectedSize = 12 + ProtocolParser::effectiveDataFieldLength(controlCode, dataLength);
             if (protocolFrame.size() < expectedSize)
             {
                 result.noticeText = structureMessage;

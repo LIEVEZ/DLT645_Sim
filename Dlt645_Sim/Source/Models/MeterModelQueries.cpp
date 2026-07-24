@@ -39,7 +39,10 @@ QList<DataItem> MeterModel::getDataItemsByCategory(DataCategory category) const
                                          ? isEnergyDataCode(it.key())
                                          : (category == DataCategory::Demand)
                                                ? isDemandDataCode(it.key())
-                                               : it.key().startsWith(prefix);
+                                               : (category == DataCategory::Parameter)
+                                                     ? (it.key().startsWith(QStringLiteral("0x04")) ||
+                                                        it.key().startsWith(QStringLiteral("0x1C")))
+                                                     : it.key().startsWith(prefix);
         if (categoryMatched)
         {
             items.append(it.value());
@@ -192,7 +195,7 @@ QList<QString> MeterModel::getParameterDataCodes() const
     QList<QString> codes;
     for (auto it = m_dataItems.constBegin(); it != m_dataItems.constEnd(); ++it)
     {
-        if (it.key().startsWith("0x04"))
+        if (it.key().startsWith("0x04") || it.key().startsWith("0x1C"))
         {
             codes.append(it.key());
         }

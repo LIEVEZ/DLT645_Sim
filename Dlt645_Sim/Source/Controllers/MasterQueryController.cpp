@@ -348,8 +348,10 @@ MasterQueryController::FrameExtractState MasterQueryController::tryTakeNextFrame
             continue;
         }
 
-        const int dataLength = static_cast<quint8>(m_receiveBuffer[startIndex + 9]);
-        const int expectedFrameSize = startIndex + 12 + dataLength;
+        const quint8 controlCode = static_cast<quint8>(m_receiveBuffer[startIndex + 8]);
+        const quint8 dataLengthField = static_cast<quint8>(m_receiveBuffer[startIndex + 9]);
+        const int actualDataLength = ProtocolParser::effectiveDataFieldLength(controlCode, dataLengthField);
+        const int expectedFrameSize = startIndex + 12 + actualDataLength;
         if (m_receiveBuffer.size() < expectedFrameSize)
         {
             return FrameExtractState::NoFrame;

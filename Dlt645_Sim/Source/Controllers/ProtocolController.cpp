@@ -2,7 +2,48 @@
 #include "Models/DataItem.h"
 #include "Utils/DLT645DataHelper.h"
 #include "Utils/Logger.h"
+#include "Utils/ChecksumHelper.h"
 #include <algorithm>
+
+namespace
+{
+bool isBroadcastAddress(const QByteArray &addressBytes)
+{
+    if (addressBytes.size() != 6)
+    {
+        return false;
+    }
+
+    for (int i = 0; i < addressBytes.size(); ++i)
+    {
+        if (static_cast<quint8>(addressBytes.at(i)) != 0xAA)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void finalizeResponseAddress(ProtocolFrame &response, MeterModel *meterModel)
+{
+    if (!meterModel)
+    {
+        return;
+    }
+
+    const QByteArray meterAddressBytes = ProtocolParser::addressToBytes(meterModel->getMeterAddress());
+    if (meterAddressBytes.size() != 6 || response.address == meterAddressBytes)
+    {
+        return;
+    }
+
+    response.address = meterAddressBytes;
+    response.checksum = 0;
+    const QByteArray frameData = response.toByteArray();
+    response.checksum = ChecksumHelper::calculateChecksum(frameData.left(frameData.size() - 2));
+}
+} // namespace
 
 ProtocolController::ProtocolController(QObject *parent)
     : QObject(parent),
@@ -131,6 +172,8 @@ void ProtocolController::processReceivedData(const QByteArray &data)
         const bool needsAddressValidation =
             controlCode == static_cast<quint8>(ControlCode::ReadData) ||
             controlCode == static_cast<quint8>(ControlCode::WriteData) ||
+            controlCode == static_cast<quint8>(ControlCode::ReadAuthStatus) ||
+            controlCode == static_cast<quint8>(ControlCode::WriteAuthStatus) ||
             controlCode == static_cast<quint8>(ControlCode::ReadAddress) ||
             controlCode == static_cast<quint8>(ControlCode::WriteAddress);
 
@@ -147,13 +190,18 @@ void ProtocolController::processReceivedData(const QByteArray &data)
             continue;
         }
 
-        if (controlCode == static_cast<quint8>(ControlCode::ReadData))
+        if (controlCode == static_cast<quint8>(ControlCode::ReadData) ||
+            controlCode == static_cast<quint8>(ControlCode::ReadAuthStatus))
         {
             processReadRequest(frame, requestMeterModel);
         }
         else if (controlCode == static_cast<quint8>(ControlCode::WriteData))
         {
             processWriteRequest(frame, requestMeterModel);
+        }
+        else if (controlCode == static_cast<quint8>(ControlCode::WriteAuthStatus))
+        {
+            processWriteAuthStatusRequest(frame, requestMeterModel);
         }
         else if (controlCode == static_cast<quint8>(ControlCode::ReadAddress))
         {
@@ -270,8 +318,10 @@ bool ProtocolController::tryTakeNextReceivedFrame(ProtocolFrame &frame, QByteArr
             continue;
         }
 
-        const int dataLength = static_cast<quint8>(m_receiveBuffer[startIndex + 9]);
-        const int expectedFrameSize = startIndex + 12 + dataLength;
+        const quint8 controlCode = static_cast<quint8>(m_receiveBuffer[startIndex + 8]);
+        const quint8 dataLengthField = static_cast<quint8>(m_receiveBuffer[startIndex + 9]);
+        const int actualDataLength = ProtocolParser::effectiveDataFieldLength(controlCode, dataLengthField);
+        const int expectedFrameSize = startIndex + 12 + actualDataLength;
         if (m_receiveBuffer.size() < expectedFrameSize)
         {
             return false;
@@ -384,7 +434,8 @@ void ProtocolController::onResponseTimerTimeout()
         const QString diCode = ProtocolParser::extractDIFromDataField(requestFrame.dataField);
         m_protocolParser->setMeterModel(meterModel);
 
-        if ((requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::ReadData))
+        if ((requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::ReadData) ||
+            (requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::ReadAuthStatus))
         {
             if (diCode.startsWith(QStringLiteral("0x03")) && !meterModel->getEventRecordPresent())
             {
@@ -414,7 +465,8 @@ void ProtocolController::onResponseTimerTimeout()
                 emit protocolError(0x02, QStringLiteral("当前电表不支持数据项: %1").arg(diCode));
             }
         }
-        else if ((requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::WriteData))
+        else if ((requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::WriteData) ||
+                 (requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::WriteAuthStatus))
         {
             ProtocolFrame response = m_protocolParser->buildWriteResponse(requestFrame, true);
             sendResponse(response, meterModel);
@@ -437,6 +489,55 @@ void ProtocolController::processReadRequest(const ProtocolFrame &frame, MeterMod
     scheduleNextResponse();
 }
 
+void ProtocolController::processWriteAuthStatusRequest(const ProtocolFrame &frame, MeterModel *meterModel)
+{
+    LOG_INFO(QString("Processing auth-status write request: %1").arg(frame.toString()));
+
+    const QString diCode = ProtocolParser::extractDIFromDataField(frame.dataField);
+    if (diCode != QStringLiteral("0x1C0104CD"))
+    {
+        LOG_WARNING(QString("Unsupported DI for auth-status write control 0x2F: %1").arg(diCode));
+        ProtocolFrame response = m_protocolParser->buildErrorResponse(frame, 0x02);
+        sendResponse(response, meterModel);
+        emit protocolError(0x02, QStringLiteral("认证状态写控制码仅支持数据项 0x1C0104CD"));
+        return;
+    }
+
+    // 厂商扩展写帧：DI(4) + 数据(1)，无权限/密码/操作者代码
+    QByteArray valueBytes = frame.dataField.mid(4);
+    for (int i = 0; i < valueBytes.size(); ++i)
+    {
+        valueBytes[i] = static_cast<char>(static_cast<quint8>(valueBytes[i]) - 0x33);
+    }
+
+    QVariant value = 0;
+    if (!valueBytes.isEmpty())
+    {
+        value = static_cast<int>(static_cast<quint8>(valueBytes.at(0)));
+    }
+
+    if (meterModel && meterModel->setDataValue(diCode, value))
+    {
+        LOG_INFO(QString("Auth status written: %1 = 0x%2")
+                     .arg(diCode)
+                     .arg(value.toUInt(), 2, 16, QChar('0')));
+
+        if (m_autoResponseEnabled)
+        {
+            m_pendingResponses.enqueue({frame, meterModel});
+            scheduleNextResponse();
+        }
+
+        emit dataWritten(diCode, value, true);
+    }
+    else
+    {
+        LOG_WARNING(QString("Failed to write auth status: %1").arg(diCode));
+        ProtocolFrame response = m_protocolParser->buildErrorResponse(frame, 0x03);
+        sendResponse(response, meterModel);
+        emit dataWritten(diCode, value, false);
+    }
+}
 void ProtocolController::processWriteRequest(const ProtocolFrame &frame, MeterModel *meterModel)
 {
     LOG_INFO(QString("Processing write request: %1").arg(frame.toString()));
@@ -465,7 +566,8 @@ void ProtocolController::processWriteRequest(const ProtocolFrame &frame, MeterMo
         diCode == "0x04000702" ||
         diCode == "0x04000703" ||
         diCode == "0x04000704" ||
-        diCode == "0x04000705")
+        diCode == "0x04000705" ||
+        diCode == QStringLiteral("0x1C0104CD"))
     {
         if (valueBytes.size() >= 1)
         {
@@ -529,13 +631,15 @@ void ProtocolController::sendResponse(const ProtocolFrame &response, MeterModel 
     }
 
     MeterModel *responseMeterModel = meterModel ? meterModel : m_meterModel;
+    ProtocolFrame responseToSend = response;
+    finalizeResponseAddress(responseToSend, responseMeterModel);
     const QByteArray responseData =
-        ProtocolParser::frameToRawBytes(response,
+        ProtocolParser::frameToRawBytes(responseToSend,
                                         responseMeterModel && responseMeterModel->getIncludePrefixFE());
 
     if (sendTransportData(responseData))
     {
-        emit frameSent(response, responseData);
+        emit frameSent(responseToSend, responseData);
     }
 }
 
@@ -553,6 +657,11 @@ bool ProtocolController::shouldRespondToAddress(const QByteArray &addressBytes) 
         return false;
     }
 
+    if (isBroadcastAddress(addressBytes))
+    {
+        return true;
+    }
+
     const QString requestAddress = ProtocolParser::bytesToAddress(addressBytes);
     if (!m_knownMeterAddresses.contains(requestAddress))
     {
@@ -565,6 +674,20 @@ bool ProtocolController::shouldRespondToAddress(const QByteArray &addressBytes) 
 
 MeterModel *ProtocolController::meterModelForAddress(const QByteArray &addressBytes) const
 {
+    if (isBroadcastAddress(addressBytes))
+    {
+        if (!m_knownMeterAddresses.isEmpty())
+        {
+            const QString &firstAddress = m_knownMeterAddresses.first();
+            if (m_meterModelsByAddress.contains(firstAddress))
+            {
+                return m_meterModelsByAddress.value(firstAddress);
+            }
+        }
+
+        return m_meterModel;
+    }
+
     const QString requestAddress = ProtocolParser::bytesToAddress(addressBytes);
     if (m_meterModelsByAddress.contains(requestAddress))
     {
