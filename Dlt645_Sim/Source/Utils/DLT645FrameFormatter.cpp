@@ -1,4 +1,5 @@
 #include "DLT645FrameFormatter.h"
+#include "Models/StatusWordBitCatalog.h"
 #include "DLT645BlockHandler.h"
 #include "DLT645ValueFormatter.h"
 #include "DLT645FrameFormatterFields.h"
@@ -501,27 +502,9 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
         if (isErrorResponse && dataField.size() == 1)
         {
             const quint8 errorCode = static_cast<quint8>(decodedDataField[0]);
-            QString errorDescription;
-            switch (errorCode)
-            {
-            case 0x01:
-                errorDescription = QStringLiteral("其他错误");
-                break;
-            case 0x02:
-                errorDescription = QStringLiteral("无请求数据");
-                break;
-            case 0x03:
-                errorDescription = QStringLiteral("通信超时");
-                break;
-            case 0x04:
-                errorDescription = QStringLiteral("费率数超");
-                break;
-            default:
-                errorDescription = QStringLiteral("未知错误");
-                break;
-            }
+            const QString errorDescription = StatusWordBitCatalog::describeErrorInfoByte(errorCode);
             detailText += annotatedLine(hexByte(errorCode),
-                                        QStringLiteral("错误信息字"),
+                                        QStringLiteral("错误信息字ERR"),
                                         errorDescription) + QStringLiteral("\n");
         }
         else if (dataField.size() >= 4)
@@ -731,27 +714,9 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
     {
         const QByteArray decodedDataField = DLT645DataHelper::subtract33(dataField);
         const quint8 errorCode = static_cast<quint8>(decodedDataField[0]);
-        QString errorDescription;
-        switch (errorCode)
-        {
-        case 0x01:
-            errorDescription = QString::fromUtf8("其他错误");
-            break;
-        case 0x02:
-            errorDescription = QString::fromUtf8("无请求数据");
-            break;
-        case 0x03:
-            errorDescription = QString::fromUtf8("通信超时");
-            break;
-        case 0x04:
-            errorDescription = QString::fromUtf8("费率数超");
-            break;
-        default:
-            errorDescription = QString::fromUtf8("未知错误");
-            break;
-        }
-        dataText += lineWithValue(QString::fromUtf8("载荷类型："), QString::fromUtf8("异常应答"));
-        dataText += lineWithValue(QString::fromUtf8("错误码："), formatByteHex(errorCode));
+        const QString errorDescription = StatusWordBitCatalog::describeErrorInfoByte(errorCode);
+        dataText += lineWithValue(QString::fromUtf8("报文类型："), QString::fromUtf8("异常应答"));
+        dataText += lineWithValue(QString::fromUtf8("错误信息字ERR："), formatByteHex(errorCode));
         dataText += lineWithValue(QString::fromUtf8("错误描述："), errorDescription);
         appendCard(section, section.title, dataText.trimmed());
         return section;

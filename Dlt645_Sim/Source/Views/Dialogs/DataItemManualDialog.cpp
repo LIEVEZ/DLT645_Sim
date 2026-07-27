@@ -1,6 +1,7 @@
 #include "DataItemManualDialog.h"
 
 #include "Models/DataItem.h"
+#include "Models/StatusWordBitCatalog.h"
 #include "Models/MeterModel.h"
 #include "Services/TermCatalogService.h"
 #include "Utils/UiTheme.h"
@@ -426,12 +427,37 @@ QString parameterDefinitionForDescription(const QString &description)
         definition = QStringLiteral("%1属于设备身份或通信配置参数，用于唯一标识电表并约束通信访问行为。").arg(subject);
     } else if (description.contains(QStringLiteral("状态字数据块"))) {
         definition = QStringLiteral("%1用于集中返回多个电表运行状态字，便于一次读取当前运行标志与功能状态。").arg(subject);
+    } else if (description == QStringLiteral("电表运行状态字3")) {
+        definition = QStringLiteral("%1（操作类）用于描述电表当前运行时段/时区、供电方式、继电器与编程允许、预付费类型及费率/阶梯切换等操作状态。").arg(subject);
+    } else if (description == QStringLiteral("电表运行状态字4")) {
+        definition = QStringLiteral("%1（A相故障状态）用于标识 A 相当前是否发生失压、欠压、过压、失流、过流、过载、潮流反向、断相、断流等故障。").arg(subject);
+    } else if (description == QStringLiteral("电表运行状态字5")) {
+        definition = QStringLiteral("%1（B相故障状态）用于标识 B 相当前是否发生失压、欠压、过压、失流、过流、过载、潮流反向、断相、断流等故障。").arg(subject);
+    } else if (description == QStringLiteral("电表运行状态字6")) {
+        definition = QStringLiteral("%1（C相故障状态）用于标识 C 相当前是否发生失压、欠压、过压、失流、过流、过载、潮流反向、断相、断流等故障。").arg(subject);
+    } else if (description == QStringLiteral("电表运行状态字7")) {
+        definition = QStringLiteral("%1（合相故障状态）用于标识电压/电流逆相序、电压/电流不平衡、辅助电源失电、掉电、需量超限、总功率因数超下限、电流严重不平衡等合相类故障。").arg(subject);
     } else if (description.contains(QStringLiteral("状态字"))) {
         definition = QStringLiteral("%1用于描述电表运行状态或功能标志位，便于主站识别当前配置与运行状态。").arg(subject);
+    } else if (description.contains(QStringLiteral("有功组合方式特征字"))) {
+        definition = QStringLiteral("%1用于配置组合有功电能统计时，正向/反向有功的加、减参与方式。").arg(subject);
+    } else if (description.contains(QStringLiteral("无功组合方式")) && description.contains(QStringLiteral("特征字"))) {
+        definition = QStringLiteral("%1用于配置组合无功电能统计时，I~IV 象限无功的加、减参与方式。").arg(subject);
     } else if (description.contains(QStringLiteral("组合方式"))) {
         definition = QStringLiteral("%1用于定义有功或无功的组合统计口径，影响电能量、需量和相关事件判断。").arg(subject);
+    } else if (description.contains(QStringLiteral("周休日特征字"))) {
+        definition = QStringLiteral("%1用于标识一周内各天是休息日还是工作日，供费率日历与节假日相关逻辑使用。").arg(subject);
+    } else if (description.contains(QStringLiteral("负荷记录模式字"))) {
+        definition = QStringLiteral("%1用于配置负荷记录需要采集的数据类型，如电压电流频率、功率、功率因数、电能和需量等。").arg(subject);
+    } else if (description.contains(QStringLiteral("安全认证错误信息字")) || description.contains(QStringLiteral("SERR"), Qt::CaseInsensitive)) {
+        definition = QStringLiteral("%1（SERR）用于标识安全认证与充值过程中的错误状态，如身份认证失败、ESAM 验证失败、重复充值等。").arg(subject);
+    } else if ((description.contains(QStringLiteral("错误信息字")) && !description.contains(QStringLiteral("安全认证"))) ||
+               description.compare(QStringLiteral("ERR"), Qt::CaseInsensitive) == 0) {
+        definition = QStringLiteral("%1（ERR）是 DLT645 异常应答中的 1 字节错误标志，按位指示无请求数据、密码错、参数超限等错误。").arg(subject);
+    } else if (description.contains(QStringLiteral("冻结")) && description.contains(QStringLiteral("模式字"))) {
+        definition = QStringLiteral("%1用于配置对应冻结类型需要保存的数据通道，如正反向有功、组合无功、四象限无功、最大需量及变量等。").arg(subject);
     } else if (description.contains(QStringLiteral("速率特征字"))) {
-        definition = QStringLiteral("%1用于限制或声明对应通信口支持的通信速率集合。").arg(subject);
+        definition = QStringLiteral("%1用于标识对应通信口当前采用的通信速率，通常仅允许一位为 1。").arg(subject);
     } else if (description.contains(QStringLiteral("周休日"))) {
         definition = QStringLiteral("%1用于定义周休日规则以及周休日采用的日时段表。").arg(subject);
     } else if (description.contains(QStringLiteral("模式字"))) {
@@ -508,8 +534,33 @@ QString parameterFormulaForDescription(const QString &description)
         parts << QStringLiteral("事件判据 = 测量值与阈值比较");
     } else if (description.contains(QStringLiteral("时区表")) || description.contains(QStringLiteral("日时段表"))) {
         parts << QStringLiteral("当前费率 = 日历日期 + 时段表映射结果");
+    } else if (description == QStringLiteral("电表运行状态字1") ||
+               description == QStringLiteral("电表运行状态字2") ||
+               description == QStringLiteral("电表运行状态字3") ||
+               description == QStringLiteral("电表运行状态字4") ||
+               description == QStringLiteral("电表运行状态字5") ||
+               description == QStringLiteral("电表运行状态字6") ||
+               description == QStringLiteral("电表运行状态字7")) {
+        parts << QStringLiteral("参数值 = Bit15..Bit0 状态标志（低字节在前，格式 AA,AA）");
     } else if (description.contains(QStringLiteral("状态字数据块"))) {
         parts << QStringLiteral("数据块 = {状态字1, 状态字2, ..., 状态字7}");
+    } else if (description.contains(QStringLiteral("有功组合方式特征字"))) {
+        parts << QStringLiteral("组合有功 = f(正向有功加减位, 反向有功加减位)");
+    } else if (description.contains(QStringLiteral("无功组合方式")) && description.contains(QStringLiteral("特征字"))) {
+        parts << QStringLiteral("组合无功 = f(I~IV 象限加减位)");
+    } else if (description.contains(QStringLiteral("周休日特征字"))) {
+        parts << QStringLiteral("工作日掩码 = Bit0(日)~Bit6(六)，0 休息 / 1 工作");
+    } else if (description.contains(QStringLiteral("负荷记录模式字"))) {
+        parts << QStringLiteral("记录通道掩码 = Bit0~Bit5，0 不记录 / 1 记录");
+    } else if (description.contains(QStringLiteral("安全认证错误信息字")) || description.contains(QStringLiteral("SERR"), Qt::CaseInsensitive)) {
+        parts << QStringLiteral("SERR = Bit0~Bit6 错误标志（0 无 / 1 有）");
+    } else if ((description.contains(QStringLiteral("错误信息字")) && !description.contains(QStringLiteral("安全认证"))) ||
+               description.compare(QStringLiteral("ERR"), Qt::CaseInsensitive) == 0) {
+        parts << QStringLiteral("ERR = Bit0~Bit6 错误标志（0 无 / 1 有）");
+    } else if (description.contains(QStringLiteral("冻结")) && description.contains(QStringLiteral("模式字"))) {
+        parts << QStringLiteral("冻结通道掩码 = Bit0~Bit7，0 不记录 / 1 记录");
+    } else if (description.contains(QStringLiteral("速率特征字"))) {
+        parts << QStringLiteral("当前速率位 = one-hot(Bit1~Bit6)");
     } else if (description.contains(QStringLiteral("状态字")) || description.contains(QStringLiteral("特征字")) || description.contains(QStringLiteral("模式字"))) {
         parts << QStringLiteral("参数值 = bit flags / coded fields");
     }
@@ -795,6 +846,12 @@ QString energyFormulaForDescription(const QString &description)
 
     return parts.join(QString::fromUtf8("；"));
 }
+
+QString parameterStatusWordBitDefinition(const QString &description)
+{
+    return StatusWordBitCatalog::htmlBitDefinitionForDescription(description);
+}
+
 }
 
 DataItemManualDialog::DataItemManualDialog(QWidget *parent)
@@ -1364,13 +1421,21 @@ TermDefinition DataItemManualDialog::buildParameterDataItemTerm(const DataItem &
 
     term.note = QStringLiteral("DI：%1。可写：%2。协议数据格式：%3。")
         .arg(item.diCode, writable, item.format.isEmpty() ? QStringLiteral("未定义") : item.format);
+
+    const QString bitDefinition = parameterStatusWordBitDefinition(description);
+    if (!bitDefinition.isEmpty()) {
+        term.note += QStringLiteral("<br/><b>位定义：</b><br/>") + bitDefinition;
+    }
+
     term.keywords = QStringList()
         << item.diCode
         << normalizedDiCode(item.diCode).mid(2)
         << item.description
         << QStringLiteral("参变量")
         << QStringLiteral("参数")
-        << QStringLiteral("parameter");
+        << QStringLiteral("parameter")
+        << QStringLiteral("状态字")
+        << QStringLiteral("位定义");
 
     return term;
 }

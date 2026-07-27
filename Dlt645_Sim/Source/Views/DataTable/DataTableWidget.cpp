@@ -4,6 +4,7 @@
 #include "../../Models/MeterModel.h"
 #include "../../Models/CategoryCatalog.h"
 #include "../../Models/DataItem.h"
+#include "../../Models/StatusWordBitCatalog.h"
 #include "../../Models/MeterPhaseType.h"
 #include "../../Models/MeterModelPrivateSupport.h"
 #include <QHBoxLayout>
@@ -35,6 +36,8 @@
 #include <QRegularExpression>
 #include <QSet>
 #include <QTimer>
+#include <QColor>
+#include <QBrush>
 
 namespace
 {
@@ -1839,6 +1842,148 @@ void DataTableWidget::onItemClicked(QTableWidgetItem *item)
     }
 }
 
+bool DataTableWidget::showStatusWordDetailDialog(QTableWidgetItem *item)
+{
+    if (!item || item->column() != 1)
+    {
+        return false;
+    }
+
+    const int row = item->row();
+    QTableWidgetItem *diItem = m_tableWidget->item(row, 0);
+    QTableWidgetItem *descItem = m_tableWidget->item(row, 4);
+    const QString diCode = diItem ? diItem->data(Qt::UserRole).toString() : QString();
+    const QString description = descItem ? descItem->text() : QString();
+
+    StatusWordDefinition definition = StatusWordBitCatalog::definitionForCode(diCode);
+    if (definition.index <= 0)
+    {
+        definition = StatusWordBitCatalog::definitionForDescription(description);
+    }
+    if (definition.fields.isEmpty())
+    {
+        return false;
+    }
+
+    quint16 word = 0;
+    bool ok = false;
+    const QVariant rawValue = item->data(Qt::UserRole);
+    if (rawValue.isValid())
+    {
+        word = static_cast<quint16>(rawValue.toUInt(&ok));
+    }
+    if (!ok)
+    {
+        word = static_cast<quint16>(item->text().trimmed().toUInt(&ok));
+    }
+    if (!ok && m_meterModel)
+    {
+        word = static_cast<quint16>(m_meterModel->getDataValue(diCode).toUInt(&ok));
+    }
+    if (!ok)
+    {
+        word = 0;
+    }
+
+    QDialog dialog(this);
+    const QString windowTitle = definition.subtitle.isEmpty()
+                                    ? QStringLiteral("%1 位对照").arg(definition.title)
+                                    : QStringLiteral("%1（%2）位对照").arg(definition.title, definition.subtitle);
+    dialog.setWindowTitle(windowTitle);
+    dialog.resize(820, 560);
+
+    QVBoxLayout *layout = new QVBoxLayout(&dialog);
+
+    QLabel *titleLabel = new QLabel(
+        QStringLiteral("数据标识：%1\n数据项：%2\n原始值：%3    十六进制：%4    协议字节（低字节在前，按数据格式）：%5")
+            .arg(diCode,
+                 description.isEmpty() ? definition.title : description,
+                 QString::number(word),
+                 StatusWordBitCatalog::formatWordHex(word, definition.byteWidth),
+                 StatusWordBitCatalog::formatProtocolBytes(word, definition.byteWidth)),
+        &dialog);
+    titleLabel->setWordWrap(true);
+    layout->addWidget(titleLabel);
+
+    QLabel *hintLabel = new QLabel(QStringLiteral("提示：下方按位依次对照当前状态字取值与规范含义。表格原始数据值展示保持不变。"), &dialog);
+    hintLabel->setWordWrap(true);
+    layout->addWidget(hintLabel);
+
+    QTableWidget *detailTable = new QTableWidget(definition.fields.size(), 5, &dialog);
+    detailTable->setHorizontalHeaderLabels(QStringList()
+                                           << QStringLiteral("位")
+                                           << QStringLiteral("含义")
+                                           << QStringLiteral("取值说明")
+                                           << QStringLiteral("当前值")
+                                           << QStringLiteral("当前含义"));
+    detailTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    detailTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    detailTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    detailTable->verticalHeader()->setVisible(false);
+    detailTable->horizontalHeader()->setStretchLastSection(true);
+    detailTable->setColumnWidth(0, 90);
+    detailTable->setColumnWidth(1, 160);
+    detailTable->setColumnWidth(2, 260);
+    detailTable->setColumnWidth(3, 80);
+
+    const QColor activeColor(255, 236, 179);
+    const QColor faultColor(255, 205, 210);
+
+    for (int i = 0; i < definition.fields.size(); ++i)
+    {
+        const StatusWordBitField &field = definition.fields.at(i);
+        const int fieldValue = StatusWordBitCatalog::extractFieldValue(word, field);
+        const QString currentValueText = field.bitWidth > 1
+                                             ? QStringLiteral("%1").arg(fieldValue, field.bitWidth, 2, QChar('0'))
+                                             : QString::number(fieldValue);
+        const QString currentMeaning = StatusWordBitCatalog::meaningText(field, fieldValue);
+
+        QTableWidgetItem *bitItem = new QTableWidgetItem(StatusWordBitCatalog::bitRangeLabel(field));
+        bitItem->setTextAlignment(Qt::AlignCenter);
+        detailTable->setItem(i, 0, bitItem);
+
+        detailTable->setItem(i, 1, new QTableWidgetItem(field.name));
+        detailTable->setItem(i, 2, new QTableWidgetItem(StatusWordBitCatalog::meaningsSummary(field)));
+
+        QTableWidgetItem *valueItem = new QTableWidgetItem(currentValueText);
+        valueItem->setTextAlignment(Qt::AlignCenter);
+        detailTable->setItem(i, 3, valueItem);
+
+        QTableWidgetItem *meaningItem = new QTableWidgetItem(currentMeaning);
+        detailTable->setItem(i, 4, meaningItem);
+
+        const bool highlight = !field.reserved && fieldValue != 0;
+        if (highlight)
+        {
+            const QColor bg = (definition.index >= 4) ? faultColor : activeColor;
+            for (int col = 0; col < 5; ++col)
+            {
+                if (QTableWidgetItem *cell = detailTable->item(i, col))
+                {
+                    cell->setBackground(bg);
+                }
+            }
+        }
+    }
+
+    layout->addWidget(detailTable);
+
+    if (!definition.notes.isEmpty())
+    {
+        QLabel *noteLabel = new QLabel(definition.notes.join(QStringLiteral("\n")), &dialog);
+        noteLabel->setWordWrap(true);
+        layout->addWidget(noteLabel);
+    }
+
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    QObject::connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttonBox);
+
+    dialog.exec();
+    return true;
+}
+
 bool DataTableWidget::showValueDetailDialog(QTableWidgetItem *item)
 {
     if (!item || item->column() != 1)
@@ -1985,6 +2130,11 @@ void DataTableWidget::onItemDoubleClicked(QTableWidgetItem *item)
 
     if (item->column() == 1)
     {
+        if (showStatusWordDetailDialog(item))
+        {
+            return;
+        }
+
         if (showValueDetailDialog(item))
         {
             return;

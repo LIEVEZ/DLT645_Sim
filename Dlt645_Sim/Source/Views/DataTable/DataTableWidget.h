@@ -170,6 +170,7 @@ private:
     void updateExportButtonState();
     QString selectedMeterAddress() const;
     void updateItemValue(const QString &diCode, const QVariant &value);
+    bool showStatusWordDetailDialog(QTableWidgetItem *item);
     bool showValueDetailDialog(QTableWidgetItem *item);
     void updateDataCount();
     void updateEmptyState();

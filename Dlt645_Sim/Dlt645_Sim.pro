@@ -39,6 +39,7 @@ SOURCES += \
     Source/Utils/ChecksumHelper.cpp \
     Source/Utils/Logger.cpp \
     Source/Models/DataItem.cpp \
+    Source/Models/StatusWordBitCatalog.cpp \
     Source/Models/ConnectionInfoMapper.cpp \
     Source/Models/CategoryCatalog.cpp \
     Source/Models/MeterModelAccess.cpp \
@@ -100,6 +101,7 @@ HEADERS += \
     Source/Models/ConnectionInfoMapper.h \
     Source/Models/CategoryCatalog.h \
     Source/Models/DataItem.h \
+    Source/Models/StatusWordBitCatalog.h \
     Source/Models/MeterInfo.h \
     Source/Models/MeterModel.h \
     Source/Models/MeterPhaseType.h \

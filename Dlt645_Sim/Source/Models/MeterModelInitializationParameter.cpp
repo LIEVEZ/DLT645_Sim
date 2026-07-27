@@ -97,6 +97,8 @@ void MeterModel::initializeParameterData()
     m_dataItems["0x04000B02"] = DataItem("0x04000B02", "每月第2结算日", QStringLiteral("1500"), "-", "AA,AA", true, 0);
     m_dataItems["0x04000B03"] = DataItem("0x04000B03", "每月第3结算日", QStringLiteral("9999"), "-", "AA,AA", true, 0);
 
+    m_dataItems["0x04000C01"] = DataItem("0x04000C01", "安全认证错误信息字", 0, "-", "AA,AA", true, 0);
+
     m_dataItems["0x04001201"] = DataItem("0x04001201", "整点冻结起始时间", compactDateTimeToMinutes(QDateTime(QDate(now.date().year(), 1, 1), QTime(0, 0))), "-", "AA,AA,AA,AA,AA", true, 0);
     m_dataItems["0x04001202"] = DataItem("0x04001202", "整点冻结时间间隔", 60, "分钟", "AA", true, 0);
     m_dataItems["0x04001203"] = DataItem("0x04001203", "日冻结时间", QStringLiteral("0000"), "-", "AA,AA", true, 0);
