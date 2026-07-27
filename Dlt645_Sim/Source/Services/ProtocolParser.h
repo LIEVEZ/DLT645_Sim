@@ -71,6 +71,9 @@ enum class ControlCode : quint8
     // 事件清零
     ClearEvent = 0x1B,
 
+    // 远程控制（跳合闸、报警、保电）
+    RemoteControl = 0x1C,
+
     // 厂商扩展：读认证状态（应答 0xAA）
     ReadAuthStatus = 0x2A,
 

@@ -1,5 +1,6 @@
 #include "ProtocolController.h"
 #include "Models/DataItem.h"
+#include "Models/StatusWordBitCatalog.h"
 #include "Utils/DLT645DataHelper.h"
 #include "Utils/Logger.h"
 #include "Utils/ChecksumHelper.h"
@@ -7,6 +8,121 @@
 
 namespace
 {
+
+QString statusWordDiCode(int index)
+{
+    return QStringLiteral("0x040005%1")
+        .arg(index, 2, 16, QChar('0'))
+        .toUpper()
+        .replace(QStringLiteral("0X"), QStringLiteral("0x"));
+}
+
+bool isKnownRemoteControlCommand(quint8 command)
+{
+    switch (command)
+    {
+    case 0x1A: // 跳闸
+    case 0x1B: // 合闸
+    case 0x1C: // 直接合闸
+    case 0x2A: // 报警
+    case 0x2B: // 报警解除
+    case 0x3A: // 保电
+    case 0x3B: // 保电解除
+        return true;
+    default:
+        return false;
+    }
+}
+
+QString remoteControlCommandLabel(quint8 command)
+{
+    switch (command)
+    {
+    case 0x1A:
+        return QStringLiteral("跳闸");
+    case 0x1B:
+        return QStringLiteral("合闸");
+    case 0x1C:
+        return QStringLiteral("直接合闸");
+    case 0x2A:
+        return QStringLiteral("报警");
+    case 0x2B:
+        return QStringLiteral("报警解除");
+    case 0x3A:
+        return QStringLiteral("保电");
+    case 0x3B:
+        return QStringLiteral("保电解除");
+    default:
+        return QStringLiteral("未知命令(0x%1)").arg(command, 2, 16, QChar('0')).toUpper();
+    }
+}
+
+void syncStatusWordBlock(MeterModel *meterModel)
+{
+    if (!meterModel)
+    {
+        return;
+    }
+
+    QVariantList block;
+    for (int i = 1; i <= 7; ++i)
+    {
+        block.append(meterModel->getDataValue(statusWordDiCode(i)));
+    }
+    meterModel->setDataValue(QStringLiteral("0x040005FF"), block);
+}
+
+bool applyRemoteControlToStatusWord3(MeterModel *meterModel, quint8 command)
+{
+    if (!meterModel)
+    {
+        return false;
+    }
+
+    const QString statusWord3Code = statusWordDiCode(3);
+    quint16 word = static_cast<quint16>(meterModel->getDataValue(statusWord3Code).toUInt());
+
+    StatusWordBitField singleBit;
+    singleBit.bitWidth = 1;
+
+    auto setBit = [&](int offset, int value) {
+        singleBit.bitOffset = offset;
+        word = StatusWordBitCatalog::applyFieldValue(word, singleBit, value);
+    };
+
+    switch (command)
+    {
+    case 0x1A: // 跳闸：继电器状态/命令状态 -> 断
+        setBit(4, 1);
+        setBit(6, 1);
+        break;
+    case 0x1B: // 合闸：继电器状态/命令状态 -> 通
+    case 0x1C: // 直接合闸：继电器状态/命令状态 -> 通
+        setBit(4, 0);
+        setBit(6, 0);
+        break;
+    case 0x2A: // 报警
+        setBit(7, 1);
+        break;
+    case 0x2B: // 报警解除
+        setBit(7, 0);
+        break;
+    case 0x3A: // 保电：无独立状态位，先保持现状并应答成功
+    case 0x3B: // 保电解除
+        break;
+    default:
+        return false;
+    }
+
+    if (!meterModel->setDataValue(statusWord3Code, word))
+    {
+        return false;
+    }
+    syncStatusWordBlock(meterModel);
+    return true;
+}
+
+
 bool isBroadcastAddress(const QByteArray &addressBytes)
 {
     if (addressBytes.size() != 6)
@@ -175,7 +291,8 @@ void ProtocolController::processReceivedData(const QByteArray &data)
             controlCode == static_cast<quint8>(ControlCode::ReadAuthStatus) ||
             controlCode == static_cast<quint8>(ControlCode::WriteAuthStatus) ||
             controlCode == static_cast<quint8>(ControlCode::ReadAddress) ||
-            controlCode == static_cast<quint8>(ControlCode::WriteAddress);
+            controlCode == static_cast<quint8>(ControlCode::WriteAddress) ||
+            controlCode == static_cast<quint8>(ControlCode::RemoteControl);
 
         if (needsAddressValidation && !shouldRespondToAddress(frame.address))
         {
@@ -227,6 +344,10 @@ void ProtocolController::processReceivedData(const QByteArray &data)
                 ProtocolFrame response = m_protocolParser->buildErrorResponse(frame, 0x03);
                 sendResponse(response, requestMeterModel);
             }
+        }
+        else if (controlCode == static_cast<quint8>(ControlCode::RemoteControl))
+        {
+            processRemoteControlRequest(frame, requestMeterModel);
         }
     }
 }
@@ -466,7 +587,8 @@ void ProtocolController::onResponseTimerTimeout()
             }
         }
         else if ((requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::WriteData) ||
-                 (requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::WriteAuthStatus))
+                 (requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::WriteAuthStatus) ||
+                 (requestFrame.controlCode & 0x7F) == static_cast<quint8>(ControlCode::RemoteControl))
         {
             ProtocolFrame response = m_protocolParser->buildWriteResponse(requestFrame, true);
             sendResponse(response, meterModel);
@@ -538,6 +660,64 @@ void ProtocolController::processWriteAuthStatusRequest(const ProtocolFrame &fram
         emit dataWritten(diCode, value, false);
     }
 }
+
+void ProtocolController::processRemoteControlRequest(const ProtocolFrame &frame, MeterModel *meterModel)
+{
+    LOG_INFO(QStringLiteral("Processing remote-control request: %1").arg(frame.toString()));
+
+    if (!meterModel)
+    {
+        LOG_WARNING(QStringLiteral("Remote control ignored: meter model is null"));
+        return;
+    }
+
+    const QByteArray decoded = DLT645DataHelper::subtract33(frame.dataField);
+    // PA(1) + 密码(3) + 操作者代码(4) + 命令码(1) [+ 保留/参数]
+    if (decoded.size() < 9)
+    {
+        LOG_WARNING(QStringLiteral("Remote control data too short: %1 bytes").arg(decoded.size()));
+        ProtocolFrame response = m_protocolParser->buildErrorResponse(frame, 0x01);
+        sendResponse(response, meterModel);
+        emit protocolError(0x01, QStringLiteral("远程控制数据域长度不足"));
+        return;
+    }
+
+    const quint8 command = static_cast<quint8>(decoded.at(8));
+    if (!isKnownRemoteControlCommand(command))
+    {
+        LOG_WARNING(QStringLiteral("Unsupported remote-control command: 0x%1")
+                        .arg(command, 2, 16, QChar('0'))
+                        .toUpper());
+        ProtocolFrame response = m_protocolParser->buildErrorResponse(frame, 0x01);
+        sendResponse(response, meterModel);
+        emit protocolError(0x01, QStringLiteral("不支持的远程控制命令: 0x%1")
+                                         .arg(command, 2, 16, QChar('0'))
+                                         .toUpper());
+        return;
+    }
+
+    if (!applyRemoteControlToStatusWord3(meterModel, command))
+    {
+        LOG_WARNING(QStringLiteral("Failed to apply remote-control command to status word 3"));
+        ProtocolFrame response = m_protocolParser->buildErrorResponse(frame, 0x03);
+        sendResponse(response, meterModel);
+        emit protocolError(0x03, QStringLiteral("远程控制状态更新失败"));
+        return;
+    }
+
+    const quint16 statusWord3 = static_cast<quint16>(meterModel->getDataValue(statusWordDiCode(3)).toUInt());
+    LOG_INFO(QStringLiteral("Remote control applied: %1, statusWord3=0x%2")
+                 .arg(remoteControlCommandLabel(command))
+                 .arg(statusWord3, 4, 16, QChar('0'))
+                 .toUpper());
+
+    if (m_autoResponseEnabled)
+    {
+        m_pendingResponses.enqueue({frame, meterModel});
+        scheduleNextResponse();
+    }
+}
+
 void ProtocolController::processWriteRequest(const ProtocolFrame &frame, MeterModel *meterModel)
 {
     LOG_INFO(QString("Processing write request: %1").arg(frame.toString()));

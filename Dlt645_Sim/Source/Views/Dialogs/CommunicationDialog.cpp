@@ -870,10 +870,12 @@ QString CommunicationDialog::getControlCodeName(quint8 code) const
         return "读通信地址";
     case 0x14:
         return "写数据";
-    case 0x15:
+    case 0x08:
         return "广播校时";
+    case 0x15:
+        return "写通信地址";
     case 0x16:
-        return "写设备地址";
+        return "冻结命令";
     case 0x17:
         return "更改通信速率";
     case 0x18:
@@ -884,6 +886,10 @@ QString CommunicationDialog::getControlCodeName(quint8 code) const
         return "电表清零";
     case 0x1B:
         return "事件清零";
+    case 0x1C:
+        return "远程控制";
+    case 0x9C:
+        return "远程控制应答";
     case 0x91:
         return "正常应答";
     case 0x92:

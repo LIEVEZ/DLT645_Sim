@@ -79,12 +79,106 @@ QString annotatedLine(const QString &hex, const QString &label, const QString &v
                : QStringLiteral("%1 --- %2:%3").arg(hex, label, value);
 }
 
+QString bcdByteText(quint8 value)
+{
+    return QStringLiteral("%1").arg(value, 2, 16, QChar('0')).toUpper();
+}
+
+QString remoteControlCommandName(quint8 command)
+{
+    switch (command)
+    {
+    case 0x1A:
+        return QStringLiteral("跳闸");
+    case 0x1B:
+        return QStringLiteral("合闸");
+    case 0x1C:
+        return QStringLiteral("直接合闸");
+    case 0x2A:
+        return QStringLiteral("报警");
+    case 0x2B:
+        return QStringLiteral("报警解除");
+    case 0x3A:
+        return QStringLiteral("保电");
+    case 0x3B:
+        return QStringLiteral("保电解除");
+    default:
+        return QStringLiteral("未知控制命令(0x%1)").arg(command, 2, 16, QChar('0')).toUpper();
+    }
+}
+
+QString formatRemoteControlDeadline(const QByteArray &timeBytes)
+{
+    if (timeBytes.size() < 6)
+    {
+        return QString();
+    }
+
+    // ss mm HH dd MM yy（BCD）
+    return QStringLiteral("%1年%2月%3日%4时%5分%6秒")
+        .arg(bcdByteText(static_cast<quint8>(timeBytes.at(5))),
+             bcdByteText(static_cast<quint8>(timeBytes.at(4))),
+             bcdByteText(static_cast<quint8>(timeBytes.at(3))),
+             bcdByteText(static_cast<quint8>(timeBytes.at(2))),
+             bcdByteText(static_cast<quint8>(timeBytes.at(1))),
+             bcdByteText(static_cast<quint8>(timeBytes.at(0))));
+}
+
+QString formatRemoteControlCommandDetail(const QByteArray &commandBytes)
+{
+    if (commandBytes.isEmpty())
+    {
+        return QStringLiteral("命令数据为空");
+    }
+
+    const quint8 command = static_cast<quint8>(commandBytes.at(0));
+    const QString commandName = remoteControlCommandName(command);
+
+    // N1 命令码，N2 保留，N3~N8 命令参数（合闸/直接合闸为截止时间）
+    if (commandBytes.size() >= 8)
+    {
+        const QString deadline = formatRemoteControlDeadline(commandBytes.mid(2, 6));
+        if ((command == 0x1B || command == 0x1C) && !deadline.isEmpty())
+        {
+            return QStringLiteral("%1, 截止时间:%2").arg(commandName, deadline);
+        }
+        if (!deadline.isEmpty() && (command == 0x1A || command == 0x2A || command == 0x2B || command == 0x3A || command == 0x3B))
+        {
+            return QStringLiteral("%1, 命令参数:%2").arg(commandName, DLT645FrameFormatter::formatHex(commandBytes.mid(2, 6)));
+        }
+        if (!deadline.isEmpty())
+        {
+            return QStringLiteral("%1, 截止时间:%2").arg(commandName, deadline);
+        }
+    }
+
+    if (commandBytes.size() > 1)
+    {
+        return QStringLiteral("%1, 参数:%2")
+            .arg(commandName, DLT645FrameFormatter::formatHex(commandBytes.mid(1)));
+    }
+    return commandName;
+}
+
+QString formatPasswordDigits(const QByteArray &passwordBytes)
+{
+    return DLT645FrameFormatter::formatHex(passwordBytes, false);
+}
+
+QString formatOperatorCodeDigits(const QByteArray &operatorBytes)
+{
+    return DLT645FrameFormatter::formatHex(operatorBytes, false);
+}
+
 QString controlCodeDetail(quint8 code)
 {
     const quint8 functionCode = code & 0x1F;
     QString functionText;
     switch (functionCode)
     {
+    case 0x08:
+        functionText = QStringLiteral("广播校时");
+        break;
     case 0x11:
         functionText = QStringLiteral("读数据");
         break;
@@ -101,25 +195,25 @@ QString controlCodeDetail(quint8 code)
         functionText = QStringLiteral("写通信地址");
         break;
     case 0x16:
-        functionText = QStringLiteral("广播校时");
+        functionText = QStringLiteral("冻结命令");
         break;
     case 0x17:
-        functionText = QStringLiteral("冻结");
-        break;
-    case 0x18:
         functionText = QStringLiteral("更改通信速率");
         break;
-    case 0x19:
+    case 0x18:
         functionText = QStringLiteral("修改密码");
         break;
-    case 0x1A:
+    case 0x19:
         functionText = QStringLiteral("最大需量清零");
         break;
-    case 0x1B:
+    case 0x1A:
         functionText = QStringLiteral("电表清零");
         break;
-    case 0x1C:
+    case 0x1B:
         functionText = QStringLiteral("事件清零");
+        break;
+    case 0x1C:
+        functionText = QStringLiteral("远程控制");
         break;
     default:
         functionText = DLT645FrameFormatter::controlCodeName(code);
@@ -499,6 +593,7 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
 
         // 检查是否为异常应答（控制码 bit6=1 表示异常）
         const bool isErrorResponse = hasControlCode && (controlCode & 0x40) != 0;
+        const quint8 functionCode = hasControlCode ? static_cast<quint8>(controlCode & 0x1F) : 0x00;
         if (isErrorResponse && dataField.size() == 1)
         {
             const quint8 errorCode = static_cast<quint8>(decodedDataField[0]);
@@ -506,6 +601,37 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
             detailText += annotatedLine(hexByte(errorCode),
                                         QStringLiteral("错误信息字ERR"),
                                         errorDescription) + QStringLiteral("\n");
+        }
+        else if (functionCode == 0x1C)
+        {
+            // 远程控制：PA + 密码3字节 + 操作者代码4字节 + 命令码/参数
+            if (decodedDataField.size() >= 8)
+            {
+                const QByteArray authorityBytes = decodedDataField.left(4);
+                const QByteArray operatorBytes = decodedDataField.mid(4, 4);
+                const QByteArray commandBytes = decodedDataField.mid(8);
+
+                const quint8 permission = static_cast<quint8>(authorityBytes.at(0));
+                const QString passwordText = formatPasswordDigits(authorityBytes.mid(1, 3));
+                const QString operatorText = formatOperatorCodeDigits(operatorBytes);
+
+                detailText += annotatedLine(DLT645FrameFormatter::formatHex(authorityBytes),
+                                            QStringLiteral("权限:%1, 密码:%2")
+                                                .arg(bcdByteText(permission), passwordText)) + QStringLiteral("\n");
+                detailText += annotatedLine(DLT645FrameFormatter::formatHex(operatorBytes),
+                                            QStringLiteral("操作者代码:%1").arg(operatorText)) + QStringLiteral("\n");
+                if (!commandBytes.isEmpty())
+                {
+                    detailText += annotatedLine(DLT645FrameFormatter::formatHex(commandBytes),
+                                                formatRemoteControlCommandDetail(commandBytes)) + QStringLiteral("\n");
+                }
+            }
+            else if (!decodedDataField.isEmpty())
+            {
+                detailText += annotatedLine(DLT645FrameFormatter::formatHex(decodedDataField),
+                                            QStringLiteral("远程控制数据"),
+                                            QStringLiteral("长度不足，无法拆分权限/密码/操作者代码")) + QStringLiteral("\n");
+            }
         }
         else if (dataField.size() >= 4)
         {
@@ -684,6 +810,42 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
         {
             dataText += lineWithValue(QString::fromUtf8("载荷类型："), QString::fromUtf8("读地址请求"));
             dataText += lineWithValue(QString::fromUtf8("解析说明："), QString::fromUtf8("该请求帧不携带数据域，用于读取目标电表通信地址。"));
+        }
+
+        appendCard(section, section.title, dataText.trimmed());
+        return section;
+    }
+
+    if (baseControlCode == 0x1C)
+    {
+        QString dataText;
+        const QByteArray decodedDataField = DLT645DataHelper::subtract33(dataField);
+        dataText += lineWithValue(QString::fromUtf8("报文类型："), QString::fromUtf8(isResponse ? "远程控制应答" : "远程控制请求"));
+        dataText += lineWithValue(QString::fromUtf8("原始DATA："), DLT645FrameFormatter::formatHex(dataField));
+        dataText += lineWithValue(QString::fromUtf8("-33DATA："), DLT645FrameFormatter::formatHex(decodedDataField));
+
+        if (decodedDataField.size() >= 8)
+        {
+            const QByteArray authorityBytes = decodedDataField.left(4);
+            const QByteArray operatorBytes = decodedDataField.mid(4, 4);
+            const QByteArray commandBytes = decodedDataField.mid(8);
+            const quint8 permission = static_cast<quint8>(authorityBytes.at(0));
+            dataText += lineWithValue(QString::fromUtf8("权限："), bcdByteText(permission));
+            dataText += lineWithValue(QString::fromUtf8("密码："), formatPasswordDigits(authorityBytes.mid(1, 3)));
+            dataText += lineWithValue(QString::fromUtf8("操作者代码："), formatOperatorCodeDigits(operatorBytes));
+            if (!commandBytes.isEmpty())
+            {
+                dataText += lineWithValue(QString::fromUtf8("控制命令："), formatRemoteControlCommandDetail(commandBytes));
+                dataText += lineWithValue(QString::fromUtf8("命令字节："), DLT645FrameFormatter::formatHex(commandBytes));
+            }
+        }
+        else if (!decodedDataField.isEmpty())
+        {
+            dataText += lineWithValue(QString::fromUtf8("解析说明："), QString::fromUtf8("远程控制数据长度不足，无法拆分权限/密码/操作者代码。"));
+        }
+        else
+        {
+            dataText += lineWithValue(QString::fromUtf8("解析说明："), QString::fromUtf8("远程控制应答通常无数据域。"));
         }
 
         appendCard(section, section.title, dataText.trimmed());
@@ -936,22 +1098,26 @@ QString DLT645FrameFormatter::controlCodeName(quint8 code)
         return QString::fromUtf8("读通信地址");
     case 0x14:
         return QString::fromUtf8("写数据");
+    case 0x08:
+        return QString::fromUtf8("广播校时");
     case 0x15:
         return QString::fromUtf8("写通信地址");
     case 0x16:
-        return QString::fromUtf8("广播校时");
+        return QString::fromUtf8("冻结命令");
     case 0x17:
-        return QString::fromUtf8("冻结");
-    case 0x18:
         return QString::fromUtf8("更改通信速率");
-    case 0x19:
+    case 0x18:
         return QString::fromUtf8("修改密码");
-    case 0x1A:
+    case 0x19:
         return QString::fromUtf8("最大需量清零");
-    case 0x1B:
+    case 0x1A:
         return QString::fromUtf8("电表清零");
-    case 0x1C:
+    case 0x1B:
         return QString::fromUtf8("事件清零");
+    case 0x1C:
+        return QString::fromUtf8("远程控制");
+    case 0x9C:
+        return QString::fromUtf8("远程控制应答");
     case 0x2A:
         return QString::fromUtf8("读认证状态");
     case 0x2F:
