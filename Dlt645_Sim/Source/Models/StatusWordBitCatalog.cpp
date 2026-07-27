@@ -731,6 +731,67 @@ QString htmlBitDefinitionForDescription(const QString &description)
     return htmlBitDefinition(definitionForDescription(description));
 }
 
+QStringList detailLinesForWord(const StatusWordDefinition &definition, quint16 word)
+{
+    if (definition.fields.isEmpty()) {
+        return {};
+    }
+
+    QStringList lines;
+    const QString title = definition.subtitle.isEmpty()
+                              ? definition.title
+                              : QStringLiteral("%1（%2）").arg(definition.title, definition.subtitle);
+    lines << QStringLiteral("位解析：%1 = %2")
+                 .arg(title.isEmpty() ? QStringLiteral("状态字") : title,
+                      formatWordHex(word, definition.byteWidth));
+
+    for (const StatusWordBitField &field : definition.fields) {
+        if (field.reserved) {
+            continue;
+        }
+
+        const int fieldValue = extractFieldValue(word, field);
+        QString valueBits;
+        if (field.bitWidth > 1) {
+            valueBits = QStringLiteral("%1").arg(fieldValue, field.bitWidth, 2, QChar('0'));
+        } else {
+            valueBits = QString::number(fieldValue);
+        }
+
+        lines << QStringLiteral("  %1 %2: %3 %4")
+                     .arg(bitRangeLabel(field),
+                          field.name,
+                          valueBits,
+                          meaningText(field, fieldValue));
+    }
+
+    return lines;
+}
+
+QStringList detailLinesForPayload(const QString &diCode, const QByteArray &payload)
+{
+    const StatusWordDefinition definition = definitionForCode(diCode);
+    if (definition.fields.isEmpty()) {
+        return {};
+    }
+
+    const int width = qBound(1, definition.byteWidth, 2);
+    if (payload.size() < width) {
+        return {};
+    }
+
+    quint16 word = 0;
+    if (width <= 1) {
+        word = static_cast<quint8>(payload.at(0));
+    } else {
+        // 协议传输低字节在前：06 00 => 0x0006
+        word = static_cast<quint16>(static_cast<quint8>(payload.at(0))
+                                    | (static_cast<quint16>(static_cast<quint8>(payload.at(1))) << 8));
+    }
+
+    return detailLinesForWord(definition, word);
+}
+
 QString describeErrorInfoByte(quint8 errorCode)
 {
     const StatusWordDefinition definition = definitionForDescription(QStringLiteral("错误信息字"));

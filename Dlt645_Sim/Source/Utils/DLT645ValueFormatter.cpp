@@ -5,6 +5,7 @@
 #include "DLT645FrameFormatterValueDisplay.h"
 
 #include "Models/DataItem.h"
+#include "Models/StatusWordBitCatalog.h"
 #include "Models/MeterModel.h"
 #include "Utils/BCDHelper.h"
 #include "Utils/DLT645DataHelper.h"
@@ -194,7 +195,17 @@ QString byteBreakdownLines(const QString &diCode,
     const QStringList formatParts = format.split(QStringLiteral(":"), Qt::SkipEmptyParts);
     if (formatParts.isEmpty())
     {
-        return decodedValueWithFieldDescriptions(diCode, appendUnit(fallbackDecodedValue, unit));
+        QString text = decodedValueWithFieldDescriptions(diCode, appendUnit(fallbackDecodedValue, unit));
+        const QStringList bitLines = StatusWordBitCatalog::detailLinesForPayload(diCode, payload);
+        if (!bitLines.isEmpty())
+        {
+            if (!text.isEmpty())
+            {
+                text += QStringLiteral("\n");
+            }
+            text += bitLines.join(QStringLiteral("\n"));
+        }
+        return text;
     }
 
     QStringList lines;
@@ -204,7 +215,17 @@ QString byteBreakdownLines(const QString &diCode,
         const int size = DLT645DataHelper::bytesRequiredForFormat(formatParts.at(i));
         if (size <= 0 || offset + size > payload.size())
         {
-            return decodedValueWithFieldDescriptions(diCode, appendUnit(fallbackDecodedValue, unit));
+            QString text = decodedValueWithFieldDescriptions(diCode, appendUnit(fallbackDecodedValue, unit));
+            const QStringList bitLines = StatusWordBitCatalog::detailLinesForPayload(diCode, payload);
+            if (!bitLines.isEmpty())
+            {
+                if (!text.isEmpty())
+                {
+                    text += QStringLiteral("\n");
+                }
+                text += bitLines.join(QStringLiteral("\n"));
+            }
+            return text;
         }
 
         const QByteArray fieldBytes = payload.mid(offset, size);
@@ -237,6 +258,12 @@ QString byteBreakdownLines(const QString &diCode,
     {
         lines.append(annotatedLine(DLT645FrameFormatter::formatHex(payload.mid(offset)),
                                    QStringLiteral("未匹配剩余数据")));
+    }
+
+    const QStringList bitLines = StatusWordBitCatalog::detailLinesForPayload(diCode, payload);
+    if (!bitLines.isEmpty())
+    {
+        lines.append(bitLines);
     }
 
     return lines.join(QStringLiteral("\n"));
@@ -356,6 +383,11 @@ QString blockByteBreakdownLines(const MeterModel *meterModel, const QString &blo
                          .arg(DLT645FrameFormatter::formatHex(fieldBytes),
                               description.isEmpty() ? code : description,
                               appendUnit(value.isEmpty() ? DLT645FrameFormatter::formatHex(fieldBytes) : value, unit)));
+        const QStringList bitLines = StatusWordBitCatalog::detailLinesForPayload(code, fieldBytes);
+        if (!bitLines.isEmpty())
+        {
+            lines.append(bitLines);
+        }
         offset += size;
     }
 

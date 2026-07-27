@@ -1,6 +1,7 @@
 #ifndef STATUSWORDBITCATALOG_H
 #define STATUSWORDBITCATALOG_H
 
+#include <QByteArray>
 #include <QMap>
 #include <QString>
 #include <QStringList>
@@ -59,6 +60,8 @@ QString formatProtocolBytes(quint16 word, int byteWidth = 2);
 QString htmlBitDefinition(const StatusWordDefinition &definition);
 QString htmlBitDefinitionForDescription(const QString &description);
 QString describeErrorInfoByte(quint8 errorCode);
+QStringList detailLinesForWord(const StatusWordDefinition &definition, quint16 word);
+QStringList detailLinesForPayload(const QString &diCode, const QByteArray &payload);
 }
 
 #endif // STATUSWORDBITCATALOG_H
