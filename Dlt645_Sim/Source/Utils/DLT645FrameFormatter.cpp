@@ -134,21 +134,17 @@ QString formatRemoteControlCommandDetail(const QByteArray &commandBytes)
     const quint8 command = static_cast<quint8>(commandBytes.at(0));
     const QString commandName = remoteControlCommandName(command);
 
-    // N1 命令码，N2 保留，N3~N8 命令参数（合闸/直接合闸为截止时间）
+    // N1 命令码，N2 保留，N3~N8 为 ss mm HH dd MM yy（BCD）。
     if (commandBytes.size() >= 8)
     {
-        const QString deadline = formatRemoteControlDeadline(commandBytes.mid(2, 6));
-        if ((command == 0x1B || command == 0x1C) && !deadline.isEmpty())
+        const QString commandTime = formatRemoteControlDeadline(commandBytes.mid(2, 6));
+        if ((command == 0x1B || command == 0x1C) && !commandTime.isEmpty())
         {
-            return QStringLiteral("%1, 截止时间:%2").arg(commandName, deadline);
+            return QStringLiteral("%1, 截止时间:%2").arg(commandName, commandTime);
         }
-        if (!deadline.isEmpty() && (command == 0x1A || command == 0x2A || command == 0x2B || command == 0x3A || command == 0x3B))
+        if (!commandTime.isEmpty())
         {
-            return QStringLiteral("%1, 命令参数:%2").arg(commandName, DLT645FrameFormatter::formatHex(commandBytes.mid(2, 6)));
-        }
-        if (!deadline.isEmpty())
-        {
-            return QStringLiteral("%1, 截止时间:%2").arg(commandName, deadline);
+            return QStringLiteral("%1, 命令时间:%2").arg(commandName, commandTime);
         }
     }
 

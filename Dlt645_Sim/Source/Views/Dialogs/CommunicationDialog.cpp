@@ -31,6 +31,59 @@
 
 namespace
 {
+    QString remoteControlCommandName(quint8 command)
+    {
+        switch (command)
+        {
+        case 0x1A:
+            return QStringLiteral("跳闸");
+        case 0x1B:
+            return QStringLiteral("合闸");
+        case 0x1C:
+            return QStringLiteral("直接合闸");
+        case 0x2A:
+            return QStringLiteral("报警");
+        case 0x2B:
+            return QStringLiteral("报警解除");
+        case 0x3A:
+            return QStringLiteral("保电");
+        case 0x3B:
+            return QStringLiteral("保电解除");
+        default:
+            return QStringLiteral("未知命令(0x%1)").arg(command, 2, 16, QChar('0')).toUpper();
+        }
+    }
+
+    quint8 extractRemoteControlCommand(const QByteArray &fullFrame)
+    {
+        const QByteArray protocolFrame = DLT645DataHelper::stripLeadingFE(fullFrame);
+        if (protocolFrame.size() < 12)
+        {
+            return 0;
+        }
+
+        const quint8 controlCode = static_cast<quint8>(protocolFrame[8]);
+        if ((controlCode & 0x7F) != 0x1C)
+        {
+            return 0;
+        }
+
+        const int declaredDataLength = static_cast<quint8>(protocolFrame[9]);
+        const int availableDataLength = protocolFrame.size() - 12;
+        const int actualDataLength = qMin(declaredDataLength, qMax(0, availableDataLength));
+        if (actualDataLength < 9)
+        {
+            return 0;
+        }
+
+        const QByteArray decoded = DLT645DataHelper::subtract33(protocolFrame.mid(10, actualDataLength));
+        if (decoded.size() < 9)
+        {
+            return 0;
+        }
+        return static_cast<quint8>(decoded.at(8));
+    }
+
     QString displayMessageDiCode(const QByteArray &fullFrame)
     {
         const QByteArray protocolFrame = DLT645DataHelper::stripLeadingFE(fullFrame);
@@ -41,6 +94,12 @@ namespace
 
         const quint8 controlCode = static_cast<quint8>(protocolFrame[8]);
         const quint8 baseControlCode = controlCode & 0x7F;
+        if (baseControlCode == 0x1C)
+        {
+            // 远程控制无 DI，用功能名占位，便于列表识别
+            return QStringLiteral("远程控制");
+        }
+
         const bool hasDataIdentifier = baseControlCode == 0x11 ||
                                        baseControlCode == 0x12 ||
                                        baseControlCode == 0x14 ||
@@ -811,8 +870,30 @@ QString CommunicationDialog::formatAscii(const QByteArray &data) const
 
 QString CommunicationDialog::getMessageDiDescription(const QByteArray &fullFrame) const
 {
+    const QByteArray protocolFrame = DLT645DataHelper::stripLeadingFE(fullFrame);
+    if (protocolFrame.size() >= 9)
+    {
+        const quint8 controlCode = static_cast<quint8>(protocolFrame[8]);
+        if ((controlCode & 0x7F) == 0x1C)
+        {
+            const bool isResponse = (controlCode & 0x80) != 0;
+            const bool isError = (controlCode & 0x40) != 0;
+            if (isResponse)
+            {
+                return isError ? QStringLiteral("远程控制异常应答") : QStringLiteral("远程控制应答");
+            }
+
+            const quint8 command = extractRemoteControlCommand(fullFrame);
+            if (command == 0)
+            {
+                return QStringLiteral("远程控制");
+            }
+            return QStringLiteral("远程控制-%1").arg(remoteControlCommandName(command));
+        }
+    }
+
     QString diCode = displayMessageDiCode(fullFrame);
-    if (diCode == QStringLiteral("-") || diCode.isEmpty())
+    if (diCode == QStringLiteral("-") || diCode.isEmpty() || diCode == QStringLiteral("远程控制"))
     {
         return QStringLiteral("-");
     }

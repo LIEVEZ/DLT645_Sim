@@ -7,6 +7,7 @@
 class QCheckBox;
 class QCloseEvent;
 class QComboBox;
+class QDateTimeEdit;
 class QLabel;
 class QLineEdit;
 class QListWidget;
@@ -51,7 +52,8 @@ private:
     enum class FrameOperationMode
     {
         ReadData,
-        WriteData
+        WriteData,
+        RemoteControl
     };
 
     void setupUI();
@@ -65,6 +67,7 @@ private:
     const MeterModel *dataSourceModel() const;
     FrameOperationMode currentOperationMode() const;
     bool isWriteMode() const;
+    bool isRemoteControlMode() const;
     bool supportsCurrentMode(const DataItem &item) const;
     QString selectedDiCode() const;
     QString selectedDiDescription() const;
@@ -81,6 +84,7 @@ private:
     QComboBox *m_modeComboBox;
     QComboBox *m_categoryComboBox;
     QLineEdit *m_searchEdit;
+    QGroupBox *m_dataItemGroup;
     QListWidget *m_dataItemList;
     QLabel *m_selectedDiLabel;
     QGroupBox *m_writeGroup;
@@ -89,6 +93,8 @@ private:
     QLineEdit *m_writeOperatorCodeEdit;
     QLabel *m_writeValueLabel;
     QLineEdit *m_writeValueEdit;
+    QLabel *m_remoteControlTimeLabel;
+    QDateTimeEdit *m_remoteControlDateTimeEdit;
     QLabel *m_writeHintLabel;
     QLineEdit *m_spacedHexEdit;
     QLineEdit *m_compactHexEdit;

@@ -139,6 +139,25 @@ public:
                                     bool includePrefixFE = true);
 
     /**
+     * @brief 构建远程控制请求帧
+     * @param address 电表地址
+     * @param command 命令码（跳闸 0x1A、合闸 0x1B 等）
+     * @param commandParameters N2 保留字节和 N3~N8 时间，共 7 字节；不足部分补 0
+     * @param permission 权限级别（2位数字）
+     * @param password 密码（6位数字）
+     * @param operatorCode 操作者代码（8位数字）
+     * @param includePrefixFE 是否包含前导FE
+     * @return 协议帧
+     */
+    ProtocolFrame buildRemoteControlRequest(const QByteArray &address,
+                                            quint8 command,
+                                            const QByteArray &commandParameters,
+                                            const QString &permission,
+                                            const QString &password,
+                                            const QString &operatorCode,
+                                            bool includePrefixFE = true);
+
+    /**
      * @brief 构建读数据应答帧
      * @param requestFrame 请求帧
      * @param dataValue 数据值

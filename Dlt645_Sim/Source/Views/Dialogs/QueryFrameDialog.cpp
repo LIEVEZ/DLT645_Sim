@@ -12,6 +12,8 @@
 #include <QCheckBox>
 #include <QClipboard>
 #include <QComboBox>
+#include <QDateTime>
+#include <QDateTimeEdit>
 #include <QFont>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -44,6 +46,46 @@ namespace
         QString name;
         QStringList prefixes;
     };
+
+    struct RemoteControlCommandDefinition
+    {
+        quint8 command;
+        QString name;
+    };
+
+    QList<RemoteControlCommandDefinition> remoteControlCommandDefinitions()
+    {
+        return {
+            {0x1A, QStringLiteral("跳闸")},
+            {0x1B, QStringLiteral("合闸")},
+            {0x1C, QStringLiteral("直接合闸")},
+            {0x2A, QStringLiteral("报警")},
+            {0x2B, QStringLiteral("报警解除")},
+            {0x3A, QStringLiteral("保电")},
+            {0x3B, QStringLiteral("保电解除")}};
+    }
+
+    char toBcdByte(int value)
+    {
+        return static_cast<char>(((value / 10) << 4) | (value % 10));
+    }
+
+    QByteArray remoteControlTimeParameters(const QDateTime &dateTime)
+    {
+        const QDate date = dateTime.date();
+        const QTime time = dateTime.time();
+
+        QByteArray parameters;
+        parameters.reserve(7);
+        parameters.append(static_cast<char>(0x00)); // N2 保留
+        parameters.append(toBcdByte(time.second()));
+        parameters.append(toBcdByte(time.minute()));
+        parameters.append(toBcdByte(time.hour()));
+        parameters.append(toBcdByte(date.day()));
+        parameters.append(toBcdByte(date.month()));
+        parameters.append(toBcdByte(date.year() % 100));
+        return parameters;
+    }
 
     CategorySelection parseCategorySelection(const QString &category)
     {
@@ -273,6 +315,7 @@ QueryFrameDialog::QueryFrameDialog(QWidget *parent)
       m_modeComboBox(nullptr),
       m_categoryComboBox(nullptr),
       m_searchEdit(nullptr),
+      m_dataItemGroup(nullptr),
       m_dataItemList(nullptr),
       m_selectedDiLabel(nullptr),
       m_writeGroup(nullptr),
@@ -281,6 +324,8 @@ QueryFrameDialog::QueryFrameDialog(QWidget *parent)
       m_writeOperatorCodeEdit(nullptr),
       m_writeValueLabel(nullptr),
       m_writeValueEdit(nullptr),
+      m_remoteControlTimeLabel(nullptr),
+      m_remoteControlDateTimeEdit(nullptr),
       m_writeHintLabel(nullptr),
       m_spacedHexEdit(nullptr),
       m_compactHexEdit(nullptr),
@@ -361,7 +406,7 @@ QString queryFrameStyleTemplate()
             font-family: "Microsoft YaHei UI";
         }
 
-        QLineEdit, QListWidget, QComboBox {
+        QLineEdit, QListWidget, QComboBox, QDateTimeEdit {
             background-color: {{panelBg}};
             color: {{text}};
             border: 1px solid {{border}};
@@ -369,7 +414,7 @@ QString queryFrameStyleTemplate()
             padding: 5px;
         }
 
-        QLineEdit:focus, QListWidget:focus, QComboBox:focus {
+        QLineEdit:focus, QListWidget:focus, QComboBox:focus, QDateTimeEdit:focus {
             border: 1px solid {{accent}};
         }
 
@@ -538,8 +583,12 @@ void QueryFrameDialog::setupUI()
     formLayout->addRow(QString::fromUtf8("帧选项:"), m_includePrefixCheckBox);
 
     m_modeComboBox = new QComboBox(configGroup);
-    m_modeComboBox->addItem(QString::fromUtf8("读数据帧"));
-    m_modeComboBox->addItem(QString::fromUtf8("写数据帧"));
+    m_modeComboBox->addItem(QString::fromUtf8("读数据帧"),
+                            static_cast<int>(FrameOperationMode::ReadData));
+    m_modeComboBox->addItem(QString::fromUtf8("写数据帧"),
+                            static_cast<int>(FrameOperationMode::WriteData));
+    m_modeComboBox->addItem(QString::fromUtf8("远程控制帧"),
+                            static_cast<int>(FrameOperationMode::RemoteControl));
     formLayout->addRow(QString::fromUtf8("操作类型:"), m_modeComboBox);
 
     m_searchEdit = new QLineEdit(configGroup);
@@ -553,18 +602,18 @@ void QueryFrameDialog::setupUI()
     configLayout->addLayout(formLayout);
     mainLayout->addWidget(configGroup);
 
-    QGroupBox *dataItemGroup = new QGroupBox(QString::fromUtf8("数据标识"), this);
-    QVBoxLayout *dataItemLayout = new QVBoxLayout(dataItemGroup);
+    m_dataItemGroup = new QGroupBox(QString::fromUtf8("数据标识"), this);
+    QVBoxLayout *dataItemLayout = new QVBoxLayout(m_dataItemGroup);
 
-    m_dataItemList = new QListWidget(dataItemGroup);
+    m_dataItemList = new QListWidget(m_dataItemGroup);
     m_dataItemList->setSelectionMode(QAbstractItemView::SingleSelection);
     dataItemLayout->addWidget(m_dataItemList);
 
-    m_selectedDiLabel = new QLabel(QString::fromUtf8("当前未选择数据标识"), dataItemGroup);
+    m_selectedDiLabel = new QLabel(QString::fromUtf8("当前未选择数据标识"), m_dataItemGroup);
     m_selectedDiLabel->setWordWrap(true);
     dataItemLayout->addWidget(m_selectedDiLabel);
 
-    mainLayout->addWidget(dataItemGroup, 1);
+    mainLayout->addWidget(m_dataItemGroup, 1);
 
     m_writeGroup = new QGroupBox(QString::fromUtf8("写入数据"), this);
     QVBoxLayout *writeLayout = new QVBoxLayout(m_writeGroup);
@@ -598,6 +647,16 @@ void QueryFrameDialog::setupUI()
     m_writeValueEdit->setClearButtonEnabled(true);
     m_writeValueEdit->setPlaceholderText(QString::fromUtf8("输入写入数据，非数字字符会自动忽略"));
     writeFormLayout->addRow(m_writeValueLabel, m_writeValueEdit);
+
+    m_remoteControlTimeLabel = new QLabel(QString::fromUtf8("命令时间:"), m_writeGroup);
+    m_remoteControlDateTimeEdit = new QDateTimeEdit(QDateTime::currentDateTime(), m_writeGroup);
+    m_remoteControlDateTimeEdit->setCalendarPopup(true);
+    m_remoteControlDateTimeEdit->setDisplayFormat(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    m_remoteControlDateTimeEdit->setMinimumDateTime(
+        QDateTime(QDate(2000, 1, 1), QTime(0, 0, 0)));
+    m_remoteControlDateTimeEdit->setMaximumDateTime(
+        QDateTime(QDate(2099, 12, 31), QTime(23, 59, 59)));
+    writeFormLayout->addRow(m_remoteControlTimeLabel, m_remoteControlDateTimeEdit);
     writeLayout->addLayout(writeFormLayout);
 
     m_writeHintLabel = new QLabel(m_writeGroup);
@@ -663,6 +722,8 @@ void QueryFrameDialog::setupUI()
             this, &QueryFrameDialog::onInputChanged);
     connect(m_writeValueEdit, &QLineEdit::textChanged,
             this, &QueryFrameDialog::onInputChanged);
+    connect(m_remoteControlDateTimeEdit, &QDateTimeEdit::dateTimeChanged,
+            this, &QueryFrameDialog::onInputChanged);
     connect(m_copySpacedButton, &QPushButton::clicked,
             this, &QueryFrameDialog::onCopySpacedClicked);
     connect(m_copyCompactButton, &QPushButton::clicked,
@@ -680,6 +741,12 @@ void QueryFrameDialog::populateCategories()
     const QString previousCategory = m_categoryComboBox->currentText();
 
     m_categoryComboBox->clear();
+    if (isRemoteControlMode())
+    {
+        m_categoryComboBox->addItem(QString::fromUtf8("远程控制命令"));
+        return;
+    }
+
     for (const QString &category : allCategories())
     {
         const QList<QString> diCodes = dataCodesForCategory(category);
@@ -715,9 +782,56 @@ void QueryFrameDialog::populateDataItems()
     const QSignalBlocker blocker(m_dataItemList);
     m_dataItemList->clear();
 
-    const MeterModel *sourceModel = dataSourceModel();
     const QString filterText = m_searchEdit->text().trimmed();
     const bool hasFilter = !filterText.isEmpty();
+
+    m_dataItemGroup->setTitle(isRemoteControlMode() ? QString::fromUtf8("控制命令")
+                                                    : QString::fromUtf8("数据标识"));
+    m_searchEdit->setPlaceholderText(
+        isRemoteControlMode() ? QString::fromUtf8("搜索命令码或命令名称")
+                              : QString::fromUtf8("全局搜索 DI 或描述，类型将自动匹配"));
+
+    if (isRemoteControlMode())
+    {
+        for (const RemoteControlCommandDefinition &definition : remoteControlCommandDefinitions())
+        {
+            const QString commandCode = QStringLiteral("0x%1")
+                                            .arg(definition.command, 2, 16, QChar('0'))
+                                            .toUpper()
+                                            .replace(QStringLiteral("0X"), QStringLiteral("0x"));
+            const QString matchText = QStringLiteral("%1 %2").arg(commandCode, definition.name);
+            if (hasFilter && !matchText.contains(filterText, Qt::CaseInsensitive))
+            {
+                continue;
+            }
+
+            QListWidgetItem *listItem = new QListWidgetItem(
+                QStringLiteral("%1  |  %2").arg(commandCode, definition.name));
+            listItem->setData(Qt::UserRole, commandCode);
+            listItem->setData(Qt::UserRole + 1, definition.name);
+            listItem->setData(Qt::UserRole + 2, QString::fromUtf8("远程控制命令"));
+            m_dataItemList->addItem(listItem);
+        }
+
+        m_categoryComboBox->setEnabled(false);
+        if (m_dataItemList->count() > 0)
+        {
+            m_dataItemList->setCurrentRow(0);
+            m_selectedDiLabel->setText(
+                QString::fromUtf8("当前选择：%1").arg(m_dataItemList->currentItem()->text()));
+        }
+        else
+        {
+            m_selectedDiLabel->setText(QString::fromUtf8("当前未选择控制命令"));
+            m_statusLabel->setText(QString::fromUtf8("未找到匹配的控制命令。"));
+        }
+
+        refreshWriteValueState();
+        refreshGeneratedFrame();
+        return;
+    }
+
+    const MeterModel *sourceModel = dataSourceModel();
     const QList<QString> categoriesToLoad = hasFilter
                                                 ? allCategories()
                                                 : QList<QString>{m_categoryComboBox->currentText()};
@@ -807,7 +921,9 @@ void QueryFrameDialog::refreshGeneratedFrame()
 
     if (diCode.isEmpty())
     {
-        m_statusLabel->setText(QString::fromUtf8("请选择一个数据标识。"));
+        m_statusLabel->setText(isRemoteControlMode()
+                                   ? QString::fromUtf8("请选择一个远程控制命令。")
+                                   : QString::fromUtf8("请选择一个数据标识。"));
         updateActionButtons();
         return;
     }
@@ -815,7 +931,7 @@ void QueryFrameDialog::refreshGeneratedFrame()
     ProtocolParser parser(m_meterModel ? m_meterModel : m_catalogMeterModel);
     ProtocolFrame frame;
 
-    if (isWriteMode())
+    if (isWriteMode() || isRemoteControlMode())
     {
         const QString permission = m_writePermissionEdit->text().trimmed();
         const QString password = m_writePasswordEdit->text().trimmed();
@@ -823,39 +939,62 @@ void QueryFrameDialog::refreshGeneratedFrame()
         const QString writeValue = m_writeValueEdit->text().trimmed();
         if (permission.length() != 2)
         {
-            m_statusLabel->setText(QString::fromUtf8("请输入 2 位权限码后生成写数据帧。"));
+            m_statusLabel->setText(QString::fromUtf8("请输入 2 位权限码后生成帧。"));
             updateActionButtons();
             return;
         }
 
         if (password.length() != 6)
         {
-            m_statusLabel->setText(QString::fromUtf8("请输入 6 位密码后生成写数据帧。"));
+            m_statusLabel->setText(QString::fromUtf8("请输入 6 位密码后生成帧。"));
             updateActionButtons();
             return;
         }
 
         if (operatorCode.length() != 8)
         {
-            m_statusLabel->setText(QString::fromUtf8("请输入 8 位操作代码后生成写数据帧。"));
+            m_statusLabel->setText(QString::fromUtf8("请输入 8 位操作代码后生成帧。"));
             updateActionButtons();
             return;
         }
 
-        if (writeValue.isEmpty())
+        if (isWriteMode() && writeValue.isEmpty())
         {
             m_statusLabel->setText(QString::fromUtf8("请输入数据后生成写数据帧。"));
             updateActionButtons();
             return;
         }
 
-        frame = parser.buildWriteRequest(ProtocolParser::addressToBytes(address),
-                                         diCode,
-                                         QVariant(writeValue),
-                                         permission,
-                                         password,
-                                         operatorCode,
-                                         includePrefixFE);
+        if (isRemoteControlMode())
+        {
+            bool commandOk = false;
+            const quint8 command = static_cast<quint8>(diCode.mid(2).toUInt(&commandOk, 16));
+            if (!commandOk)
+            {
+                m_statusLabel->setText(QString::fromUtf8("远程控制命令码无效。"));
+                updateActionButtons();
+                return;
+            }
+
+            frame = parser.buildRemoteControlRequest(
+                ProtocolParser::addressToBytes(address),
+                command,
+                remoteControlTimeParameters(m_remoteControlDateTimeEdit->dateTime()),
+                permission,
+                password,
+                operatorCode,
+                includePrefixFE);
+        }
+        else
+        {
+            frame = parser.buildWriteRequest(ProtocolParser::addressToBytes(address),
+                                             diCode,
+                                             QVariant(writeValue),
+                                             permission,
+                                             password,
+                                             operatorCode,
+                                             includePrefixFE);
+        }
     }
     else
     {
@@ -866,7 +1005,12 @@ void QueryFrameDialog::refreshGeneratedFrame()
     m_spacedHexEdit->setText(DLT645FrameFormatter::formatHex(rawFrame, true));
     m_compactHexEdit->setText(DLT645FrameFormatter::formatHex(rawFrame, false));
 
-    if (isWriteMode())
+    if (isRemoteControlMode())
+    {
+        m_statusLabel->setText(
+            QString::fromUtf8("已生成远程控制帧：%1").arg(selectedDiDescription()));
+    }
+    else if (isWriteMode())
     {
         m_statusLabel->setText(QString::fromUtf8("已生成写数据帧：%1").arg(selectedDiDescription()));
     }
@@ -881,13 +1025,38 @@ void QueryFrameDialog::refreshGeneratedFrame()
 void QueryFrameDialog::refreshWriteValueState()
 {
     const bool writeMode = isWriteMode();
+    const bool remoteControlMode = isRemoteControlMode();
+    const bool protectedOperation = writeMode || remoteControlMode;
     const QString currentDiCode = selectedDiCode();
 
-    m_writeGroup->setVisible(writeMode);
-    m_writePermissionEdit->setEnabled(writeMode);
-    m_writePasswordEdit->setEnabled(writeMode);
-    m_writeOperatorCodeEdit->setEnabled(writeMode);
+    m_writeGroup->setVisible(protectedOperation);
+    m_writeGroup->setTitle(remoteControlMode ? QString::fromUtf8("远程控制参数")
+                                             : QString::fromUtf8("写入数据"));
+    m_writePermissionEdit->setEnabled(protectedOperation);
+    m_writePasswordEdit->setEnabled(protectedOperation);
+    m_writeOperatorCodeEdit->setEnabled(protectedOperation);
+    m_writeValueLabel->setVisible(!remoteControlMode);
+    m_writeValueEdit->setVisible(!remoteControlMode);
     m_writeValueEdit->setEnabled(writeMode && !currentDiCode.isEmpty());
+    m_remoteControlTimeLabel->setVisible(remoteControlMode);
+    m_remoteControlDateTimeEdit->setVisible(remoteControlMode);
+    m_remoteControlDateTimeEdit->setEnabled(remoteControlMode && !currentDiCode.isEmpty());
+
+    if (remoteControlMode)
+    {
+        if (currentDiCode.isEmpty())
+        {
+            m_writeHintLabel->setText(QString::fromUtf8("请选择远程控制命令。"));
+            return;
+        }
+
+        m_writeHintLabel->setText(
+            QString::fromUtf8("命令时间将编码为 N2=00，N3~N8=秒、分、时、日、月、年（BCD）。"));
+        return;
+    }
+
+    m_writeValueLabel->setText(QString::fromUtf8("数据:"));
+    m_writeValueEdit->setPlaceholderText(QString::fromUtf8("输入写入数据，非数字字符会自动忽略"));
 
     if (!writeMode)
     {
@@ -1063,14 +1232,22 @@ const MeterModel *QueryFrameDialog::dataSourceModel() const
 
 QueryFrameDialog::FrameOperationMode QueryFrameDialog::currentOperationMode() const
 {
-    return (m_modeComboBox && m_modeComboBox->currentIndex() == 1)
-               ? FrameOperationMode::WriteData
-               : FrameOperationMode::ReadData;
+    if (!m_modeComboBox)
+    {
+        return FrameOperationMode::ReadData;
+    }
+
+    return static_cast<FrameOperationMode>(m_modeComboBox->currentData().toInt());
 }
 
 bool QueryFrameDialog::isWriteMode() const
 {
     return currentOperationMode() == FrameOperationMode::WriteData;
+}
+
+bool QueryFrameDialog::isRemoteControlMode() const
+{
+    return currentOperationMode() == FrameOperationMode::RemoteControl;
 }
 
 bool QueryFrameDialog::supportsCurrentMode(const DataItem &item) const

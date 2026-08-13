@@ -7,6 +7,7 @@ class QLabel;
 class MeterModel;
 class QPushButton;
 class QTextEdit;
+class QGroupBox;
 class FrameParseResultWidget;
 
 class FrameParseDialog : public QDialog
@@ -23,21 +24,37 @@ public:
     void applyLightTheme();
 
 private slots:
-    void onInputTextChanged();
-    void onClearClicked();
+    void onSendInputTextChanged();
+    void onReceiveInputTextChanged();
+    void onSendClearClicked();
+    void onReceiveClearClicked();
 
 private:
     void setupUI();
-    bool parseCurrentInput();
-    QString normalizedHexInput(QString *errorMessage) const;
+    QGroupBox *createParsePanel(const QString &title,
+                                QTextEdit **inputEdit,
+                                FrameParseResultWidget **resultWidget,
+                                QLabel **statusLabel,
+                                QPushButton **clearButton);
+    bool parseInput(QTextEdit *inputEdit,
+                    QLabel *statusLabel,
+                    FrameParseResultWidget *resultWidget);
+    void clearPanel(QTextEdit *inputEdit,
+                    QLabel *statusLabel,
+                    FrameParseResultWidget *resultWidget);
+    QString normalizedHexInput(const QTextEdit *inputEdit, QString *errorMessage) const;
     const MeterModel *activeMeterModel() const;
 
     MeterModel *m_meterModel;
     MeterModel *m_catalogMeterModel;
-    QTextEdit *m_inputEdit;
-    FrameParseResultWidget *m_resultWidget;
-    QLabel *m_statusLabel;
-    QPushButton *m_clearButton;
+    QTextEdit *m_sendInputEdit;
+    QTextEdit *m_receiveInputEdit;
+    FrameParseResultWidget *m_sendResultWidget;
+    FrameParseResultWidget *m_receiveResultWidget;
+    QLabel *m_sendStatusLabel;
+    QLabel *m_receiveStatusLabel;
+    QPushButton *m_sendClearButton;
+    QPushButton *m_receiveClearButton;
 };
 
 #endif // FRAMEPARSEDIALOG_H

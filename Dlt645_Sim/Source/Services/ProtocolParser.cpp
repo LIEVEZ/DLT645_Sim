@@ -311,6 +311,44 @@ ProtocolFrame ProtocolParser::buildWriteRequest(const QByteArray &address,
     return frame;
 }
 
+ProtocolFrame ProtocolParser::buildRemoteControlRequest(const QByteArray &address,
+                                                        quint8 command,
+                                                        const QByteArray &commandParameters,
+                                                        const QString &permission,
+                                                        const QString &password,
+                                                        const QString &operatorCode,
+                                                        bool includePrefixFE)
+{
+    Q_UNUSED(includePrefixFE);
+    constexpr int kCommandParameterLength = 7;
+
+    ProtocolFrame frame;
+    frame.startFlag = 0x68;
+    frame.address = address;
+    frame.startFlag2 = 0x68;
+    frame.controlCode = static_cast<quint8>(ControlCode::RemoteControl);
+
+    QByteArray decodedData;
+    decodedData.append(bcdBytesFromDigits(permission, 1, false));
+    decodedData.append(bcdBytesFromDigits(password, 3, false));
+    decodedData.append(bcdBytesFromDigits(operatorCode, 4, false));
+    decodedData.append(static_cast<char>(command));
+
+    QByteArray normalizedParameters = commandParameters.left(kCommandParameterLength);
+    normalizedParameters.append(QByteArray(kCommandParameterLength - normalizedParameters.size(), '\0'));
+    decodedData.append(normalizedParameters);
+    add33(decodedData);
+
+    frame.dataField = decodedData;
+    frame.dataLength = static_cast<quint8>(frame.dataField.size());
+    frame.checksum = 0;
+    const QByteArray frameData = frame.toByteArray();
+    frame.checksum = ChecksumHelper::calculateChecksum(frameData.left(frameData.size() - 2));
+    frame.endFlag = 0x16;
+
+    return frame;
+}
+
 QByteArray ProtocolParser::processDataValue(const QVariant &value, const QString &format)
 {
     QByteArray result;

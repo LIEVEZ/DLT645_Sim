@@ -18,17 +18,22 @@ FrameParseDialog::FrameParseDialog(QWidget *parent)
     : QDialog(parent),
       m_meterModel(nullptr),
       m_catalogMeterModel(new MeterModel(this)),
-      m_inputEdit(nullptr),
-      m_resultWidget(nullptr),
-      m_statusLabel(nullptr),
-      m_clearButton(nullptr)
+      m_sendInputEdit(nullptr),
+      m_receiveInputEdit(nullptr),
+      m_sendResultWidget(nullptr),
+      m_receiveResultWidget(nullptr),
+      m_sendStatusLabel(nullptr),
+      m_receiveStatusLabel(nullptr),
+      m_sendClearButton(nullptr),
+      m_receiveClearButton(nullptr)
 {
     setWindowFlags(windowFlags() | Qt::WindowMinimizeButtonHint);
     setupUI();
     applyDarkTheme();
 
     setWindowTitle(QString::fromUtf8("DLT645 帧解析"));
-    resize(860, 640);
+    setMinimumSize(960, 600);
+    resize(1200, 720);
 }
 
 FrameParseDialog::~FrameParseDialog()
@@ -43,7 +48,7 @@ void FrameParseDialog::setMeterModel(MeterModel *meterModel)
 void FrameParseDialog::setFrameHex(const QString &frameHex)
 {
     const QString normalized = frameHex.trimmed().toUpper();
-    m_inputEdit->setPlainText(normalized);
+    m_sendInputEdit->setPlainText(normalized);
 }
 
 namespace
@@ -97,9 +102,13 @@ void FrameParseDialog::applyDarkTheme()
 {
     setStyleSheet(ui::applyThemeTokens(frameParseStyleTemplate(), ui::darkPalette()));
 
-    if (m_resultWidget)
+    if (m_sendResultWidget)
     {
-        m_resultWidget->applyDarkTheme();
+        m_sendResultWidget->applyDarkTheme();
+    }
+    if (m_receiveResultWidget)
+    {
+        m_receiveResultWidget->applyDarkTheme();
     }
 }
 
@@ -107,102 +116,152 @@ void FrameParseDialog::applyLightTheme()
 {
     setStyleSheet(ui::applyThemeTokens(frameParseStyleTemplate(), ui::lightPalette()));
 
-    if (m_resultWidget)
+    if (m_sendResultWidget)
     {
-        m_resultWidget->applyLightTheme();
+        m_sendResultWidget->applyLightTheme();
+    }
+    if (m_receiveResultWidget)
+    {
+        m_receiveResultWidget->applyLightTheme();
     }
 }
 
-void FrameParseDialog::onInputTextChanged()
+void FrameParseDialog::onSendInputTextChanged()
 {
-    if (m_inputEdit->toPlainText().trimmed().isEmpty())
-    {
-        m_statusLabel->clear();
-        m_resultWidget->clearResult();
-        return;
-    }
-
-    parseCurrentInput();
+    parseInput(m_sendInputEdit, m_sendStatusLabel, m_sendResultWidget);
 }
 
-void FrameParseDialog::onClearClicked()
+void FrameParseDialog::onReceiveInputTextChanged()
 {
-    m_inputEdit->clear();
-    m_resultWidget->clearResult();
-    m_statusLabel->clear();
-    m_inputEdit->setFocus();
+    parseInput(m_receiveInputEdit, m_receiveStatusLabel, m_receiveResultWidget);
+}
+
+void FrameParseDialog::onSendClearClicked()
+{
+    clearPanel(m_sendInputEdit, m_sendStatusLabel, m_sendResultWidget);
+}
+
+void FrameParseDialog::onReceiveClearClicked()
+{
+    clearPanel(m_receiveInputEdit, m_receiveStatusLabel, m_receiveResultWidget);
 }
 
 void FrameParseDialog::setupUI()
 {
-    QVBoxLayout *mainLayout = new QVBoxLayout(this);
+    QHBoxLayout *mainLayout = new QHBoxLayout(this);
     mainLayout->setContentsMargins(12, 12, 12, 12);
-    mainLayout->setSpacing(10);
+    mainLayout->setSpacing(12);
 
-    QGroupBox *inputGroup = new QGroupBox(QString::fromUtf8("解析输入"), this);
-    QVBoxLayout *inputLayout = new QVBoxLayout(inputGroup);
-    inputLayout->setSpacing(10);
+    QGroupBox *sendPanel = createParsePanel(QString::fromUtf8("发送解析"),
+                                             &m_sendInputEdit,
+                                             &m_sendResultWidget,
+                                             &m_sendStatusLabel,
+                                             &m_sendClearButton);
+    QGroupBox *receivePanel = createParsePanel(QString::fromUtf8("接收解析"),
+                                                &m_receiveInputEdit,
+                                                &m_receiveResultWidget,
+                                                &m_receiveStatusLabel,
+                                                &m_receiveClearButton);
+    mainLayout->addWidget(sendPanel, 1);
+    mainLayout->addWidget(receivePanel, 1);
 
-    QLabel *inputHintLabel = new QLabel(QString::fromUtf8("HEX 输入"), inputGroup);
-    inputLayout->addWidget(inputHintLabel);
-
-    m_inputEdit = new QTextEdit(inputGroup);
-    m_inputEdit->setPlaceholderText(QString::fromUtf8("支持带空格 HEX、紧凑 HEX、换行或制表符分隔的 HEX 帧"));
-    m_inputEdit->setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 10));
-    m_inputEdit->setAcceptRichText(false);
-    m_inputEdit->setFixedHeight(52);
-    inputLayout->addWidget(m_inputEdit, 1);
-
-    QHBoxLayout *buttonLayout = new QHBoxLayout();
-    m_clearButton = new QPushButton(QString::fromUtf8("清空"), inputGroup);
-    buttonLayout->addWidget(m_clearButton);
-    buttonLayout->addStretch();
-    inputLayout->addLayout(buttonLayout);
-
-    m_statusLabel = new QLabel(inputGroup);
-    m_statusLabel->setWordWrap(true);
-    inputLayout->addWidget(m_statusLabel);
-
-    inputGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    mainLayout->addWidget(inputGroup, 1);
-
-    QGroupBox *resultGroup = new QGroupBox(QString::fromUtf8("解析结果"), this);
-    QVBoxLayout *resultLayout = new QVBoxLayout(resultGroup);
-
-    m_resultWidget = new FrameParseResultWidget(resultGroup);
-    resultLayout->addWidget(m_resultWidget);
-
-    mainLayout->addWidget(resultGroup, 2);
-
-    connect(m_inputEdit, &QTextEdit::textChanged, this, &FrameParseDialog::onInputTextChanged);
-    connect(m_clearButton, &QPushButton::clicked, this, &FrameParseDialog::onClearClicked);
+    connect(m_sendInputEdit, &QTextEdit::textChanged,
+            this, &FrameParseDialog::onSendInputTextChanged);
+    connect(m_receiveInputEdit, &QTextEdit::textChanged,
+            this, &FrameParseDialog::onReceiveInputTextChanged);
+    connect(m_sendClearButton, &QPushButton::clicked,
+            this, &FrameParseDialog::onSendClearClicked);
+    connect(m_receiveClearButton, &QPushButton::clicked,
+            this, &FrameParseDialog::onReceiveClearClicked);
 }
 
-bool FrameParseDialog::parseCurrentInput()
+QGroupBox *FrameParseDialog::createParsePanel(const QString &title,
+                                               QTextEdit **inputEdit,
+                                               FrameParseResultWidget **resultWidget,
+                                               QLabel **statusLabel,
+                                               QPushButton **clearButton)
 {
+    QGroupBox *panel = new QGroupBox(title, this);
+    QVBoxLayout *panelLayout = new QVBoxLayout(panel);
+    panelLayout->setSpacing(10);
+
+    QLabel *inputHintLabel = new QLabel(QString::fromUtf8("HEX 输入"), panel);
+    panelLayout->addWidget(inputHintLabel);
+
+    *inputEdit = new QTextEdit(panel);
+    (*inputEdit)->setPlaceholderText(
+        QString::fromUtf8("支持带空格 HEX、紧凑 HEX、换行或制表符分隔的 HEX 帧"));
+    (*inputEdit)->setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 10));
+    (*inputEdit)->setAcceptRichText(false);
+    (*inputEdit)->setFixedHeight(64);
+    panelLayout->addWidget(*inputEdit);
+
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    *clearButton = new QPushButton(QString::fromUtf8("清空"), panel);
+    buttonLayout->addWidget(*clearButton);
+    buttonLayout->addStretch();
+    panelLayout->addLayout(buttonLayout);
+
+    *statusLabel = new QLabel(panel);
+    (*statusLabel)->setWordWrap(true);
+    (*statusLabel)->setMinimumHeight((*statusLabel)->fontMetrics().lineSpacing());
+    panelLayout->addWidget(*statusLabel);
+
+    QLabel *resultHintLabel = new QLabel(QString::fromUtf8("解析结果"), panel);
+    panelLayout->addWidget(resultHintLabel);
+
+    *resultWidget = new FrameParseResultWidget(panel);
+    panelLayout->addWidget(*resultWidget, 1);
+
+    return panel;
+}
+
+bool FrameParseDialog::parseInput(QTextEdit *inputEdit,
+                                  QLabel *statusLabel,
+                                  FrameParseResultWidget *resultWidget)
+{
+    if (inputEdit->toPlainText().trimmed().isEmpty())
+    {
+        statusLabel->clear();
+        resultWidget->clearResult();
+        return false;
+    }
+
     QString errorMessage;
-    const QString normalizedHex = normalizedHexInput(&errorMessage);
+    const QString normalizedHex = normalizedHexInput(inputEdit, &errorMessage);
     if (!errorMessage.isEmpty())
     {
-        m_statusLabel->setText(errorMessage);
-        m_resultWidget->clearResult();
+        statusLabel->setText(errorMessage);
+        resultWidget->clearResult();
         return false;
     }
 
     const QByteArray frameBytes = QByteArray::fromHex(normalizedHex.toLatin1());
-    m_resultWidget->setParseResult(DLT645FrameFormatter::buildParseDisplayResult(frameBytes, activeMeterModel()));
-    m_statusLabel->setText(QString::fromUtf8("自动解析完成。"));
+    resultWidget->setParseResult(
+        DLT645FrameFormatter::buildParseDisplayResult(frameBytes, activeMeterModel()));
+    statusLabel->setText(QString::fromUtf8("自动解析完成。"));
     return true;
 }
 
-QString FrameParseDialog::normalizedHexInput(QString *errorMessage) const
+void FrameParseDialog::clearPanel(QTextEdit *inputEdit,
+                                  QLabel *statusLabel,
+                                  FrameParseResultWidget *resultWidget)
+{
+    inputEdit->clear();
+    resultWidget->clearResult();
+    statusLabel->clear();
+    inputEdit->setFocus();
+}
+
+QString FrameParseDialog::normalizedHexInput(const QTextEdit *inputEdit,
+                                             QString *errorMessage) const
 {
     if (errorMessage)
     {
         errorMessage->clear();
     }
 
-    const QString rawInput = m_inputEdit->toPlainText();
+    const QString rawInput = inputEdit->toPlainText();
     if (rawInput.trimmed().isEmpty())
     {
         return QString();
