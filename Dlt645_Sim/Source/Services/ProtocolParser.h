@@ -125,7 +125,7 @@ public:
      * @param diCode 数据标识
      * @param value 数据值
      * @param permission 权限级别（2位数字）
-     * @param password 密码（6位数字）
+     * @param password 密码（6位数字，低字节在前发送）
      * @param operatorCode 操作者代码（8位数字）
      * @param includePrefixFE 是否包含前导FE
      * @return 协议帧
@@ -144,7 +144,7 @@ public:
      * @param command 命令码（跳闸 0x1A、合闸 0x1B 等）
      * @param commandParameters N2 保留字节和 N3~N8 时间，共 7 字节；不足部分补 0
      * @param permission 权限级别（2位数字）
-     * @param password 密码（6位数字）
+     * @param password 密码（6位数字，低字节在前发送）
      * @param operatorCode 操作者代码（8位数字）
      * @param includePrefixFE 是否包含前导FE
      * @return 协议帧

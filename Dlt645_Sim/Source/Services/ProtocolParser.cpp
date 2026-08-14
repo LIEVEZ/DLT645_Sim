@@ -249,7 +249,7 @@ ProtocolFrame ProtocolParser::buildWriteRequest(const QByteArray &address,
 
     QByteArray authorityBytes;
     authorityBytes.append(bcdBytesFromDigits(permission, 1, false));
-    authorityBytes.append(bcdBytesFromDigits(password, 3, false));
+    authorityBytes.append(bcdBytesFromDigits(password, 3, true)); // 密码低字节在前发送
     authorityBytes.append(bcdBytesFromDigits(operatorCode, 4, false));
     add33(authorityBytes);
 
@@ -330,7 +330,7 @@ ProtocolFrame ProtocolParser::buildRemoteControlRequest(const QByteArray &addres
 
     QByteArray decodedData;
     decodedData.append(bcdBytesFromDigits(permission, 1, false));
-    decodedData.append(bcdBytesFromDigits(password, 3, false));
+    decodedData.append(bcdBytesFromDigits(password, 3, true)); // 密码低字节在前发送
     decodedData.append(bcdBytesFromDigits(operatorCode, 4, false));
     decodedData.append(static_cast<char>(command));
 

@@ -158,7 +158,10 @@ QString formatRemoteControlCommandDetail(const QByteArray &commandBytes)
 
 QString formatPasswordDigits(const QByteArray &passwordBytes)
 {
-    return DLT645FrameFormatter::formatHex(passwordBytes, false);
+    // DLT645 密码按低字节在前发送，展示时倒序还原真实密码
+    QByteArray displayBytes = passwordBytes;
+    std::reverse(displayBytes.begin(), displayBytes.end());
+    return DLT645FrameFormatter::formatHex(displayBytes, false);
 }
 
 QString formatOperatorCodeDigits(const QByteArray &operatorBytes)
@@ -941,7 +944,7 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
         {
             const QByteArray authorityBytes = DLT645DataHelper::subtract33(dataField.mid(4, 8));
             dataText += lineWithValue(QString::fromUtf8("权限："), DLT645FrameFormatter::formatHex(authorityBytes.left(1), false));
-            dataText += lineWithValue(QString::fromUtf8("密码："), DLT645FrameFormatter::formatHex(authorityBytes.mid(1, 3), false));
+            dataText += lineWithValue(QString::fromUtf8("密码："), formatPasswordDigits(authorityBytes.mid(1, 3)));
             dataText += lineWithValue(QString::fromUtf8("操作代码："), DLT645FrameFormatter::formatHex(authorityBytes.mid(4, 4), false));
 
             decodedPayload = DLT645DataHelper::subtract33(dataField.mid(12));
