@@ -63,6 +63,7 @@ void OperationLogWidget::setupUI()
     mainLayout->addLayout(toolBarLayout);
 
     // 日志列表
+    m_logListWidget->setObjectName(QStringLiteral("operationLogListWidget"));
     m_logListWidget->setSelectionMode(QAbstractItemView::NoSelection);
     m_logListWidget->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     mainLayout->addWidget(m_logListWidget);
@@ -250,22 +251,17 @@ QString OperationLogWidget::getLevelColor(OperationLogLevel level) const
 void OperationLogWidget::applyDarkTheme()
 {
     m_darkTheme = true;
-    applyTheme(ui::darkPalette());
+    applyTheme();
 }
 
 void OperationLogWidget::applyLightTheme()
 {
     m_darkTheme = false;
-    applyTheme(ui::lightPalette());
+    applyTheme();
 }
 
-void OperationLogWidget::applyTheme(const ui::ThemePalette &p)
+void OperationLogWidget::applyTheme()
 {
-    // 列表容器底色 / 文字随主题切换；具体级别色在 recolorAllItems 中按条目套用。
-    m_logListWidget->setStyleSheet(
-        QString("QListWidget { background-color: %1; border: none; outline: none; }"
-                "QListWidget::item { padding: 2px 4px; }")
-            .arg(p.windowBg));
     recolorAllItems();
 }
 

@@ -268,6 +268,10 @@ QString buildStyleSheet(const ui::ThemePalette &p)
             border-bottom: 1px solid {{gridLine}};
         }
 
+        QListWidget#operationLogListWidget::item {
+            padding: 2px 4px;
+        }
+
         QListWidget::item:selected {
             background-color: {{accent}};
             color: {{onAccent}};

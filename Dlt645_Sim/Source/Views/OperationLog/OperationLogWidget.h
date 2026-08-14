@@ -136,8 +136,8 @@ private:
     void addLogItem(const LogEntry &entry);
     QString getLevelIcon(OperationLogLevel level) const;
     QString getLevelColor(OperationLogLevel level) const;
-    void applyTheme(const ui::ThemePalette &p); // 按调色板套用主题并重新着色所有条目
-    void recolorAllItems();                     // 用当前主题重新着色已有日志条目
+    void applyTheme();          // 按当前主题重新着色所有条目
+    void recolorAllItems();     // 用当前主题重新着色已有日志条目
 
     QListWidget *m_logListWidget;
     QLineEdit *m_filterEdit;
