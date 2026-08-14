@@ -36,10 +36,16 @@ struct MasterRequestSpec
     QString diCode;
     bool includePrefixFE = true;
     int timeoutMs = 3000;
+    bool rawSend = false;
 
     bool isReadAddressRequest() const
     {
-        return diCode.trimmed().isEmpty();
+        return !rawSend && diCode.trimmed().isEmpty();
+    }
+
+    bool isRawSendRequest() const
+    {
+        return rawSend;
     }
 };
 
@@ -87,6 +93,14 @@ public:
     MasterQueryResult pendingRequest() const;
 
     bool sendReadRequest(const MasterRequestSpec &spec);
+
+    /**
+     * @brief 直接发送原始 HEX 报文（不构建协议帧，不做地址/DI 校验）
+     * @param rawBytes 待发送的原始字节
+     * @param timeoutMs 等待应答超时时间
+     * @return 是否已写入串口并进入等待应答状态
+     */
+    bool sendRawFrame(const QByteArray &rawBytes, int timeoutMs = 3000);
 
 signals:
     void sessionStateChanged(bool connected);

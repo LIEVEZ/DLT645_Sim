@@ -9,6 +9,7 @@
 
 #include <QCheckBox>
 #include <QCloseEvent>
+#include <QColor>
 #include <QComboBox>
 #include <QFormLayout>
 #include <QFont>
@@ -20,6 +21,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QPalette>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
@@ -29,6 +31,8 @@
 #include <QStyle>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QTextEdit>
+#include <QWidget>
 #include <QtConcurrent/QtConcurrent>
 #include <QVBoxLayout>
 
@@ -113,6 +117,70 @@ namespace
         return QString();
     }
 
+    // 直接发送输入的归一化：大写、去空白，校验偶数个十六进制字符
+    QByteArray normalizedRawHex(const QString &input, QString *errorMessage)
+    {
+        if (errorMessage)
+        {
+            errorMessage->clear();
+        }
+
+        QString normalized = input.toUpper();
+        normalized.remove(QRegularExpression(QStringLiteral("\\s+")));
+        if (normalized.isEmpty())
+        {
+            return QByteArray();
+        }
+
+        if (normalized.size() % 2 != 0)
+        {
+            if (errorMessage)
+            {
+                *errorMessage = QString::fromUtf8("HEX 字符数量必须为偶数。");
+            }
+            return QByteArray();
+        }
+
+        if (normalized.contains(QRegularExpression(QStringLiteral("[^0-9A-F]"))))
+        {
+            if (errorMessage)
+            {
+                *errorMessage = QString::fromUtf8("输入包含非十六进制字符，请检查后重试。");
+            }
+            return QByteArray();
+        }
+
+        return QByteArray::fromHex(normalized.toLatin1());
+    }
+
+    void applyTextEditPalette(QTextEdit *textEdit, const ui::ThemePalette &palette)
+    {
+        if (!textEdit)
+        {
+            return;
+        }
+
+        const QColor backgroundColor(palette.panelBg);
+        const QColor textColor(palette.text);
+
+        QPalette textEditPalette = textEdit->palette();
+        textEditPalette.setColor(QPalette::Base, backgroundColor);
+        textEditPalette.setColor(QPalette::Text, textColor);
+        textEditPalette.setColor(QPalette::PlaceholderText, textColor);
+        textEdit->setPalette(textEditPalette);
+
+        QWidget *viewport = textEdit->viewport();
+        if (viewport)
+        {
+            QPalette viewportPalette = viewport->palette();
+            viewportPalette.setColor(QPalette::Window, backgroundColor);
+            viewportPalette.setColor(QPalette::Base, backgroundColor);
+            viewportPalette.setColor(QPalette::Text, textColor);
+            viewport->setPalette(viewportPalette);
+            viewport->setAutoFillBackground(true);
+        }
+    }
+
     using namespace CategoryCatalog;
 }
 
@@ -144,6 +212,9 @@ MasterQueryDialog::MasterQueryDialog(QWidget *parent)
       m_dataItemList(nullptr),
       m_selectedDiLabel(nullptr),
       m_sendButton(nullptr),
+      m_rawHexEdit(nullptr),
+      m_rawSendButton(nullptr),
+      m_rawClearButton(nullptr),
       m_resultMetaLabel(nullptr),
       m_noticeLabel(nullptr),
       m_requestHexEdit(nullptr),
@@ -258,7 +329,7 @@ QString masterQueryStyleTemplate()
             color: {{warning}};
         }
 
-        QLineEdit, QListWidget, QComboBox, QSpinBox, QTableWidget {
+        QLineEdit, QListWidget, QComboBox, QSpinBox, QTableWidget, QTextEdit {
             background-color: {{panelBg}};
             color: {{text}};
             border: 1px solid {{border}};
@@ -266,7 +337,19 @@ QString masterQueryStyleTemplate()
             padding: 5px;
         }
 
-        QLineEdit:focus, QListWidget:focus, QComboBox:focus, QSpinBox:focus {
+        QLineEdit:focus, QListWidget:focus, QComboBox:focus, QSpinBox:focus, QTextEdit:focus {
+            border: 1px solid {{accent}};
+        }
+
+        QTextEdit#masterRawHexEdit {
+            background-color: {{panelBg}};
+            color: {{text}};
+            border: 1px solid {{border}};
+            border-radius: 4px;
+            padding: 5px;
+        }
+
+        QTextEdit#masterRawHexEdit:focus {
             border: 1px solid {{accent}};
         }
 
@@ -329,22 +412,30 @@ QString masterQueryStyleTemplate()
 void MasterQueryDialog::applyDarkTheme()
 {
     m_darkTheme = true;
-    setStyleSheet(ui::applyThemeTokens(masterQueryStyleTemplate(), ui::darkPalette()));
-
-    if (m_parseResultWidget)
-    {
-        m_parseResultWidget->applyDarkTheme();
-    }
+    applyTheme(ui::darkPalette());
 }
 
 void MasterQueryDialog::applyLightTheme()
 {
     m_darkTheme = false;
-    setStyleSheet(ui::applyThemeTokens(masterQueryStyleTemplate(), ui::lightPalette()));
+    applyTheme(ui::lightPalette());
+}
+
+void MasterQueryDialog::applyTheme(const ui::ThemePalette &palette)
+{
+    setStyleSheet(ui::applyThemeTokens(masterQueryStyleTemplate(), palette));
+    applyTextEditPalette(m_rawHexEdit, palette);
 
     if (m_parseResultWidget)
     {
-        m_parseResultWidget->applyLightTheme();
+        if (m_darkTheme)
+        {
+            m_parseResultWidget->applyDarkTheme();
+        }
+        else
+        {
+            m_parseResultWidget->applyLightTheme();
+        }
     }
 }
 
@@ -456,6 +547,36 @@ void MasterQueryDialog::onHistorySelectionChanged()
     displayResult(m_historyResults.at(row));
 }
 
+void MasterQueryDialog::onRawSendClicked()
+{
+    if (!m_controller->isConnected())
+    {
+        QMessageBox::warning(this, QString::fromUtf8("提示"), QString::fromUtf8("请先连接串口。"));
+        return;
+    }
+
+    QString errorMessage;
+    const QByteArray rawBytes = normalizedRawHex(m_rawHexEdit->toPlainText(), &errorMessage);
+    if (!errorMessage.isEmpty())
+    {
+        QMessageBox::warning(this, QString::fromUtf8("提示"), errorMessage);
+        return;
+    }
+    if (rawBytes.isEmpty())
+    {
+        QMessageBox::warning(this, QString::fromUtf8("提示"), QString::fromUtf8("请输入要发送的 HEX 报文。"));
+        return;
+    }
+
+    m_noticeLabel->clear();
+    m_controller->sendRawFrame(rawBytes, m_timeoutSpinBox->value());
+}
+
+void MasterQueryDialog::onRawClearClicked()
+{
+    m_rawHexEdit->clear();
+}
+
 void MasterQueryDialog::onSessionStateChanged(bool connected)
 {
     applyConnectionUiState(connected);
@@ -533,7 +654,14 @@ void MasterQueryDialog::setupUi()
     QSplitter *rightSplitter = new QSplitter(Qt::Vertical, contentSplitter);
     rightSplitter->setChildrenCollapsible(false);
 
-    contentSplitter->addWidget(setupQueryGroup());
+    QWidget *leftPanel = new QWidget(contentSplitter);
+    QVBoxLayout *leftLayout = new QVBoxLayout(leftPanel);
+    leftLayout->setContentsMargins(0, 0, 0, 0);
+    leftLayout->setSpacing(10);
+    leftLayout->addWidget(setupQueryGroup(), 1);
+    leftLayout->addWidget(setupRawSendGroup());
+    contentSplitter->addWidget(leftPanel);
+
     rightSplitter->addWidget(setupResultGroup());
     rightSplitter->addWidget(setupHistoryGroup());
     contentSplitter->addWidget(rightSplitter);
@@ -827,6 +955,35 @@ QGroupBox *MasterQueryDialog::setupQueryGroup()
     connect(m_searchEdit, &QLineEdit::textChanged, this, &MasterQueryDialog::onSearchTextChanged);
     connect(m_dataItemList, &QListWidget::currentItemChanged, this, &MasterQueryDialog::onCurrentItemChanged);
     connect(m_sendButton, &QPushButton::clicked, this, &MasterQueryDialog::onSendClicked);
+    return group;
+}
+
+QGroupBox *MasterQueryDialog::setupRawSendGroup()
+{
+    QGroupBox *group = new QGroupBox(QString::fromUtf8("直接发送 HEX"), this);
+    group->setObjectName(QStringLiteral("masterRawSendGroup"));
+    QVBoxLayout *rootLayout = new QVBoxLayout(group);
+
+    m_rawHexEdit = new QTextEdit(group);
+    m_rawHexEdit->setObjectName(QStringLiteral("masterRawHexEdit"));
+    m_rawHexEdit->setPlaceholderText(
+        QString::fromUtf8("输入完整 HEX 报文直接发送，无需选择表号与数据标识，支持空格/换行，"
+                          "例如 68 57 40 00 16 07 26 68 11 04 33 33 33 33"));
+    m_rawHexEdit->setAcceptRichText(false);
+    m_rawHexEdit->setFont(QFont(QStringLiteral("Microsoft YaHei UI"), 10));
+    m_rawHexEdit->setFixedHeight(72);
+    rootLayout->addWidget(m_rawHexEdit);
+
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    m_rawClearButton = new QPushButton(QString::fromUtf8("清空"), group);
+    buttonLayout->addWidget(m_rawClearButton);
+    buttonLayout->addStretch();
+    m_rawSendButton = new QPushButton(QString::fromUtf8("发送 HEX"), group);
+    buttonLayout->addWidget(m_rawSendButton);
+    rootLayout->addLayout(buttonLayout);
+
+    connect(m_rawClearButton, &QPushButton::clicked, this, &MasterQueryDialog::onRawClearClicked);
+    connect(m_rawSendButton, &QPushButton::clicked, this, &MasterQueryDialog::onRawSendClicked);
     return group;
 }
 
@@ -1263,6 +1420,12 @@ void MasterQueryDialog::updateQueryUiState()
                          (!isReadData || !selectedDiCode().isEmpty()) &&
                          (m_controller->currentStatus() == MasterQueryStatus::Idle);
     m_sendButton->setEnabled(canSend);
+
+    if (m_rawSendButton)
+    {
+        m_rawSendButton->setEnabled(connected &&
+                                    m_controller->currentStatus() == MasterQueryStatus::Idle);
+    }
 }
 
 void MasterQueryDialog::displayResult(const MasterQueryResult &result)
@@ -1346,6 +1509,11 @@ void MasterQueryDialog::updateHistoryRow(int row, const MasterQueryResult &resul
 
 QString MasterQueryDialog::requestTypeText(const MasterQueryResult &result) const
 {
+    if (result.requestSpec.isRawSendRequest())
+    {
+        return QString::fromUtf8("直接发送");
+    }
+
     return result.requestSpec.isReadAddressRequest()
                ? QString::fromUtf8("读地址")
                : QString::fromUtf8("读数据");
@@ -1353,6 +1521,11 @@ QString MasterQueryDialog::requestTypeText(const MasterQueryResult &result) cons
 
 QString MasterQueryDialog::requestTargetText(const MasterQueryResult &result) const
 {
+    if (result.requestSpec.isRawSendRequest())
+    {
+        return QString::fromUtf8("自定义报文");
+    }
+
     return result.requestSpec.meterAddress.isEmpty()
                ? QString::fromUtf8("未指定")
                : result.requestSpec.meterAddress;
@@ -1360,7 +1533,7 @@ QString MasterQueryDialog::requestTargetText(const MasterQueryResult &result) co
 
 QString MasterQueryDialog::requestSummaryText(const MasterQueryResult &result) const
 {
-    if (result.requestSpec.isReadAddressRequest())
+    if (result.requestSpec.isRawSendRequest() || result.requestSpec.isReadAddressRequest())
     {
         return resultSummary(result);
     }

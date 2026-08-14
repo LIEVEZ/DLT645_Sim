@@ -8,6 +8,11 @@
 
 #include "Controllers/MasterQueryController.h"
 
+namespace ui
+{
+struct ThemePalette;
+}
+
 class QCheckBox;
 class QCloseEvent;
 class QComboBox;
@@ -18,6 +23,7 @@ class QListWidgetItem;
 class QPushButton;
 class QSpinBox;
 class QTableWidget;
+class QTextEdit;
 class QLabel;
 class MeterModel;
 class FrameParseResultWidget;
@@ -50,6 +56,8 @@ private slots:
     void onSendClicked();
     void onClearHistoryClicked();
     void onHistorySelectionChanged();
+    void onRawSendClicked();
+    void onRawClearClicked();
 
     void onSessionStateChanged(bool connected);
     void onRequestStarted(const MasterQueryResult &result);
@@ -64,6 +72,7 @@ private:
     void setupUi();
     QGroupBox *setupConnectionGroup();
     QGroupBox *setupQueryGroup();
+    QGroupBox *setupRawSendGroup();
     QGroupBox *setupResultGroup();
     QGroupBox *setupHistoryGroup();
 
@@ -89,6 +98,7 @@ private:
     QString requestTargetText(const MasterQueryResult &result) const;
     QString requestSummaryText(const MasterQueryResult &result) const;
     QString statusText(MasterQueryStatus status) const;
+    void applyTheme(const ui::ThemePalette &palette);
 
     MasterQueryController *m_controller;
     MeterModel *m_catalogMeterModel;
@@ -121,6 +131,9 @@ private:
     QListWidget *m_dataItemList;
     QLabel *m_selectedDiLabel;
     QPushButton *m_sendButton;
+    QTextEdit *m_rawHexEdit;
+    QPushButton *m_rawSendButton;
+    QPushButton *m_rawClearButton;
 
     QLabel *m_resultMetaLabel;
     QLabel *m_noticeLabel;

@@ -104,6 +104,60 @@ MasterQueryResult MasterQueryController::pendingRequest() const
     return m_pendingResult;
 }
 
+bool MasterQueryController::sendRawFrame(const QByteArray &rawBytes, int timeoutMs)
+{
+    if (!isConnected())
+    {
+        failPendingRequest(MasterQueryStatus::Error, QString::fromUtf8("串口尚未连接，无法发送请求。"));
+        return false;
+    }
+
+    if (m_status == MasterQueryStatus::Sending || m_status == MasterQueryStatus::WaitingResponse)
+    {
+        failPendingRequest(MasterQueryStatus::Error, QString::fromUtf8("当前已有请求正在处理中，请等待完成后重试。"));
+        return false;
+    }
+
+    if (rawBytes.isEmpty())
+    {
+        failPendingRequest(MasterQueryStatus::Error, QString::fromUtf8("HEX 报文为空，无法发送。"));
+        return false;
+    }
+
+    m_receiveBuffer.clear();
+    m_timeoutTimer->stop();
+
+    MasterRequestSpec spec;
+    spec.rawSend = true;
+    spec.timeoutMs = timeoutMs;
+
+    m_pendingResult = MasterQueryResult();
+    m_pendingResult.status = MasterQueryStatus::Sending;
+    m_pendingResult.requestSpec = spec;
+    // 原始报文可能不是合法 DLT645 帧，解析结果仅供结果区参考
+    m_pendingResult.requestFrame = m_protocolParser->parseFrame(rawBytes);
+    m_pendingResult.rawRequest = rawBytes;
+    m_pendingResult.timestamp = QDateTime::currentDateTime();
+
+    const qint64 bytesWritten = m_serialPort->write(rawBytes);
+    if (bytesWritten != rawBytes.size())
+    {
+        failPendingRequest(MasterQueryStatus::Error, QString::fromUtf8("请求发送失败，串口写入字节数不完整。"));
+        return false;
+    }
+
+    m_serialPort->flush();
+
+    setStatus(MasterQueryStatus::Sending);
+    emit requestStarted(m_pendingResult);
+
+    m_pendingResult.status = MasterQueryStatus::WaitingResponse;
+    setStatus(MasterQueryStatus::WaitingResponse);
+    m_timeoutTimer->start(timeoutMs > 0 ? timeoutMs : 3000);
+
+    return true;
+}
+
 bool MasterQueryController::sendReadRequest(const MasterRequestSpec &spec)
 {
     if (!isConnected())
@@ -247,7 +301,10 @@ void MasterQueryController::onSerialError(QSerialPort::SerialPortError error)
 
 void MasterQueryController::onRequestTimeout()
 {
-    failPendingRequest(MasterQueryStatus::Timeout, QString::fromUtf8("等待电表响应超时。"));
+    // 直接发送模式下，超时时附带缓冲区内已收到的数据，便于观察设备返回的非标准报文
+    const QByteArray bufferedData =
+        m_pendingResult.requestSpec.isRawSendRequest() ? m_receiveBuffer : QByteArray();
+    failPendingRequest(MasterQueryStatus::Timeout, QString::fromUtf8("等待电表响应超时。"), bufferedData);
 }
 
 ProtocolFrame MasterQueryController::buildRequestFrame(const MasterRequestSpec &spec) const
@@ -375,6 +432,12 @@ MasterQueryController::FrameExtractState MasterQueryController::tryTakeNextFrame
 
 bool MasterQueryController::validateResponseFrame(const ProtocolFrame &frame, QString &errorText) const
 {
+    // 直接发送模式：首帧合法报文即视为应答，不做控制码/地址/DI 比对
+    if (m_pendingResult.requestSpec.isRawSendRequest())
+    {
+        return true;
+    }
+
     // 只比较低6位的控制码（bit0-5），忽略 bit7（应答标志）和 bit6（异常标志）
     const quint8 requestControlCode = m_pendingResult.requestFrame.controlCode & 0x3F;
     const quint8 responseControlCode = frame.controlCode & 0x3F;
