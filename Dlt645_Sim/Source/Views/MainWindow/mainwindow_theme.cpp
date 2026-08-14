@@ -6,6 +6,7 @@
 #include "Views/Dialogs/DataItemManualDialog.h"
 #include "Views/Dialogs/FrameParseDialog.h"
 #include "Views/Dialogs/MasterQueryDialog.h"
+#include "Views/Dialogs/MeterPasswordDialog.h"
 #include "Views/Dialogs/QueryFrameDialog.h"
 #include "Views/OperationLog/OperationLogWidget.h"
 
@@ -432,6 +433,10 @@ void MainWindow::onToggleDarkTheme(bool enabled)
         {
             m_dataItemManualDialog->applyDarkTheme();
         }
+        if (m_meterPasswordDialog)
+        {
+            m_meterPasswordDialog->applyDarkTheme();
+        }
     }
 }
 
@@ -464,6 +469,10 @@ void MainWindow::onToggleLightTheme(bool enabled)
         if (m_dataItemManualDialog)
         {
             m_dataItemManualDialog->applyLightTheme();
+        }
+        if (m_meterPasswordDialog)
+        {
+            m_meterPasswordDialog->applyLightTheme();
         }
     }
 }

@@ -38,6 +38,9 @@ SOURCES += \
     Source/Utils/DLT645DataHelper.cpp \
     Source/Utils/ChecksumHelper.cpp \
     Source/Utils/Logger.cpp \
+    Source/Utils/AuthenticationStateFrameGenerator.cpp \
+    Source/Utils/MeterAuthenticationCommandGenerator.cpp \
+    Source/Utils/MeterPasswordGenerator.cpp \
     Source/Models/DataItem.cpp \
     Source/Models/StatusWordBitCatalog.cpp \
     Source/Models/ConnectionInfoMapper.cpp \
@@ -77,6 +80,7 @@ SOURCES += \
     Source/Views/Dialogs/BatchNewMeterDialog.cpp \
     Source/Views/Dialogs/EventRecordDialog.cpp \
     Source/Views/Dialogs/MasterQueryDialog.cpp \
+    Source/Views/Dialogs/MeterPasswordDialog.cpp \
     Source/Views/Dialogs/FrameParseDialog.cpp \
     Source/Views/Dialogs/DataItemManualDialog.cpp \
     Source/Views/Dialogs/QueryFrameDialog.cpp
@@ -95,6 +99,9 @@ HEADERS += \
     Source/Utils/ChecksumHelper.h \
     Source/Utils/Logger.h \
     Source/Utils/LoggerTypes.h \
+    Source/Utils/AuthenticationStateFrameGenerator.h \
+    Source/Utils/MeterAuthenticationCommandGenerator.h \
+    Source/Utils/MeterPasswordGenerator.h \
     Source/Utils/UiTheme.h \
     Source/Models/ConnectionConfig.h \
     Source/Models/ConnectionInfo.h \
@@ -138,6 +145,7 @@ HEADERS += \
     Source/Views/Dialogs/BatchNewMeterDialog.h \
     Source/Views/Dialogs/EventRecordDialog.h \
     Source/Views/Dialogs/MasterQueryDialog.h \
+    Source/Views/Dialogs/MeterPasswordDialog.h \
     Source/Views/Dialogs/FrameParseDialog.h \
     Source/Views/Dialogs/DataItemManualDialog.h \
     Source/Views/Dialogs/QueryFrameDialog.h

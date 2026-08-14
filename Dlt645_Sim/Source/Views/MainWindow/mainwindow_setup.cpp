@@ -236,6 +236,13 @@ void MainWindow::setupMenuBar()
     // 工具菜单
     QMenu *toolsMenu = menuBar->addMenu(QStringLiteral("工具(&T)"));
 
+    QAction *meterPasswordAction = toolsMenu->addAction(QStringLiteral("加密电表工具(&P)"));
+    meterPasswordAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Alt+P")));
+    meterPasswordAction->setToolTip(QStringLiteral("生成电表密码和认证状态报文"));
+    meterPasswordAction->setIcon(QIcon(QStringLiteral(":/icons/meter.svg")));
+    connect(meterPasswordAction, &QAction::triggered, this, &MainWindow::onMeterPasswordGenerator);
+
+    toolsMenu->addSeparator();
     QAction *dataItemManualAction = toolsMenu->addAction(QStringLiteral("数据项手册(&M)"));
     dataItemManualAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+H")));
     dataItemManualAction->setIcon(QIcon(QStringLiteral(":/icons/manual.svg")));

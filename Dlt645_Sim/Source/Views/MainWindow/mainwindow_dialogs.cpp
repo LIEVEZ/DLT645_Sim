@@ -8,6 +8,7 @@
 #include "Views/Dialogs/FrameParseDialog.h"
 #include "Views/Dialogs/DataItemManualDialog.h"
 #include "Views/Dialogs/MasterQueryDialog.h"
+#include "Views/Dialogs/MeterPasswordDialog.h"
 #include "Views/Dialogs/QueryFrameDialog.h"
 #include "Views/DeviceTree/DeviceTreeWidget.h"
 
@@ -192,6 +193,49 @@ void MainWindow::onMasterQueryDialogClosed()
     {
         m_masterQueryDialog->deleteLater();
         m_masterQueryDialog = nullptr;
+    }
+}
+
+void MainWindow::onMeterPasswordGenerator()
+{
+    if (m_meterPasswordDialog)
+    {
+        if (m_currentMeterModel)
+        {
+            m_meterPasswordDialog->setMeterAddress(m_currentMeterModel->getMeterAddress());
+        }
+        m_meterPasswordDialog->show();
+        m_meterPasswordDialog->raise();
+        m_meterPasswordDialog->activateWindow();
+        return;
+    }
+
+    m_meterPasswordDialog = new MeterPasswordDialog(this);
+    if (m_currentMeterModel)
+    {
+        m_meterPasswordDialog->setMeterAddress(m_currentMeterModel->getMeterAddress());
+    }
+
+    if (m_viewModel->isDarkTheme())
+    {
+        m_meterPasswordDialog->applyDarkTheme();
+    }
+    else
+    {
+        m_meterPasswordDialog->applyLightTheme();
+    }
+
+    connect(m_meterPasswordDialog, &MeterPasswordDialog::dialogClosed,
+            this, &MainWindow::onMeterPasswordDialogClosed);
+    m_meterPasswordDialog->show();
+}
+
+void MainWindow::onMeterPasswordDialogClosed()
+{
+    if (m_meterPasswordDialog)
+    {
+        m_meterPasswordDialog->deleteLater();
+        m_meterPasswordDialog = nullptr;
     }
 }
 

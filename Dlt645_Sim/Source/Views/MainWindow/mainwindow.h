@@ -30,6 +30,7 @@ class DataItemManualDialog;
 class QLabel;
 class MainWindowViewModel;
 class MasterQueryDialog;
+class MeterPasswordDialog;
 class MeterDataStore;
 class MeterModel;
 class OperationLogWidget;
@@ -72,6 +73,8 @@ private slots:
     void onQueryFrameDialogClosed();
     void onFrameParseDialog();
     void onDataItemManualDialog();
+    void onMeterPasswordGenerator();
+    void onMeterPasswordDialogClosed();
     void onLoggerLogEntryAdded(LogLevel level, const QDateTime &timestamp, const QString &message);
     void onImportConfiguration();
     void onExportConfiguration();
@@ -161,6 +164,7 @@ private:
 
     CommunicationDialog *m_communicationDialog;
     MasterQueryDialog *m_masterQueryDialog;
+    MeterPasswordDialog *m_meterPasswordDialog;
     QueryFrameDialog *m_queryFrameDialog;
     FrameParseDialog *m_frameParseDialog;
     DataItemManualDialog *m_dataItemManualDialog;
