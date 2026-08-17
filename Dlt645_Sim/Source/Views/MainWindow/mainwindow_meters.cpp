@@ -288,8 +288,43 @@ void MainWindow::attachMeterPersistence(MeterModel *meterModel)
                     LOG_INFO(QString("当前电表数据已批量保存到数据库: 电表地址=%1")
                                  .arg(meterModel->getMeterAddress()));
                 } });
-    connect(meterModel, &MeterModel::addressChanged, this, [this, meterModel](const QString &newAddress)
+    connect(meterModel, &MeterModel::addressChanged, this,
+            [this, meterModel, previousAddress = meterModel->getMeterAddress()](const QString &newAddress) mutable
             {
+                if (newAddress.isEmpty() || previousAddress == newAddress)
+                {
+                    return;
+                }
+
+                for (auto it = m_meterModelsByAddress.begin(); it != m_meterModelsByAddress.end();)
+                {
+                    if (it.value() == meterModel && it.key() != newAddress)
+                    {
+                        it = m_meterModelsByAddress.erase(it);
+                    }
+                    else
+                    {
+                        ++it;
+                    }
+                }
+                m_meterModelsByAddress.insert(newAddress, meterModel);
+
+                for (ProtocolController *controller : m_protocolControllers)
+                {
+                    if (controller)
+                    {
+                        controller->updateMeterAddress(previousAddress, newAddress, meterModel);
+                    }
+                }
+
+                DeviceTreeWidget *deviceTree = deviceTreeWidget();
+                if (deviceTree)
+                {
+                    deviceTree->updateMeterAddress(previousAddress, newAddress);
+                }
+
+                previousAddress = newAddress;
+                refreshProtocolMeters();
                 if (m_meterDataStore->saveMeterData(meterModel))
                 {
                     LOG_INFO(QString("电表地址更改后已保存到数据库: 电表地址=%1")

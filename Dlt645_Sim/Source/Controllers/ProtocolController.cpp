@@ -4,6 +4,7 @@
 #include "Utils/DLT645DataHelper.h"
 #include "Utils/Logger.h"
 #include "Utils/ChecksumHelper.h"
+#include "Utils/BCDHelper.h"
 #include <algorithm>
 
 namespace
@@ -159,6 +160,41 @@ void finalizeResponseAddress(ProtocolFrame &response, MeterModel *meterModel)
     const QByteArray frameData = response.toByteArray();
     response.checksum = ChecksumHelper::calculateChecksum(frameData.left(frameData.size() - 2));
 }
+
+QString bcdDigits(QByteArray bytes, bool reverseByteOrder)
+{
+    if (reverseByteOrder)
+    {
+        std::reverse(bytes.begin(), bytes.end());
+    }
+
+    if (!BCDHelper::isValidBCD(bytes))
+    {
+        return QString();
+    }
+
+    return QString::fromLatin1(bytes.toHex()).toUpper();
+}
+
+bool credentialsMatch(const QByteArray &decodedCredentials, MeterModel *meterModel)
+{
+    constexpr int kCredentialLength = 8;
+    if (!meterModel || decodedCredentials.size() < kCredentialLength)
+    {
+        return false;
+    }
+
+    const QString permission = bcdDigits(decodedCredentials.left(1), false);
+    const QString password = bcdDigits(decodedCredentials.mid(1, 3), true);
+    const QString operatorCode = bcdDigits(decodedCredentials.mid(4, 4), false);
+    if (permission.isEmpty() || password.isEmpty() || operatorCode.isEmpty())
+    {
+        return false;
+    }
+
+    return meterModel->getPassword() == permission + password &&
+           meterModel->getOperatorCode() == operatorCode;
+}
 } // namespace
 
 ProtocolController::ProtocolController(QObject *parent)
@@ -231,6 +267,47 @@ void ProtocolController::unregisterMeterModel(const QString &address)
     {
         m_responseTimer->stop();
     }
+}
+
+bool ProtocolController::updateMeterAddress(const QString &oldAddress,
+                                            const QString &newAddress,
+                                            MeterModel *meterModel)
+{
+    if (oldAddress.isEmpty() || newAddress.isEmpty() || !meterModel)
+    {
+        return false;
+    }
+
+    MeterModel *existingModel = m_meterModelsByAddress.value(newAddress, nullptr);
+    if (existingModel && existingModel != meterModel)
+    {
+        return false;
+    }
+
+    for (auto it = m_meterModelsByAddress.begin(); it != m_meterModelsByAddress.end();)
+    {
+        if (it.value() == meterModel && it.key() != newAddress)
+        {
+            it = m_meterModelsByAddress.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+    m_meterModelsByAddress.insert(newAddress, meterModel);
+
+    const int knownAddressIndex = m_knownMeterAddresses.indexOf(oldAddress);
+    if (knownAddressIndex >= 0)
+    {
+        m_knownMeterAddresses[knownAddressIndex] = newAddress;
+    }
+    else if (!m_knownMeterAddresses.contains(newAddress))
+    {
+        m_knownMeterAddresses.append(newAddress);
+    }
+    m_knownMeterAddresses.removeDuplicates();
+    return true;
 }
 
 void ProtocolController::setSerialController(SerialController *controller)
@@ -332,10 +409,13 @@ void ProtocolController::processReceivedData(const QByteArray &data)
             // 0x15 数据域即 6 字节新地址（BCD 低位在前，传输时整体 +0x33）
             const QString newAddress = ProtocolParser::bytesToAddress(
                 DLT645DataHelper::subtract33(frame.dataField.left(6)));
-            if (ProtocolParser::isValidAddress(newAddress))
+            const QString oldAddress = requestMeterModel->getMeterAddress();
+            MeterModel *existingModel = m_meterModelsByAddress.value(newAddress, nullptr);
+            if (ProtocolParser::isValidAddress(newAddress) &&
+                (!existingModel || existingModel == requestMeterModel))
             {
                 requestMeterModel->setMeterAddress(newAddress);
-                requestMeterModel->setDataValue("0x04000401", newAddress);
+                updateMeterAddress(oldAddress, newAddress, requestMeterModel);
                 ProtocolFrame response = m_protocolParser->buildWriteResponse(frame, true);
                 sendResponse(response, requestMeterModel);
             }
@@ -681,6 +761,14 @@ void ProtocolController::processRemoteControlRequest(const ProtocolFrame &frame,
         emit protocolError(0x01, QStringLiteral("远程控制数据域长度不足"));
         return;
     }
+    if (!credentialsMatch(decoded.left(8), meterModel))
+    {
+        LOG_WARNING(QStringLiteral("Remote control rejected: invalid credentials"));
+        ProtocolFrame response = m_protocolParser->buildErrorResponse(frame, 0x04);
+        sendResponse(response, meterModel);
+        emit protocolError(0x04, QStringLiteral("远程控制密码或操作者代码错误"));
+        return;
+    }
 
     const quint8 command = static_cast<quint8>(decoded.at(8));
     if (!isKnownRemoteControlCommand(command))
@@ -722,15 +810,29 @@ void ProtocolController::processWriteRequest(const ProtocolFrame &frame, MeterMo
 {
     LOG_INFO(QString("Processing write request: %1").arg(frame.toString()));
 
-    QString diCode = ProtocolParser::extractDIFromDataField(frame.dataField);
-    if (diCode == "0x04000401" || diCode == "0x04000010" || diCode == "0x04000011")
+    constexpr int kWriteValueOffset = 12;
+    const QString diCode = ProtocolParser::extractDIFromDataField(frame.dataField);
+    if (!meterModel || frame.dataField.size() < kWriteValueOffset)
     {
-        verifyPassword(frame, meterModel);
+        LOG_WARNING(QStringLiteral("Write data field is too short for credentials"));
+        ProtocolFrame response = m_protocolParser->buildErrorResponse(frame, 0x01);
+        sendResponse(response, meterModel);
+        emit protocolError(0x01, QStringLiteral("写数据域长度不足"));
+        return;
+    }
+
+    const QByteArray decodedCredentials = DLT645DataHelper::subtract33(frame.dataField.mid(4, 8));
+    if (!credentialsMatch(decodedCredentials, meterModel))
+    {
+        LOG_WARNING(QStringLiteral("Write request rejected: invalid credentials"));
+        ProtocolFrame response = m_protocolParser->buildErrorResponse(frame, 0x04);
+        sendResponse(response, meterModel);
+        emit dataWritten(diCode, QVariant(), false);
+        emit protocolError(0x04, QStringLiteral("写数据密码或操作者代码错误"));
         return;
     }
 
     // 标准写数据帧数据域：DI(4) + 权限PA(1) + 密码(3) + 操作者代码(4) + 数据
-    constexpr int kWriteValueOffset = 12;
     QByteArray valueBytes = frame.dataField.mid(kWriteValueOffset);
     QVariant value;
 
@@ -784,7 +886,28 @@ void ProtocolController::processWriteRequest(const ProtocolFrame &frame, MeterMo
         }
     }
 
-    if (meterModel && meterModel->setDataValue(diCode, value))
+    if (diCode == QStringLiteral("0x04000401"))
+    {
+        const QString oldAddress = meterModel->getMeterAddress();
+        const QString newAddress = BCDHelper::bytesToHexString(valueBytes, QString());
+        MeterModel *existingModel = m_meterModelsByAddress.value(newAddress, nullptr);
+        if (!ProtocolParser::isValidAddress(newAddress) ||
+            (existingModel && existingModel != meterModel))
+        {
+            LOG_WARNING(QStringLiteral("Failed to write meter address: %1").arg(newAddress));
+            ProtocolFrame response = m_protocolParser->buildErrorResponse(frame, 0x03);
+            sendResponse(response, meterModel);
+            emit dataWritten(diCode, newAddress, false);
+            return;
+        }
+
+        meterModel->setMeterAddress(newAddress);
+        updateMeterAddress(oldAddress, newAddress, meterModel);
+        value = newAddress;
+    }
+
+    const bool addressAlreadyWritten = diCode == QStringLiteral("0x04000401");
+    if (addressAlreadyWritten || meterModel->setDataValue(diCode, value))
     {
         LOG_INFO(QString("Data written: %1 = %2").arg(diCode).arg(value.toString()));
 
@@ -821,12 +944,6 @@ void ProtocolController::sendResponse(const ProtocolFrame &response, MeterModel 
     {
         emit frameSent(responseToSend, responseData);
     }
-}
-
-void ProtocolController::verifyPassword(const ProtocolFrame &frame, MeterModel *meterModel)
-{
-    ProtocolFrame response = m_protocolParser->buildWriteResponse(frame, true);
-    sendResponse(response, meterModel);
 }
 
 bool ProtocolController::shouldRespondToAddress(const QByteArray &addressBytes) const

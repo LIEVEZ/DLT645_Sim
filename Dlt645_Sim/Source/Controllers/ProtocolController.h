@@ -30,6 +30,17 @@ public:
     void unregisterMeterModel(const QString &address);
 
     /**
+     * @brief 更新已注册电表的通信地址索引
+     * @param oldAddress 原通信地址
+     * @param newAddress 新通信地址
+     * @param meterModel 地址所属电表模型
+     * @return 更新成功返回 true，目标地址被其他电表占用时返回 false
+     */
+    bool updateMeterAddress(const QString &oldAddress,
+                            const QString &newAddress,
+                            MeterModel *meterModel);
+
+    /**
      * @brief 设置串口控制器
      * @param controller 串口控制器
      */
@@ -130,7 +141,6 @@ private:
     void processWriteAuthStatusRequest(const ProtocolFrame &frame, MeterModel *meterModel);
     void processRemoteControlRequest(const ProtocolFrame &frame, MeterModel *meterModel);
     void sendResponse(const ProtocolFrame &response, MeterModel *meterModel = nullptr);
-    void verifyPassword(const ProtocolFrame &frame, MeterModel *meterModel);
     bool tryTakeNextReceivedFrame(ProtocolFrame &frame, QByteArray &rawFrame);
     bool shouldRespondToAddress(const QByteArray &addressBytes) const;
     MeterModel *meterModelForAddress(const QByteArray &addressBytes) const;

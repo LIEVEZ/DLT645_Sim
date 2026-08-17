@@ -512,6 +512,34 @@ bool DeviceTreeWidget::updateMeterEventRecordPresent(const QString &connectionAl
     return true;
 }
 
+bool DeviceTreeWidget::updateMeterAddress(const QString &oldAddress, const QString &newAddress)
+{
+    if (oldAddress.isEmpty() || newAddress.isEmpty())
+    {
+        return false;
+    }
+
+    QTreeWidgetItemIterator it(m_treeWidget, QTreeWidgetItemIterator::All);
+    while (*it)
+    {
+        QTreeWidgetItem *item = *it;
+        if (itemHasType(item, ItemType::Meter) &&
+            item->data(0, Qt::UserRole + 2).toString() == oldAddress)
+        {
+            item->setData(0, Qt::UserRole + 2, newAddress);
+            const MeterInfo info = meterInfoFromItem(item);
+            item->setText(0, QStringLiteral("%1 [%2] (%3)")
+                                 .arg(info.alias,
+                                      info.address,
+                                      meterPhaseTypeToDisplayName(info.phaseType)));
+            return true;
+        }
+        ++it;
+    }
+
+    return false;
+}
+
 bool DeviceTreeWidget::isPortConnected(const QString &port) const
 {
     // 遍历所有顶层连接节点

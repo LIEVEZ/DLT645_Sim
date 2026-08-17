@@ -153,6 +153,14 @@ public:
     bool updateMeterEventRecordPresent(const QString &connectionAlias, const QString &meterAlias, bool eventRecordPresent);
 
     /**
+     * @brief 更新设备树中的电表通信地址
+     * @param oldAddress 原通信地址
+     * @param newAddress 新通信地址
+     * @return 找到并更新电表节点时返回 true
+     */
+    bool updateMeterAddress(const QString &oldAddress, const QString &newAddress);
+
+    /**
      * @brief 获取树形控件指针
      * @return QTreeWidget指针
      */
