@@ -76,32 +76,6 @@ namespace
         return QSerialPort::EvenParity;
     }
 
-    QSerialPort::StopBits stopBitsFromText(const QString &text)
-    {
-        if (text == QStringLiteral("1.5"))
-        {
-            return QSerialPort::OneAndHalfStop;
-        }
-        if (text == QStringLiteral("2"))
-        {
-            return QSerialPort::TwoStop;
-        }
-        return QSerialPort::OneStop;
-    }
-
-    QSerialPort::FlowControl flowControlFromText(const QString &text)
-    {
-        if (text == QStringLiteral("Hardware"))
-        {
-            return QSerialPort::HardwareControl;
-        }
-        if (text == QStringLiteral("Software"))
-        {
-            return QSerialPort::SoftwareControl;
-        }
-        return QSerialPort::NoFlowControl;
-    }
-
     QString resultSummary(const MasterQueryResult &result)
     {
         if (!result.errorText.isEmpty())
@@ -196,8 +170,6 @@ MasterQueryDialog::MasterQueryDialog(QWidget *parent)
       m_baudRateCombo(nullptr),
       m_dataBitsCombo(nullptr),
       m_parityCombo(nullptr),
-      m_stopBitsCombo(nullptr),
-      m_flowControlCombo(nullptr),
       m_refreshPortsButton(nullptr),
       m_connectButton(nullptr),
       m_disconnectButton(nullptr),
@@ -712,14 +684,6 @@ QGroupBox *MasterQueryDialog::setupConnectionGroup()
     m_parityCombo->setCurrentText(QStringLiteral("Even"));
     m_parityCombo->setFixedWidth(130);
 
-    m_stopBitsCombo = new QComboBox(group);
-    m_stopBitsCombo->addItems({QStringLiteral("1"), QStringLiteral("1.5"), QStringLiteral("2")});
-    m_stopBitsCombo->setFixedWidth(88);
-
-    m_flowControlCombo = new QComboBox(group);
-    m_flowControlCombo->addItems({QStringLiteral("None"), QStringLiteral("Hardware"), QStringLiteral("Software")});
-    m_flowControlCombo->setFixedWidth(130);
-
     m_connectionStatusLabel = new QLabel(QStringLiteral("串口未连接"), group);
     m_connectionStatusLabel->setObjectName(QStringLiteral("masterStatusLabel"));
     m_connectionStatusLabel->setProperty("state", QStringLiteral("disconnected"));
@@ -731,38 +695,28 @@ QGroupBox *MasterQueryDialog::setupConnectionGroup()
     m_connectButton = new QPushButton(QStringLiteral("连接"), group);
     m_disconnectButton = new QPushButton(QStringLiteral("断开"), group);
 
-    QWidget *row1 = new QWidget(group);
-    QHBoxLayout *row1Layout = new QHBoxLayout(row1);
-    row1Layout->setContentsMargins(0, 0, 0, 0);
-    row1Layout->setSpacing(10);
-    row1Layout->addWidget(new QLabel(QStringLiteral("串口"), row1));
-    row1Layout->addWidget(m_portCombo);
-    row1Layout->addWidget(m_refreshPortsButton);
-    row1Layout->addSpacing(12);
-    row1Layout->addWidget(new QLabel(QStringLiteral("波特率"), row1));
-    row1Layout->addWidget(m_baudRateCombo);
-    row1Layout->addSpacing(10);
-    row1Layout->addWidget(new QLabel(QStringLiteral("数据位"), row1));
-    row1Layout->addWidget(m_dataBitsCombo);
-    row1Layout->addStretch();
-    rootLayout->addWidget(row1);
-
-    QWidget *row2 = new QWidget(group);
-    QHBoxLayout *row2Layout = new QHBoxLayout(row2);
-    row2Layout->setContentsMargins(0, 0, 0, 0);
-    row2Layout->setSpacing(10);
-    row2Layout->addWidget(new QLabel(QStringLiteral("校验位"), row2));
-    row2Layout->addWidget(m_parityCombo);
-    row2Layout->addWidget(new QLabel(QStringLiteral("停止位"), row2));
-    row2Layout->addWidget(m_stopBitsCombo);
-    row2Layout->addWidget(new QLabel(QStringLiteral("流控"), row2));
-    row2Layout->addWidget(m_flowControlCombo);
-    row2Layout->addSpacing(12);
-    row2Layout->addWidget(m_connectionStatusLabel);
-    row2Layout->addStretch();
-    row2Layout->addWidget(m_connectButton);
-    row2Layout->addWidget(m_disconnectButton);
-    rootLayout->addWidget(row2);
+    QWidget *connectionRow = new QWidget(group);
+    QHBoxLayout *connectionRowLayout = new QHBoxLayout(connectionRow);
+    connectionRowLayout->setContentsMargins(0, 0, 0, 0);
+    connectionRowLayout->setSpacing(10);
+    connectionRowLayout->addWidget(new QLabel(QStringLiteral("串口"), connectionRow));
+    connectionRowLayout->addWidget(m_portCombo);
+    connectionRowLayout->addWidget(m_refreshPortsButton);
+    connectionRowLayout->addSpacing(12);
+    connectionRowLayout->addWidget(new QLabel(QStringLiteral("波特率"), connectionRow));
+    connectionRowLayout->addWidget(m_baudRateCombo);
+    connectionRowLayout->addSpacing(10);
+    connectionRowLayout->addWidget(new QLabel(QStringLiteral("数据位"), connectionRow));
+    connectionRowLayout->addWidget(m_dataBitsCombo);
+    connectionRowLayout->addSpacing(10);
+    connectionRowLayout->addWidget(new QLabel(QStringLiteral("校验位"), connectionRow));
+    connectionRowLayout->addWidget(m_parityCombo);
+    connectionRowLayout->addSpacing(12);
+    connectionRowLayout->addWidget(m_connectionStatusLabel);
+    connectionRowLayout->addStretch();
+    connectionRowLayout->addWidget(m_connectButton);
+    connectionRowLayout->addWidget(m_disconnectButton);
+    rootLayout->addWidget(connectionRow);
 
     connect(m_refreshPortsButton, &QPushButton::clicked, this, &MasterQueryDialog::onRefreshPortsClicked);
     connect(m_connectButton, &QPushButton::clicked, this, &MasterQueryDialog::onConnectClicked);
@@ -1328,8 +1282,8 @@ MasterSerialConfig MasterQueryDialog::currentSerialConfig() const
     config.baudRate = m_baudRateCombo->currentText().toInt();
     config.dataBits = dataBitsFromText(m_dataBitsCombo->currentText());
     config.parity = parityFromText(m_parityCombo->currentText());
-    config.stopBits = stopBitsFromText(m_stopBitsCombo->currentText());
-    config.flowControl = flowControlFromText(m_flowControlCombo->currentText());
+    config.stopBits = QSerialPort::OneStop;
+    config.flowControl = QSerialPort::NoFlowControl;
     return config;
 }
 
@@ -1352,8 +1306,6 @@ void MasterQueryDialog::applyConnectionUiState(bool connected)
         !m_baudRateCombo ||
         !m_dataBitsCombo ||
         !m_parityCombo ||
-        !m_stopBitsCombo ||
-        !m_flowControlCombo ||
         !m_refreshPortsButton)
     {
         return;
@@ -1370,8 +1322,6 @@ void MasterQueryDialog::applyConnectionUiState(bool connected)
     m_baudRateCombo->setEnabled(!connected);
     m_dataBitsCombo->setEnabled(!connected);
     m_parityCombo->setEnabled(!connected);
-    m_stopBitsCombo->setEnabled(!connected);
-    m_flowControlCombo->setEnabled(!connected);
     m_refreshPortsButton->setEnabled(!connected && !m_portRefreshWatcher->isRunning());
 
     updateQueryUiState();

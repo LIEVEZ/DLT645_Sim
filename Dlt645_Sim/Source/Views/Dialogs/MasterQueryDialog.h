@@ -114,8 +114,6 @@ private:
     QComboBox *m_baudRateCombo;
     QComboBox *m_dataBitsCombo;
     QComboBox *m_parityCombo;
-    QComboBox *m_stopBitsCombo;
-    QComboBox *m_flowControlCombo;
     QPushButton *m_refreshPortsButton;
     QPushButton *m_connectButton;
     QPushButton *m_disconnectButton;
