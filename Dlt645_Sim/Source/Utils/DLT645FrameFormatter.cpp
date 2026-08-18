@@ -229,7 +229,7 @@ QString controlCodeDetail(quint8 code)
     {
         parts.append(QStringLiteral("请求"));
     }
-    parts.append((code & 0x20) != 0 ? QStringLiteral("有后续数据") : QStringLiteral("无后续数据"));
+    parts.append((code & 0x20) != 0 ? QStringLiteral("有后续数据帧") : QStringLiteral("无后续数据帧"));
     return parts.join(QStringLiteral("，"));
 }
 
@@ -632,8 +632,26 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
                                             QStringLiteral("长度不足，无法拆分权限/密码/操作者代码")) + QStringLiteral("\n");
             }
         }
+        else if (functionCode == 0x13 && (controlCode & 0x80) != 0)
+        {
+            // 读通信地址应答的数据域为加 0x33 的 6 字节地址，低字节在前。
+            if (decodedDataField.size() == 6)
+            {
+                detailText += annotatedLine(DLT645FrameFormatter::formatHex(decodedDataField),
+                                            QStringLiteral("地址数据 (低字节在前)"),
+                                            QStringLiteral("通信地址:%1")
+                                                .arg(ProtocolParser::bytesToAddress(decodedDataField))) + QStringLiteral("\n");
+            }
+            else
+            {
+                detailText += annotatedLine(DLT645FrameFormatter::formatHex(decodedDataField),
+                                            QStringLiteral("地址数据"),
+                                            QStringLiteral("长度异常，期望 6 字节")) + QStringLiteral("\n");
+            }
+        }
         else if (dataField.size() >= 4)
         {
+            const bool isWriteDataRequest = functionCode == 0x14 && (controlCode & 0x80) == 0;
             const QString diCode = ProtocolParser::extractDIFromDataField(dataField);
             DataItem diItem;
             QString description;
@@ -663,8 +681,50 @@ FrameParseSection buildDetailedFrameSection(const QByteArray &frame,
                                         QStringLiteral("数据标识ID"),
                                         displayDiCode(diCode) + (description.isEmpty() ? QString() : QStringLiteral(" ") + description)) + QStringLiteral("\n");
 
-            const QByteArray payload = decodedDataField.mid(4);
-            if (!payload.isEmpty())
+            QByteArray payload = decodedDataField.mid(4);
+            if (isWriteDataRequest && decodedDataField.size() >= 12)
+            {
+                const QByteArray authorityBytes = decodedDataField.mid(4, 4);
+                const QByteArray operatorBytes = decodedDataField.mid(8, 4);
+                const quint8 permission = static_cast<quint8>(authorityBytes.at(0));
+                const QString passwordText = formatPasswordDigits(authorityBytes.mid(1, 3));
+                const QString operatorText = formatOperatorCodeDigits(operatorBytes);
+
+                detailText += annotatedLine(DLT645FrameFormatter::formatHex(authorityBytes),
+                                            QStringLiteral("权限:%1, 密码:%2")
+                                                .arg(bcdByteText(permission), passwordText)) + QStringLiteral("\n");
+                detailText += annotatedLine(DLT645FrameFormatter::formatHex(operatorBytes),
+                                            QStringLiteral("操作者代码:%1").arg(operatorText)) + QStringLiteral("\n");
+                payload = decodedDataField.mid(12);
+            }
+            if (isWriteDataRequest && !payload.isEmpty())
+            {
+                QString writeDescription = description;
+                QString writeUnit = unit;
+                QString decodedWriteValue = DLT645ValueFormatter::decodedValueForItem(
+                    meterModel, diCode, payload, &writeDescription, &writeUnit);
+                if (decodedWriteValue.isEmpty())
+                {
+                    decodedWriteValue = DLT645FrameFormatter::formatHex(payload);
+                }
+
+                detailText += annotatedLine(DLT645FrameFormatter::formatHex(payload),
+                                            QStringLiteral("写入值"),
+                                            appendUnit(decodedWriteValue, writeUnit)) + QStringLiteral("\n");
+
+                QByteArray bitPayload = payload;
+                if (bitPayload.size() == 1 && StatusWordBitCatalog::isStatusWordCode(diCode))
+                {
+                    // 写入状态字时常见只携带低字节，补零后复用 2 字节位解析。
+                    bitPayload.append(static_cast<char>(0x00));
+                }
+                const QStringList bitLines = StatusWordBitCatalog::detailLinesForPayload(diCode, bitPayload);
+                if (!bitLines.isEmpty())
+                {
+                    detailText += bitLines.join(QStringLiteral("\n")) + QStringLiteral("\n");
+                }
+            }
+            else if (!payload.isEmpty())
             {
                 const QString blockBreakdown = DLT645ValueFormatter::blockByteBreakdownLines(meterModel, diCode, payload);
                 if (!blockBreakdown.isEmpty())

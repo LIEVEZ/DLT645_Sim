@@ -158,6 +158,15 @@ bool MasterQueryController::sendRawFrame(const QByteArray &rawBytes, int timeout
     return true;
 }
 
+bool MasterQueryController::sendBroadcastReadAddressRequest(bool includePrefixFE, int timeoutMs)
+{
+    MasterRequestSpec spec;
+    spec.broadcastReadAddress = true;
+    spec.includePrefixFE = includePrefixFE;
+    spec.timeoutMs = timeoutMs;
+    return sendReadRequest(spec);
+}
+
 bool MasterQueryController::sendReadRequest(const MasterRequestSpec &spec)
 {
     if (!isConnected())
@@ -172,13 +181,40 @@ bool MasterQueryController::sendReadRequest(const MasterRequestSpec &spec)
         return false;
     }
 
-    if (!ProtocolParser::isValidAddress(spec.meterAddress))
+    if (!spec.broadcastReadAddress && !ProtocolParser::isValidAddress(spec.meterAddress))
     {
         failPendingRequest(MasterQueryStatus::Error, QString::fromUtf8("目标电表地址必须是 12 位数字。"));
         return false;
     }
 
-    if (!spec.isReadAddressRequest() && spec.diCode.trimmed().isEmpty())
+    if (spec.isWriteDataRequest())
+    {
+        if (spec.diCode.trimmed().isEmpty() || spec.writeValue.trimmed().isEmpty() ||
+            spec.remoteControlPermission.size() != 2 ||
+            spec.remoteControlPassword.size() != 6 ||
+            spec.remoteControlOperatorCode.size() != 8)
+        {
+            failPendingRequest(MasterQueryStatus::Error, QString::fromUtf8("请选择可写数据标识并填写写入值。"));
+            return false;
+        }
+    }
+    else if (spec.isRemoteControlRequest())
+    {
+        if (spec.remoteControlCommand == 0)
+        {
+            failPendingRequest(MasterQueryStatus::Error, QString::fromUtf8("远程控制命令无效。"));
+            return false;
+        }
+
+        if (spec.remoteControlPermission.size() != 2 ||
+            spec.remoteControlPassword.size() != 6 ||
+            spec.remoteControlOperatorCode.size() != 8)
+        {
+            failPendingRequest(MasterQueryStatus::Error, QString::fromUtf8("远程控制凭据格式无效。"));
+            return false;
+        }
+    }
+    else if (!spec.isReadAddressRequest() && spec.diCode.trimmed().isEmpty())
     {
         failPendingRequest(MasterQueryStatus::Error, QString::fromUtf8("请选择要读取的数据标识。"));
         return false;
@@ -262,6 +298,11 @@ void MasterQueryController::onReadyRead()
         result.responseFrame = frame;
         result.rawResponse = rawFrame;
         result.timestamp = QDateTime::currentDateTime();
+        if (result.requestSpec.isReadAddressRequest())
+        {
+            // 读地址应答的地址域即电表真实地址，供界面回填
+            result.responseMeterAddress = ProtocolParser::bytesToAddress(frame.address);
+        }
         setStatus(MasterQueryStatus::Completed);
         clearPendingRequest();
         setStatus(MasterQueryStatus::Idle);
@@ -309,10 +350,35 @@ void MasterQueryController::onRequestTimeout()
 
 ProtocolFrame MasterQueryController::buildRequestFrame(const MasterRequestSpec &spec) const
 {
-    const QByteArray addressBytes = ProtocolParser::addressToBytes(spec.meterAddress);
+    // 广播读地址使用 6×0xAA 通配地址域，不经过 12 位地址转换
+    const QByteArray addressBytes = spec.broadcastReadAddress
+                                        ? QByteArray(6, static_cast<char>(0xAA))
+                                        : ProtocolParser::addressToBytes(spec.meterAddress);
     if (spec.isReadAddressRequest())
     {
         return m_protocolParser->buildReadAddressRequest(addressBytes, spec.includePrefixFE);
+    }
+
+    if (spec.isRemoteControlRequest())
+    {
+        return m_protocolParser->buildRemoteControlRequest(addressBytes,
+                                                           spec.remoteControlCommand,
+                                                           spec.remoteControlParameters,
+                                                           spec.remoteControlPermission,
+                                                           spec.remoteControlPassword,
+                                                           spec.remoteControlOperatorCode,
+                                                           spec.includePrefixFE);
+    }
+
+    if (spec.isWriteDataRequest())
+    {
+        return m_protocolParser->buildWriteRequest(addressBytes,
+                                                   spec.diCode,
+                                                   spec.writeValue,
+                                                   spec.remoteControlPermission,
+                                                   spec.remoteControlPassword,
+                                                   spec.remoteControlOperatorCode,
+                                                   spec.includePrefixFE);
     }
 
     return m_protocolParser->buildReadRequest(addressBytes, spec.diCode, spec.includePrefixFE);
@@ -455,13 +521,17 @@ bool MasterQueryController::validateResponseFrame(const ProtocolFrame &frame, QS
         return false;
     }
 
-    if (frame.address != m_pendingResult.requestFrame.address)
+    // 广播读地址请求的应答地址域是电表真实地址（通配地址不会原样返回），跳过地址比对
+    if (!m_pendingResult.requestSpec.broadcastReadAddress &&
+        frame.address != m_pendingResult.requestFrame.address)
     {
         errorText = QString::fromUtf8("收到地址不匹配的应答帧，已忽略。");
         return false;
     }
 
-    if (!m_pendingResult.requestSpec.isReadAddressRequest())
+    if (!m_pendingResult.requestSpec.isReadAddressRequest() &&
+        !m_pendingResult.requestSpec.isRemoteControlRequest() &&
+        !m_pendingResult.requestSpec.isWriteDataRequest())
     {
         // 检查是否为异常应答（控制码 bit6=1）
         const bool isErrorResponse = (frame.controlCode & 0x40) != 0;

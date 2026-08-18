@@ -38,6 +38,7 @@ public:
 
     void setUnavailablePorts(const QStringList &ports);
     void setDefaultMeterAddress(const QString &address);
+    void setDefaultMeterCredentials(const QString &password, const QString &operatorCode);
     void setDefaultIncludePrefixFE(bool includePrefixFE);
     void applyDarkTheme();
     void applyLightTheme();
@@ -58,6 +59,7 @@ private slots:
     void onHistorySelectionChanged();
     void onRawSendClicked();
     void onRawClearClicked();
+    void onQueryAddressClicked();
 
     void onSessionStateChanged(bool connected);
     void onRequestStarted(const MasterQueryResult &result);
@@ -71,6 +73,7 @@ protected:
 private:
     void setupUi();
     QGroupBox *setupConnectionGroup();
+    QGroupBox *setupMeterConfigGroup();
     QGroupBox *setupQueryGroup();
     QGroupBox *setupRawSendGroup();
     QGroupBox *setupResultGroup();
@@ -120,10 +123,18 @@ private:
     QLabel *m_connectionStatusLabel;
     QLabel *m_portHintLabel;
 
+    QLineEdit *m_meterAddressEdit;
+    QLineEdit *m_meterPasswordEdit;
+    QLineEdit *m_operatorCodeEdit;
+    QPushButton *m_queryAddressButton;
+
     QComboBox *m_queryTypeCombo;
-    QLineEdit *m_addressEdit;
     QCheckBox *m_includePrefixCheckBox;
     QSpinBox *m_timeoutSpinBox;
+    QLabel *m_writeValueLabel;
+    QLineEdit *m_writeValueEdit;
+    QLabel *m_remoteControlTimeLabel;
+    QLineEdit *m_remoteControlTimeEdit;
     QLineEdit *m_searchEdit;
     QComboBox *m_categoryComboBox;
     QListWidget *m_dataItemList;

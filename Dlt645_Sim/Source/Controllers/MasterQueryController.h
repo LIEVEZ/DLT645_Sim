@@ -37,10 +37,29 @@ struct MasterRequestSpec
     bool includePrefixFE = true;
     int timeoutMs = 3000;
     bool rawSend = false;
+    bool broadcastReadAddress = false; // 广播读地址：地址域使用 6×0xAA 通配，应答地址为电表真实地址
+    bool writeData = false;
+    QString writeValue;
+    bool remoteControl = false;
+    quint8 remoteControlCommand = 0;
+    QByteArray remoteControlParameters;
+    QString remoteControlPermission;
+    QString remoteControlPassword;
+    QString remoteControlOperatorCode;
 
     bool isReadAddressRequest() const
     {
-        return !rawSend && diCode.trimmed().isEmpty();
+        return !rawSend && !writeData && !remoteControl && diCode.trimmed().isEmpty();
+    }
+
+    bool isWriteDataRequest() const
+    {
+        return !rawSend && writeData;
+    }
+
+    bool isRemoteControlRequest() const
+    {
+        return !rawSend && remoteControl;
     }
 
     bool isRawSendRequest() const
@@ -69,6 +88,7 @@ struct MasterQueryResult
     ProtocolFrame responseFrame;
     QString errorText;
     QDateTime timestamp;
+    QString responseMeterAddress; // 读地址应答中解析出的电表真实地址（广播查询时用于回填）
 };
 
 Q_DECLARE_METATYPE(MasterQueryStatus)
@@ -93,6 +113,14 @@ public:
     MasterQueryResult pendingRequest() const;
 
     bool sendReadRequest(const MasterRequestSpec &spec);
+
+    /**
+     * @brief 发送广播读通信地址请求（地址域 6×0xAA，用于发现未知电表地址）
+     * @param includePrefixFE 是否包含前导 FE
+     * @param timeoutMs 等待应答超时时间
+     * @return 是否已写入串口并进入等待应答状态
+     */
+    bool sendBroadcastReadAddressRequest(bool includePrefixFE = true, int timeoutMs = 3000);
 
     /**
      * @brief 直接发送原始 HEX 报文（不构建协议帧，不做地址/DI 校验）

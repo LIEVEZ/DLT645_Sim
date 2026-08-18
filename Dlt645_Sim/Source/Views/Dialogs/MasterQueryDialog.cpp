@@ -91,6 +91,51 @@ namespace
         return QString();
     }
 
+    struct RemoteControlCommandDefinition
+    {
+        quint8 command;
+        QString name;
+    };
+
+    QList<RemoteControlCommandDefinition> remoteControlCommandDefinitions()
+    {
+        return {
+            {0x1A, QStringLiteral("跳闸")},
+            {0x1B, QStringLiteral("合闸")},
+            {0x1C, QStringLiteral("直接合闸")},
+            {0x2A, QStringLiteral("报警")},
+            {0x2B, QStringLiteral("报警解除")},
+            {0x3A, QStringLiteral("保电")},
+            {0x3B, QStringLiteral("保电解除")}};
+    }
+
+    char toBcdByte(int value)
+    {
+        return static_cast<char>(((value / 10) << 4) | (value % 10));
+    }
+
+    QByteArray remoteControlTimeParameters(const QDateTime &dateTime)
+    {
+        const QDate date = dateTime.date();
+        const QTime time = dateTime.time();
+
+        QByteArray parameters;
+        parameters.reserve(7);
+        parameters.append(static_cast<char>(0x00));
+        parameters.append(toBcdByte(time.second()));
+        parameters.append(toBcdByte(time.minute()));
+        parameters.append(toBcdByte(time.hour()));
+        parameters.append(toBcdByte(date.day()));
+        parameters.append(toBcdByte(date.month()));
+        parameters.append(toBcdByte(date.year() % 100));
+        return parameters;
+    }
+
+    QDateTime remoteControlDateTimeFromText(const QString &text)
+    {
+        return QDateTime::fromString(text.trimmed(), QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    }
+
     // 直接发送输入的归一化：大写、去空白，校验偶数个十六进制字符
     QByteArray normalizedRawHex(const QString &input, QString *errorMessage)
     {
@@ -175,10 +220,17 @@ MasterQueryDialog::MasterQueryDialog(QWidget *parent)
       m_disconnectButton(nullptr),
       m_connectionStatusLabel(nullptr),
       m_portHintLabel(nullptr),
+      m_meterAddressEdit(nullptr),
+      m_meterPasswordEdit(nullptr),
+      m_operatorCodeEdit(nullptr),
+      m_queryAddressButton(nullptr),
       m_queryTypeCombo(nullptr),
-      m_addressEdit(nullptr),
       m_includePrefixCheckBox(nullptr),
       m_timeoutSpinBox(nullptr),
+      m_writeValueLabel(nullptr),
+      m_writeValueEdit(nullptr),
+      m_remoteControlTimeLabel(nullptr),
+      m_remoteControlTimeEdit(nullptr),
       m_searchEdit(nullptr),
       m_categoryComboBox(nullptr),
       m_dataItemList(nullptr),
@@ -243,9 +295,21 @@ void MasterQueryDialog::setUnavailablePorts(const QStringList &ports)
 
 void MasterQueryDialog::setDefaultMeterAddress(const QString &address)
 {
-    if (m_addressEdit && m_addressEdit->text() != address)
+    if (m_meterAddressEdit && m_meterAddressEdit->text() != address)
     {
-        m_addressEdit->setText(address);
+        m_meterAddressEdit->setText(address);
+    }
+}
+
+void MasterQueryDialog::setDefaultMeterCredentials(const QString &password, const QString &operatorCode)
+{
+    if (m_meterPasswordEdit && m_meterPasswordEdit->text() != password)
+    {
+        m_meterPasswordEdit->setText(password);
+    }
+    if (m_operatorCodeEdit && m_operatorCodeEdit->text() != operatorCode)
+    {
+        m_operatorCodeEdit->setText(operatorCode);
     }
 }
 
@@ -449,6 +513,8 @@ void MasterQueryDialog::onDisconnectClicked()
 void MasterQueryDialog::onQueryTypeChanged(int index)
 {
     Q_UNUSED(index);
+    populateCategories();
+    populateDataItems();
     updateQueryUiState();
 }
 
@@ -469,11 +535,18 @@ void MasterQueryDialog::onCurrentItemChanged(QListWidgetItem *current, QListWidg
     Q_UNUSED(previous);
     if (!current)
     {
-        m_selectedDiLabel->setText(QString::fromUtf8("当前未选择数据标识"));
+        m_selectedDiLabel->setText(m_queryTypeCombo->currentIndex() == 2
+                                       ? QString::fromUtf8("当前未选择控制命令")
+                                       : QString::fromUtf8("当前未选择数据标识"));
     }
     else
     {
         m_selectedDiLabel->setText(QString::fromUtf8("当前选择：%1").arg(current->text()));
+        if (m_queryTypeCombo->currentIndex() == 1)
+        {
+            const DataItem item = m_catalogMeterModel->getDataItem(selectedDiCode());
+            m_writeValueEdit->setText(item.getFormattedValue());
+        }
     }
     updateQueryUiState();
 }
@@ -486,9 +559,30 @@ void MasterQueryDialog::onSendClicked()
         return;
     }
 
-    if (m_queryTypeCombo->currentIndex() == 0 && selectedDiCode().isEmpty())
+    if (selectedDiCode().isEmpty())
     {
-        QMessageBox::warning(this, QString::fromUtf8("提示"), QString::fromUtf8("请选择要读取的数据标识。"));
+        const QString message = m_queryTypeCombo->currentIndex() == 0
+                                    ? QString::fromUtf8("请选择要读取的数据标识。")
+                                    : (m_queryTypeCombo->currentIndex() == 1
+                                           ? QString::fromUtf8("请选择要写入的数据标识。")
+                                           : QString::fromUtf8("请选择远程控制命令。"));
+        QMessageBox::warning(this, QString::fromUtf8("提示"), message);
+        return;
+    }
+
+    if (m_queryTypeCombo->currentIndex() == 1 &&
+        m_writeValueEdit->text().trimmed().isEmpty())
+    {
+        QMessageBox::warning(this, QString::fromUtf8("提示"), QString::fromUtf8("请输入写入值。"));
+        return;
+    }
+
+    if (m_queryTypeCombo->currentIndex() == 2 &&
+        !remoteControlDateTimeFromText(m_remoteControlTimeEdit->text()).isValid())
+    {
+        QMessageBox::warning(this,
+                             QString::fromUtf8("提示"),
+                             QString::fromUtf8("命令时间格式必须为 yyyy-MM-dd HH:mm:ss。"));
         return;
     }
 
@@ -549,6 +643,18 @@ void MasterQueryDialog::onRawClearClicked()
     m_rawHexEdit->clear();
 }
 
+void MasterQueryDialog::onQueryAddressClicked()
+{
+    if (!m_controller->isConnected())
+    {
+        QMessageBox::warning(this, QString::fromUtf8("提示"), QString::fromUtf8("请先连接串口。"));
+        return;
+    }
+
+    m_noticeLabel->clear();
+    m_controller->sendBroadcastReadAddressRequest(m_includePrefixCheckBox->isChecked(), m_timeoutSpinBox->value());
+}
+
 void MasterQueryDialog::onSessionStateChanged(bool connected)
 {
     applyConnectionUiState(connected);
@@ -571,6 +677,12 @@ void MasterQueryDialog::onRequestStarted(const MasterQueryResult &result)
 void MasterQueryDialog::onResponseReceived(const MasterQueryResult &result)
 {
     displayResult(result);
+
+    // 广播读地址应答携带电表真实地址，回填到电表配置区（联动同步查询组目标地址）
+    if (result.requestSpec.broadcastReadAddress && !result.responseMeterAddress.isEmpty())
+    {
+        m_meterAddressEdit->setText(result.responseMeterAddress);
+    }
 
     if (m_pendingHistoryRow >= 0 && m_pendingHistoryRow < m_historyResults.size())
     {
@@ -619,6 +731,7 @@ void MasterQueryDialog::setupUi()
     mainLayout->setSpacing(10);
 
     mainLayout->addWidget(setupConnectionGroup());
+    mainLayout->addWidget(setupMeterConfigGroup());
 
     QSplitter *contentSplitter = new QSplitter(Qt::Horizontal, this);
     contentSplitter->setChildrenCollapsible(false);
@@ -662,7 +775,7 @@ QGroupBox *MasterQueryDialog::setupConnectionGroup()
     rootLayout->setSpacing(8);
 
     m_portCombo = new QComboBox(group);
-    m_portCombo->setMinimumWidth(240);
+    m_portCombo->setMinimumWidth(180);
     m_portCombo->setMaximumWidth(360);
 
     m_refreshPortsButton = new QPushButton(QStringLiteral("刷新"), group);
@@ -700,7 +813,7 @@ QGroupBox *MasterQueryDialog::setupConnectionGroup()
     connectionRowLayout->setContentsMargins(0, 0, 0, 0);
     connectionRowLayout->setSpacing(10);
     connectionRowLayout->addWidget(new QLabel(QStringLiteral("串口"), connectionRow));
-    connectionRowLayout->addWidget(m_portCombo);
+    connectionRowLayout->addWidget(m_portCombo, 1);
     connectionRowLayout->addWidget(m_refreshPortsButton);
     connectionRowLayout->addSpacing(12);
     connectionRowLayout->addWidget(new QLabel(QStringLiteral("波特率"), connectionRow));
@@ -848,6 +961,57 @@ QGroupBox *MasterQueryDialog::setupConnectionGroup()
 #endif
 }
 
+QGroupBox *MasterQueryDialog::setupMeterConfigGroup()
+{
+    QGroupBox *group = new QGroupBox(QString::fromUtf8("电表配置"), this);
+    group->setObjectName(QStringLiteral("masterMeterConfigGroup"));
+
+    QHBoxLayout *rootLayout = new QHBoxLayout(group);
+    rootLayout->setContentsMargins(10, 10, 10, 10);
+    rootLayout->setSpacing(10);
+
+    m_meterAddressEdit = new QLineEdit(group);
+    m_meterAddressEdit->setPlaceholderText(QString::fromUtf8("12 位电表地址"));
+    m_meterAddressEdit->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("\\d{0,12}")), m_meterAddressEdit));
+    m_meterAddressEdit->setFixedWidth(140);
+
+    // 密码栏沿用电表配置的 8 位形式：6 位密码 + 2 位权限码。
+    // 默认 00000002 表示密码 000000、02 级权限。
+    m_meterPasswordEdit = new QLineEdit(group);
+    m_meterPasswordEdit->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("\\d{0,8}")), m_meterPasswordEdit));
+    m_meterPasswordEdit->setText(QStringLiteral("00000002"));
+    m_meterPasswordEdit->setFixedWidth(120);
+
+    // 操作码即操作者代码，8 位数字，默认 8 个零
+    m_operatorCodeEdit = new QLineEdit(group);
+    m_operatorCodeEdit->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("\\d{0,8}")), m_operatorCodeEdit));
+    m_operatorCodeEdit->setText(QStringLiteral("00000000"));
+    m_operatorCodeEdit->setFixedWidth(120);
+
+    m_queryAddressButton = new QPushButton(QString::fromUtf8("查询地址"), group);
+
+    rootLayout->addWidget(new QLabel(QString::fromUtf8("地址"), group));
+    rootLayout->addWidget(m_meterAddressEdit);
+    rootLayout->addSpacing(12);
+    rootLayout->addWidget(new QLabel(QString::fromUtf8("密码"), group));
+    rootLayout->addWidget(m_meterPasswordEdit);
+    rootLayout->addSpacing(10);
+    rootLayout->addWidget(new QLabel(QString::fromUtf8("操作码"), group));
+    rootLayout->addWidget(m_operatorCodeEdit);
+    rootLayout->addStretch();
+    rootLayout->addWidget(m_queryAddressButton);
+
+    connect(m_queryAddressButton, &QPushButton::clicked, this, &MasterQueryDialog::onQueryAddressClicked);
+    // 地址是查询的唯一目标，变化后刷新发送按钮可用性
+    connect(m_meterAddressEdit, &QLineEdit::textChanged, this, [this]()
+            { updateQueryUiState(); });
+    connect(m_meterPasswordEdit, &QLineEdit::textChanged, this, [this]()
+            { updateQueryUiState(); });
+    connect(m_operatorCodeEdit, &QLineEdit::textChanged, this, [this]()
+            { updateQueryUiState(); });
+    return group;
+}
+
 QGroupBox *MasterQueryDialog::setupQueryGroup()
 {
     QGroupBox *group = new QGroupBox(QString::fromUtf8("查询配置"), this);
@@ -858,13 +1022,8 @@ QGroupBox *MasterQueryDialog::setupQueryGroup()
     formLayout->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
 
     m_queryTypeCombo = new QComboBox(group);
-    m_queryTypeCombo->addItems({QString::fromUtf8("读数据"), QString::fromUtf8("读地址")});
+    m_queryTypeCombo->addItems({QString::fromUtf8("读数据"), QString::fromUtf8("写数据"), QString::fromUtf8("远程控制")});
     formLayout->addRow(QString::fromUtf8("查询类型"), m_queryTypeCombo);
-
-    m_addressEdit = new QLineEdit(group);
-    m_addressEdit->setPlaceholderText(QString::fromUtf8("请输入 12 位电表地址"));
-    m_addressEdit->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("\\d{0,12}")), m_addressEdit));
-    formLayout->addRow(QString::fromUtf8("目标地址"), m_addressEdit);
 
     m_includePrefixCheckBox = new QCheckBox(QString::fromUtf8("包含前导 FE"), group);
     formLayout->addRow(QString::fromUtf8("帧选项"), m_includePrefixCheckBox);
@@ -874,6 +1033,21 @@ QGroupBox *MasterQueryDialog::setupQueryGroup()
     m_timeoutSpinBox->setValue(3000);
     m_timeoutSpinBox->setSuffix(QStringLiteral(" ms"));
     formLayout->addRow(QString::fromUtf8("超时时间"), m_timeoutSpinBox);
+
+    m_writeValueLabel = new QLabel(QString::fromUtf8("写入值"), group);
+    m_writeValueEdit = new QLineEdit(group);
+    m_writeValueEdit->setPlaceholderText(QString::fromUtf8("填写写入值"));
+    m_writeValueLabel->hide();
+    m_writeValueEdit->hide();
+    formLayout->addRow(m_writeValueLabel, m_writeValueEdit);
+
+    m_remoteControlTimeLabel = new QLabel(QString::fromUtf8("命令时间"), group);
+    m_remoteControlTimeEdit = new QLineEdit(group);
+    m_remoteControlTimeEdit->setText(QDateTime::currentDateTime().addYears(1).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")));
+    m_remoteControlTimeEdit->setPlaceholderText(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    m_remoteControlTimeLabel->hide();
+    m_remoteControlTimeEdit->hide();
+    formLayout->addRow(m_remoteControlTimeLabel, m_remoteControlTimeEdit);
 
     rootLayout->addLayout(formLayout);
 
@@ -900,14 +1074,21 @@ QGroupBox *MasterQueryDialog::setupQueryGroup()
             QOverload<int>::of(&QComboBox::currentIndexChanged),
             this,
             &MasterQueryDialog::onQueryTypeChanged);
-    connect(m_addressEdit, &QLineEdit::textChanged, this, [this]()
-            { updateQueryUiState(); });
     connect(m_categoryComboBox,
             QOverload<int>::of(&QComboBox::currentIndexChanged),
             this,
             &MasterQueryDialog::onCategoryChanged);
     connect(m_searchEdit, &QLineEdit::textChanged, this, &MasterQueryDialog::onSearchTextChanged);
     connect(m_dataItemList, &QListWidget::currentItemChanged, this, &MasterQueryDialog::onCurrentItemChanged);
+    connect(m_writeValueEdit, &QLineEdit::textChanged, this, [this](const QString &)
+            { updateQueryUiState(); });
+    connect(m_remoteControlTimeEdit,
+            &QLineEdit::textChanged,
+            this,
+            [this](const QString &)
+            {
+                updateQueryUiState();
+            });
     connect(m_sendButton, &QPushButton::clicked, this, &MasterQueryDialog::onSendClicked);
     return group;
 }
@@ -1100,6 +1281,12 @@ void MasterQueryDialog::populateCategories()
 {
     const QSignalBlocker blocker(m_categoryComboBox);
     m_categoryComboBox->clear();
+    if (m_queryTypeCombo->currentIndex() == 2)
+    {
+        m_categoryComboBox->addItem(QString::fromUtf8("远程控制命令"));
+        return;
+    }
+
     for (const QString &category : allCategories())
     {
         m_categoryComboBox->addItem(category);
@@ -1113,6 +1300,41 @@ void MasterQueryDialog::populateDataItems()
 
     const QString filterText = m_searchEdit->text().trimmed();
     const bool hasFilter = !filterText.isEmpty();
+
+    if (m_queryTypeCombo->currentIndex() == 2)
+    {
+        for (const RemoteControlCommandDefinition &definition : remoteControlCommandDefinitions())
+        {
+            const QString commandCode = QStringLiteral("0x%1")
+                                            .arg(definition.command, 2, 16, QChar('0'))
+                                            .toUpper()
+                                            .replace(QStringLiteral("0X"), QStringLiteral("0x"));
+            const QString matchText = QStringLiteral("%1 %2").arg(commandCode, definition.name);
+            if (hasFilter && !matchText.contains(filterText, Qt::CaseInsensitive))
+            {
+                continue;
+            }
+
+            QListWidgetItem *listItem = new QListWidgetItem(
+                QStringLiteral("%1  |  %2").arg(commandCode, definition.name), m_dataItemList);
+            listItem->setData(Qt::UserRole, commandCode);
+            listItem->setData(Qt::UserRole + 1, definition.name);
+            listItem->setData(Qt::UserRole + 2, QString::fromUtf8("远程控制命令"));
+        }
+
+        m_categoryComboBox->setEnabled(false);
+        if (m_dataItemList->count() > 0)
+        {
+            m_dataItemList->setCurrentRow(0);
+        }
+        else
+        {
+            m_selectedDiLabel->setText(QString::fromUtf8("当前未选择控制命令"));
+        }
+        updateQueryUiState();
+        return;
+    }
+
     const QList<QString> categoriesToLoad = hasFilter
                                                 ? allCategories()
                                                 : QList<QString>{m_categoryComboBox->currentText()};
@@ -1123,6 +1345,10 @@ void MasterQueryDialog::populateDataItems()
         for (const QString &diCode : diCodes)
         {
             const DataItem item = m_catalogMeterModel->getDataItem(diCode);
+            if (m_queryTypeCombo->currentIndex() == 1 && !item.isWritable)
+            {
+                continue;
+            }
             const QString description = item.description.isEmpty() ? QString::fromUtf8("未命名数据项") : item.description;
             const QString matchText = QStringLiteral("%1 %2").arg(diCode, description);
             if (hasFilter && !matchText.contains(filterText, Qt::CaseInsensitive))
@@ -1290,10 +1516,41 @@ MasterSerialConfig MasterQueryDialog::currentSerialConfig() const
 MasterRequestSpec MasterQueryDialog::currentRequestSpec() const
 {
     MasterRequestSpec spec;
-    spec.meterAddress = m_addressEdit->text().trimmed();
-    spec.diCode = (m_queryTypeCombo->currentIndex() == 0) ? selectedDiCode() : QString();
+    spec.meterAddress = m_meterAddressEdit->text().trimmed();
     spec.includePrefixFE = m_includePrefixCheckBox->isChecked();
     spec.timeoutMs = m_timeoutSpinBox->value();
+
+    if (m_queryTypeCombo->currentIndex() == 2)
+    {
+        bool commandOk = false;
+        spec.remoteControl = true;
+        spec.remoteControlCommand = static_cast<quint8>(selectedDiCode().mid(2).toUInt(&commandOk, 16));
+        if (!commandOk)
+        {
+            spec.remoteControlCommand = 0;
+        }
+
+        const QString credentials = m_meterPasswordEdit->text().trimmed();
+        spec.remoteControlPassword = credentials.left(6);
+        spec.remoteControlPermission = credentials.right(2);
+        spec.remoteControlOperatorCode = m_operatorCodeEdit->text().trimmed();
+        spec.remoteControlParameters = remoteControlTimeParameters(
+            remoteControlDateTimeFromText(m_remoteControlTimeEdit->text()));
+    }
+    else if (m_queryTypeCombo->currentIndex() == 1)
+    {
+        spec.writeData = true;
+        spec.diCode = selectedDiCode();
+        spec.writeValue = m_writeValueEdit->text().trimmed();
+        const QString credentials = m_meterPasswordEdit->text().trimmed();
+        spec.remoteControlPassword = credentials.left(6);
+        spec.remoteControlPermission = credentials.right(2);
+        spec.remoteControlOperatorCode = m_operatorCodeEdit->text().trimmed();
+    }
+    else
+    {
+        spec.diCode = selectedDiCode();
+    }
     return spec;
 }
 
@@ -1335,17 +1592,30 @@ void MasterQueryDialog::updateQueryUiState()
         !m_dataItemList ||
         !m_sendButton ||
         !m_selectedDiLabel ||
-        !m_addressEdit)
+        !m_meterAddressEdit ||
+        !m_meterPasswordEdit ||
+        !m_operatorCodeEdit ||
+        !m_remoteControlTimeLabel ||
+        !m_remoteControlTimeEdit)
     {
         return;
     }
 
     const bool isReadData = (m_queryTypeCombo->currentIndex() == 0);
+    const bool isWriteData = (m_queryTypeCombo->currentIndex() == 1);
+    const bool isRemoteControl = (m_queryTypeCombo->currentIndex() == 2);
     const bool connected = m_controller->isConnected();
 
-    m_searchEdit->setEnabled(isReadData);
-    m_categoryComboBox->setEnabled(isReadData && m_searchEdit->text().trimmed().isEmpty());
-    m_dataItemList->setEnabled(isReadData);
+    m_writeValueLabel->setVisible(isWriteData);
+    m_writeValueEdit->setVisible(isWriteData);
+    m_remoteControlTimeLabel->setVisible(isRemoteControl);
+    m_remoteControlTimeEdit->setVisible(isRemoteControl);
+    m_searchEdit->setEnabled(true);
+    m_searchEdit->setPlaceholderText(isRemoteControl
+                                         ? QString::fromUtf8("搜索命令码或命令名称")
+                                         : QString::fromUtf8("搜索 DI 或描述"));
+    m_categoryComboBox->setEnabled(!isRemoteControl && m_searchEdit->text().trimmed().isEmpty());
+    m_dataItemList->setEnabled(true);
 
     if (isReadData)
     {
@@ -1359,15 +1629,38 @@ void MasterQueryDialog::updateQueryUiState()
             m_selectedDiLabel->setText(QString::fromUtf8("当前未选择数据标识"));
         }
     }
+    else if (isWriteData)
+    {
+        m_sendButton->setText(QString::fromUtf8("发送写数据"));
+        m_selectedDiLabel->setText(m_dataItemList->currentItem()
+                                       ? QString::fromUtf8("当前选择：%1").arg(m_dataItemList->currentItem()->text())
+                                       : QString::fromUtf8("当前未选择可写数据标识"));
+    }
     else
     {
-        m_sendButton->setText(QString::fromUtf8("发送读地址"));
-        m_selectedDiLabel->setText(QString::fromUtf8("当前选择：读取通信地址"));
+        m_sendButton->setText(QString::fromUtf8("发送远程控制"));
+        if (m_dataItemList->currentItem())
+        {
+            m_selectedDiLabel->setText(QString::fromUtf8("当前选择：%1").arg(m_dataItemList->currentItem()->text()));
+        }
+        else
+        {
+            m_selectedDiLabel->setText(QString::fromUtf8("当前未选择控制命令"));
+        }
     }
 
+    const QString credentials = m_meterPasswordEdit->text().trimmed();
+    const bool remoteCredentialsValid = (!isRemoteControl && !isWriteData) ||
+                                        (credentials.size() == 8 && m_operatorCodeEdit->text().trimmed().size() == 8);
+    const bool remoteTimeValid = !isRemoteControl ||
+                                 remoteControlDateTimeFromText(m_remoteControlTimeEdit->text()).isValid();
+    const bool writeValueValid = !isWriteData || !m_writeValueEdit->text().trimmed().isEmpty();
     const bool canSend = connected &&
-                         ProtocolParser::isValidAddress(m_addressEdit->text().trimmed()) &&
-                         (!isReadData || !selectedDiCode().isEmpty()) &&
+                         ProtocolParser::isValidAddress(m_meterAddressEdit->text().trimmed()) &&
+                         !selectedDiCode().isEmpty() &&
+                         remoteCredentialsValid &&
+                         remoteTimeValid &&
+                         writeValueValid &&
                          (m_controller->currentStatus() == MasterQueryStatus::Idle);
     m_sendButton->setEnabled(canSend);
 
@@ -1375,6 +1668,12 @@ void MasterQueryDialog::updateQueryUiState()
     {
         m_rawSendButton->setEnabled(connected &&
                                     m_controller->currentStatus() == MasterQueryStatus::Idle);
+    }
+
+    if (m_queryAddressButton)
+    {
+        m_queryAddressButton->setEnabled(connected &&
+                                         m_controller->currentStatus() == MasterQueryStatus::Idle);
     }
 }
 
@@ -1464,6 +1763,16 @@ QString MasterQueryDialog::requestTypeText(const MasterQueryResult &result) cons
         return QString::fromUtf8("直接发送");
     }
 
+    if (result.requestSpec.isRemoteControlRequest())
+    {
+        return QString::fromUtf8("远程控制");
+    }
+
+    if (result.requestSpec.isWriteDataRequest())
+    {
+        return QString::fromUtf8("写数据");
+    }
+
     return result.requestSpec.isReadAddressRequest()
                ? QString::fromUtf8("读地址")
                : QString::fromUtf8("读数据");
@@ -1476,6 +1785,11 @@ QString MasterQueryDialog::requestTargetText(const MasterQueryResult &result) co
         return QString::fromUtf8("自定义报文");
     }
 
+    if (result.requestSpec.broadcastReadAddress)
+    {
+        return QString::fromUtf8("广播查询 (AA)");
+    }
+
     return result.requestSpec.meterAddress.isEmpty()
                ? QString::fromUtf8("未指定")
                : result.requestSpec.meterAddress;
@@ -1486,6 +1800,15 @@ QString MasterQueryDialog::requestSummaryText(const MasterQueryResult &result) c
     if (result.requestSpec.isRawSendRequest() || result.requestSpec.isReadAddressRequest())
     {
         return resultSummary(result);
+    }
+
+    if (result.requestSpec.isRemoteControlRequest())
+    {
+        QString commandCode = QStringLiteral("0x%1")
+                                  .arg(result.requestSpec.remoteControlCommand, 2, 16, QChar('0'))
+                                  .toUpper();
+        commandCode.replace(QStringLiteral("0X"), QStringLiteral("0x"));
+        return QStringLiteral("%1 | %2").arg(commandCode, resultSummary(result));
     }
 
     QString diSummary;

@@ -63,6 +63,13 @@ void MainWindow::updateMasterQueryDialogState()
     }
 
     m_masterQueryDialog->setUnavailablePorts(m_connectionManager->connectedSerialPorts());
+    if (m_currentMeterModel)
+    {
+        m_masterQueryDialog->setDefaultMeterAddress(m_currentMeterModel->getMeterAddress());
+        m_masterQueryDialog->setDefaultMeterCredentials(m_currentMeterModel->getPassword(),
+                                                        m_currentMeterModel->getOperatorCode());
+        m_masterQueryDialog->setDefaultIncludePrefixFE(m_currentMeterModel->getIncludePrefixFE());
+    }
 }
 
 void MainWindow::updateQueryFrameDialogState()
@@ -169,6 +176,8 @@ void MainWindow::onMasterQueryWindow()
     if (m_currentMeterModel)
     {
         m_masterQueryDialog->setDefaultMeterAddress(m_currentMeterModel->getMeterAddress());
+        m_masterQueryDialog->setDefaultMeterCredentials(m_currentMeterModel->getPassword(),
+                                                        m_currentMeterModel->getOperatorCode());
         m_masterQueryDialog->setDefaultIncludePrefixFE(m_currentMeterModel->getIncludePrefixFE());
     }
 
