@@ -23,7 +23,7 @@ private slots:
 namespace
 {
 constexpr const char *kMeterAddress = "202101190552";
-constexpr const char *kPassword = "02012345";
+constexpr const char *kPassword = "01234502";
 constexpr const char *kOperatorCode = "87654321";
 
 std::unique_ptr<ProtocolController> createController(MeterModel **meterModel)

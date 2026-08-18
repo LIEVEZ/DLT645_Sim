@@ -587,7 +587,7 @@ void MainWindow::onNewMeterRequested(const QString &connectionAlias)
     currentConfig.alias = "电表别名";
     currentConfig.address = "000000000000";
     currentConfig.operatorCode = "00000000";
-    currentConfig.password = "00000000";
+    currentConfig.password = "00000002";
     currentConfig.includePrefixFE = false;
     currentConfig.phaseType = MeterPhaseType::ThreePhase;
     dialog.setMeterConfig(currentConfig);

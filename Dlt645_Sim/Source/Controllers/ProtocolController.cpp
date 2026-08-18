@@ -192,8 +192,10 @@ bool credentialsMatch(const QByteArray &decodedCredentials, MeterModel *meterMod
         return false;
     }
 
-    return meterModel->getPassword() == permission + password &&
-           meterModel->getOperatorCode() == operatorCode;
+    // 电表配置统一采用“6 位密码 + 2 位权限码”的 8 位格式。
+    const QString configuredPassword = meterModel->getPassword().trimmed();
+    const bool passwordMatched = configuredPassword == password + permission;
+    return passwordMatched && meterModel->getOperatorCode() == operatorCode;
 }
 } // namespace
 
