@@ -236,7 +236,18 @@ void MeterModel::applyPersistedData(const QMap<QString, QVariant> &dataSnapshot)
         {
             if (m_dataItems.contains(it.key()))
             {
-                m_dataItems[it.key()].value = normalizedParameterSettingValue(it.key(), it.value());
+                QVariant persistedValue = it.value();
+                if (it.key() == QStringLiteral("0x04000503"))
+                {
+                    bool ok = false;
+                    const uint statusWord = persistedValue.toUInt(&ok);
+                    if (ok && ((statusWord >> 1) & 0x03U) == 0x03U)
+                    {
+                        // Bit1~Bit2 的 11 为未定义取值，加载旧数据时按主电源 00 修正。
+                        persistedValue = static_cast<uint>(statusWord & ~0x0006U);
+                    }
+                }
+                m_dataItems[it.key()].value = normalizedParameterSettingValue(it.key(), persistedValue);
             }
         }
 

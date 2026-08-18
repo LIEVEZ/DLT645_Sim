@@ -14,6 +14,7 @@ void MeterModel::initializeParameterData()
     const int configuredStepCount = 3;
     const int configuredAutoScreenCount = 6;
     const int configuredKeyScreenCount = 4;
+    constexpr int defaultStatusWord3 = 0x0050; // 主电源，继电器及继电器命令状态为断
 
     m_dataItems["0x04000101"] = DataItem("0x04000101", "当前日期(含星期代码)", compactDateWithWeek(now.date()), "-", "AA,AA,AA,AA", true, 0);
     m_dataItems["0x04000102"] = DataItem("0x04000102", "当前时间", now.time().toString(QStringLiteral("HHmmss")), "-", "AA,AA,AA", true, 0);
@@ -59,7 +60,7 @@ void MeterModel::initializeParameterData()
     for (int i = 1; i <= 7; ++i)
     {
         const QString diCode = QStringLiteral("0x040005%1").arg(i, 2, 16, QChar('0')).toUpper().replace(QStringLiteral("0X"), QStringLiteral("0x"));
-        const int value = (i == 1) ? 1 : 0;
+        const int value = (i == 1) ? 1 : (i == 3 ? defaultStatusWord3 : 0);
         m_dataItems[diCode] = DataItem(diCode, QStringLiteral("电表运行状态字%1").arg(i), value, "-", "AA,AA", true, 0);
         statusWordBlock.append(value);
     }
