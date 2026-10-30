@@ -4,7 +4,7 @@
 using namespace MeterModelPrivate;
 
 MeterModel::MeterModel(QObject *parent)
-    : QObject(parent), m_meterAddress("202101190552"), m_operatorCode("00000000"), m_password("00000000"), m_includePrefixFE(true), m_meterPhaseType(MeterPhaseType::ThreePhase), m_eventRecordPresent(true)
+    : QObject(parent), m_meterAddress("202101190552"), m_operatorCode("00000000"), m_password("00000000"), m_includePrefixFE(true), m_eventRecordPresent(true), m_meterPhaseType(MeterPhaseType::ThreePhase)
 {
     const QList<CategoryCatalog::EventCategoryDefinition> eventDefinitions = CategoryCatalog::eventCategoryDefinitions();
     for (const CategoryCatalog::EventCategoryDefinition &definition : eventDefinitions)

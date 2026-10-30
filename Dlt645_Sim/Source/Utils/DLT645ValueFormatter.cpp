@@ -18,16 +18,6 @@ namespace
 using namespace DLT645FrameFormatterFields;
 using namespace DLT645FrameFormatterValueDisplay;
 
-QString formatByteHex(quint8 value)
-{
-    return QStringLiteral("0x%1").arg(value, 2, 16, QChar('0')).toUpper();
-}
-
-QString lineWithValue(const QString &label, const QString &value)
-{
-    return label + value + QStringLiteral("\n");
-}
-
 QString appendUnit(const QString &value, const QString &unit, bool withSpace = true)
 {
     if (value.isEmpty())

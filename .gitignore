@@ -1,4 +1,44 @@
+# ---- Build output ----
 Build/
-*.pro.user
+.build_verify/
+build/
+build-*/
+dist/
+debug/
+release/
+Makefile
+Makefile.Debug
+Makefile.Release
+*.o
+*.obj
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
 *.qmake.stash
-.ccg
+*.pro.user
+
+# ---- Local IDE / tooling ----
+.vscode/
+.vs/
+.idea/
+.ccg/
+.agents/
+.claude/
+Dlt645_Sim/Source/*/CLAUDE.md
+
+# ---- Logs / local data ----
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# ---- Third-party documents not redistributed ----
+doc/*.pdf
+
+# ---- Local-only notes ----
+doc/认证状态协议报文.md
+
+# ---- OS files ----
+Thumbs.db
+.DS_Store

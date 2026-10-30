@@ -1053,8 +1053,6 @@ void DeviceTreeWidget::onCustomContextMenuRequested(const QPoint &pos)
                                         QString connectionAlias = getSelectedConnectionAlias();
                                         emit eventRecordSettingsRequested(connectionAlias, meterAlias); });
             m_contextMenu->addSeparator();
-            m_contextMenu->addAction(QIcon(":/icons/export.svg"), "导出", [this, meterAlias]() { /* TODO: 导出电表数据 */ });
-            m_contextMenu->addSeparator();
             m_contextMenu->addAction(QIcon(":/icons/delete.svg"), "删除电表", [this, meterAlias]()
                                      {
                                         QString connectionAlias = getSelectedConnectionAlias();
@@ -1064,9 +1062,7 @@ void DeviceTreeWidget::onCustomContextMenuRequested(const QPoint &pos)
 
         case ItemType::Category:
         {
-            // 数据分类右键菜单
-            m_contextMenu->addAction("读取该分类所有数据", [this]() { /* TODO: 读取分类数据 */ });
-            m_contextMenu->addAction("导出", [this]() { /* TODO: 导出分类数据 */ });
+            // 数据分类暂不提供右键操作，数据项级操作见 ItemType::Data 分支
             break;
         }
 

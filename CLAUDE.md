@@ -101,7 +101,7 @@ graph TD
 |---------|---------|---------|
 | [`Dlt645_Sim/Source/Controllers/`](./Dlt645_Sim/Source/Controllers/) | 通信与协议控制 | SerialController, TcpController, ProtocolController, ConnectionManager, MasterQueryController |
 | [`Dlt645_Sim/Source/Models/`](./Dlt645_Sim/Source/Models/) | 电表领域模型 | MeterModel（拆分为 MeterModelPrivate* 多文件）, DataItem, ConnectionConfig, ConnectionInfo, ConnectionInfoMapper, MeterInfo, CategoryCatalog, MeterPhaseType, TermDefinition |
-| [`Dlt645_Sim/Source/Services/`](./Dlt645_Sim/Source/Services/) | 协议与数据服务 | ProtocolParser, DataGenerator, MeterDataStore, ConfigurationSerializer, TermCatalogService |
+| [`Dlt645_Sim/Source/Services/`](./Dlt645_Sim/Source/Services/) | 协议与数据服务 | ProtocolParser, ConfigurationSerializer, TermCatalogService（DataGenerator / MeterDataStore 为预留，尚未接入） |
 | [`Dlt645_Sim/Source/Utils/`](./Dlt645_Sim/Source/Utils/) | 基础工具类 | BCDHelper, ChecksumHelper, DLT645DataHelper, Logger（+LoggerTypes）, DLT645FrameFormatter（+Fields/ValueDisplay 头）, DLT645BlockHandler, DLT645ValueFormatter, UiTheme（全局调色板/设计 token） |
 | [`Dlt645_Sim/Source/ViewModels/`](./Dlt645_Sim/Source/ViewModels/) | 视图模型 | MainWindowViewModel |
 | [`Dlt645_Sim/Source/Views/`](./Dlt645_Sim/Source/Views/) | UI界面组件 | MainWindow（拆分为 mainwindow_* 多文件）, DeviceTreeWidget, DataTableWidget, OperationLogWidget, CommunicationBarWidget, Common（FrameParseResultWidget/TermExplanationWidget）, Dialogs |
@@ -142,7 +142,7 @@ make -j4
 
 ### 配置文件
 
-- **项目配置**：`Build/dlt645_config.json` - 连接和电表配置持久化
+- **项目配置**：通过“文件”菜单手动导入/导出 `dlt645_config.json`（当前不会自动保存/加载）
 - **日志文件**：`%APPDATA%/dlt645_sim.log` (Windows) / `~/.local/share/dlt645_sim.log` (Linux)
 - **日志设置**：10MB/文件，保留 5 个备份，默认 Info 级别
 
@@ -157,7 +157,7 @@ make -j4
 
 ### 当前测试状态
 
-项目当前以手动测试为主，重点关注：
+项目包含两个 QtTest 工程（`ProtocolControllerTest`、`PowerFactorFormatTest`），CI 在 Linux 上完成构建并运行；其余仍以手动测试为主，重点关注：
 - 串口/TCP 连接稳定性
 - 协议帧解析正确性
 - 数据模型线程安全
@@ -221,7 +221,7 @@ make -j4
 6. **术语解释**：`TermCatalogService.h` + `TermDefinition.h` + `TermExplanationWidget.h`
 7. **报文解析展示**：`DLT645FrameFormatter.h` + `FrameParseResultWidget.h` + `FrameParseDialog.h`
 8. **主题与配色**：`UiTheme.h`（全局调色板 / 设计 token，改色的唯一入口）
-9. **图标资源**：`resources.qrc` + `Resources/Icons/*.svg`（SVG 矢量图标）
+9. **图标资源**：`resources.qrc` + `Source/Assets/Icons/*.svg`（SVG 矢量图标）
 10. **工具类**：`Utils/` 目录下各类独立工具
 
 ### 核心概念
@@ -246,7 +246,7 @@ make -j4
     ↓                                   ↓
 DeviceTree ← Model ← ProtocolParser ← SerialController/TcpController
     ↓                                   ↓
-DataTable ← MeterModel ← DataGenerator  ← 外部主站/网关
+DataTable ← MeterModel ← 外部主站/网关
 ```
 
 ### 常见任务入口
@@ -258,7 +258,7 @@ DataTable ← MeterModel ← DataGenerator  ← 外部主站/网关
 - **维护术语库**：通过 `TermCatalogService` 加载/检索，UI 在 `TermExplanationWidget`
 - **增加 UI 组件**：在 `Views/` 目录创建新组件，通过 `mainwindow_setup.cpp` 装配
 - **调整主题配色**：修改 `Utils/UiTheme.cpp` 的 darkPalette()/lightPalette()，全应用自动同步
-- **新增/替换图标**：在 `Resources/Icons/` 放置 SVG，并在 `resources.qrc` 注册
+- **新增/替换图标**：在 `Source/Assets/Icons/` 放置 SVG，并在 `resources.qrc` 注册
 - **增加工具函数**：在 `Utils/` 目录添加独立工具类
 
 ### DLT645-2007 协议要点
@@ -272,10 +272,16 @@ DataTable ← MeterModel ← DataGenerator  ← 外部主站/网关
 
 ## 变更记录
 
+### [2026-10-30] - 公开发布准备
+- 修正 README 与实现不一致的描述（默认凭据、TCP 客户端模式、配置持久化、实时数据生成等）
+- 移除随仓库分发的标准 PDF、内部 AI 索引与过时模块文档；新增 CI、CONTRIBUTING、CHANGELOG、SECURITY
+- 清理编译警告与失效右键菜单项
+- 新增 `.gitattributes`，扩展 `.gitignore`
+
 ### [2026-07-13] - UI 主题重构与图标系统扫描
 - 重新扫描项目结构，识别 58 个头文件、61 个源文件
 - 新增 `Utils/UiTheme`：全局调色板（设计 token），消除原先散落在 8 个文件、300+ 处的硬编码颜色；深色主题改为工业「海军蓝 / 钢青蓝」配色，改色只需修改 darkPalette()/lightPalette()
-- 集成 SVG 矢量图标系统：`resources.qrc` + `Resources/Icons/*.svg`（27 个图标，Qt Resource 内嵌）
+- 集成 SVG 矢量图标系统：`resources.qrc` + `Source/Assets/Icons/*.svg`（27 个图标，Qt Resource 内嵌）
 - 新增 `Models/ConnectionInfoMapper`：ConnectionConfig → ConnectionInfo 映射工具
 - 新增 `Source/Version.h`（软件版本 V1.0.0）、`Utils/LoggerTypes.h`、`DLT645FrameFormatterFields.h`、`DLT645FrameFormatterValueDisplay.h`
 - 对话框布局与全局字体优化，增加空数据状态展示（empty-data 图标）
@@ -317,4 +323,4 @@ MIT License - Copyright (c) 2026 LIEVEZ
 **维护者**：LIEVEZ  
 **项目地址**：https://github.com/LIEVEZ/DLT645_Sim  
 **文档版本**：v1.2  
-**状态**：✅ 生产就绪
+**状态**：v1.0.0 可用；未实现命令与已知限制见 README

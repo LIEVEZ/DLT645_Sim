@@ -1,0 +1,49 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: Linux / Qt 5.15.2
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.15.2'
+          modules: 'qtserialport'
+          cache: true
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev
+
+      - name: Build application
+        run: |
+          mkdir -p build/app
+          cd build/app
+          qmake ../../Dlt645_Sim/Dlt645_Sim.pro
+          make -j"$(nproc)"
+
+      - name: Build and run PowerFactorFormatTest
+        run: |
+          mkdir -p build/tests-pf
+          cd build/tests-pf
+          qmake ../../Dlt645_Sim/tests/PowerFactorFormatTest/PowerFactorFormatTest.pro
+          make -j"$(nproc)"
+          make check
+
+      - name: Build and run ProtocolControllerTest
+        run: |
+          mkdir -p build/tests-pc
+          cd build/tests-pc
+          qmake ../../Dlt645_Sim/tests/ProtocolControllerTest/ProtocolControllerTest.pro
+          make -j"$(nproc)"
+          make check

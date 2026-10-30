@@ -1,0 +1,69 @@
+name: Bug report
+description: 报告可复现的问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请尽量提供可复现步骤、报文和日志，便于定位问题。
+        提交前请确认使用的是最新版本，并先搜索是否已有相同 Issue。
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请按顺序描述如何触发问题
+      placeholder: |
+        1. 新建串口连接 COM3 ...
+        2. 新建三相表地址 202101190552 ...
+        3. 发送报文 ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: frames
+    attributes:
+      label: 相关报文 / 日志
+      description: 发送与接收报文（HEX）、错误提示或日志片段
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: 程序版本
+      placeholder: 例如 v1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: 操作系统与 Qt 版本
+      placeholder: 例如 Windows 11 / Qt 5.15.2 MinGW
+    validations:
+      required: true
+
+  - type: dropdown
+    id: connection
+    attributes:
+      label: 连接方式
+      options:
+        - 串口
+        - TCP 客户端
+        - 仅主站查询工具
+        - 其他 / 不涉及

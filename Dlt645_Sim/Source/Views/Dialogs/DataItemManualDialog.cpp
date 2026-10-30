@@ -289,7 +289,8 @@ QString eventDefinitionForDescription(const QString &description)
     const bool isHistoryRecord = description.contains(QStringLiteral("记录"));
     const bool isStatistical = description.contains(QStringLiteral("统计数据"));
     const bool isTotal = description.contains(QStringLiteral("总次数"));
-    const bool isMonthly = description.contains(QStringLiteral("本月")) || description.contains(QStringLiteral("上")) && description.contains(QStringLiteral("月"));
+    const bool isMonthly = description.contains(QStringLiteral("本月")) ||
+                           (description.contains(QStringLiteral("上")) && description.contains(QStringLiteral("月")));
 
     QString subject = cleanedEventDescription(description);
     if (subject.isEmpty()) {

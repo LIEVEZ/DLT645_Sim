@@ -66,19 +66,6 @@ namespace
         QStringList prefixes;
     };
 
-    QString escapeCsvField(const QString &value)
-    {
-        QString escaped = value;
-        escaped.replace("\"", "\"\"");
-
-        if (escaped.contains(',') || escaped.contains('"') || escaped.contains('\n') || escaped.contains('\r'))
-        {
-            escaped = QString("\"%1\"").arg(escaped);
-        }
-
-        return escaped;
-    }
-
     QString formatDisplayValue(const DataItem &dataItem)
     {
         DataItem displayItem = dataItem;
@@ -111,17 +98,6 @@ namespace
         }
 
         return -1;
-    }
-
-    QString displayCategoryName(const QString &category)
-    {
-        const CategorySelection selection = parseCategorySelection(category);
-        if (selection.leafCategory.isEmpty())
-        {
-            return selection.rootCategory;
-        }
-
-        return QStringLiteral("%1 / %2").arg(selection.rootCategory, selection.leafCategory);
     }
 
     QString rateName(int rateIndex)
