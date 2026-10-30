@@ -8,22 +8,20 @@ on:
 
 jobs:
   build-and-test:
-    name: Linux / Qt 5.15.2
+    name: Linux / Qt 5.15 (Ubuntu 22.04)
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: '5.15.2'
-          modules: 'qtserialport'
-          cache: true
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev
+      - name: Install Qt 5.15 and build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qtbase5-dev qtbase5-dev-tools qt5-qmake \
+            libqt5serialport5-dev libgl1-mesa-dev
+          qmake -v
 
       - name: Build application
         run: |
