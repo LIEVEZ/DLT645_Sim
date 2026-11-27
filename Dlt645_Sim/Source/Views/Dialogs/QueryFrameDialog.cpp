@@ -25,11 +25,15 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QSet>
 #include <QSignalBlocker>
 #include <QVBoxLayout>
 
 namespace
 {
+    // 筛选结果超过该行数时只渲染前若干项，避免一次性创建上万个列表项。
+    constexpr int kMaxFilterResultRows = 500;
+
     struct CategorySelection
     {
         QString rootCategory;
@@ -311,6 +315,7 @@ QueryFrameDialog::QueryFrameDialog(QWidget *parent)
       m_catalogMeterModel(new MeterModel(this)),
       m_frameParseDialog(nullptr),
       m_isDarkTheme(true),
+      m_diCatalogDirty(true),
       m_addressEdit(nullptr),
       m_includePrefixCheckBox(nullptr),
       m_modeComboBox(nullptr),
@@ -352,6 +357,7 @@ QueryFrameDialog::~QueryFrameDialog()
 void QueryFrameDialog::setMeterModel(MeterModel *meterModel)
 {
     m_meterModel = meterModel;
+    m_diCatalogDirty = true;
     if (m_frameParseDialog)
     {
         m_frameParseDialog->setMeterModel(m_meterModel);
@@ -477,6 +483,7 @@ void QueryFrameDialog::applyLightTheme()
 void QueryFrameDialog::onModeChanged(int index)
 {
     Q_UNUSED(index);
+    m_diCatalogDirty = true;
     populateCategories();
     populateDataItems();
     refreshWriteValueState();
@@ -748,23 +755,17 @@ void QueryFrameDialog::populateCategories()
         return;
     }
 
-    for (const QString &category : allCategories())
+    ensureDiCatalog();
+    QSet<QString> seenCategories;
+    for (const DiCatalogEntry &entry : m_diCatalog)
     {
-        const QList<QString> diCodes = dataCodesForCategory(category);
-        bool hasSupportedCode = false;
-        for (const QString &diCode : diCodes)
+        if (seenCategories.contains(entry.category))
         {
-            if (supportsCurrentMode(dataSourceModel()->getDataItem(diCode)))
-            {
-                hasSupportedCode = true;
-                break;
-            }
+            continue;
         }
 
-        if (hasSupportedCode)
-        {
-            m_categoryComboBox->addItem(category);
-        }
+        seenCategories.insert(entry.category);
+        m_categoryComboBox->addItem(entry.category);
     }
 
     const int previousIndex = m_categoryComboBox->findText(previousCategory);
@@ -832,36 +833,55 @@ void QueryFrameDialog::populateDataItems()
         return;
     }
 
-    const MeterModel *sourceModel = dataSourceModel();
-    const QList<QString> categoriesToLoad = hasFilter
-                                                ? allCategories()
-                                                : QList<QString>{m_categoryComboBox->currentText()};
+    ensureDiCatalog();
 
-    for (const QString &category : categoriesToLoad)
+    if (hasFilter)
     {
-        const QList<QString> diCodes = dataCodesForCategory(category);
-        for (const QString &diCode : diCodes)
+        int matchedCount = 0;
+        for (const DiCatalogEntry &entry : m_diCatalog)
         {
-            const DataItem item = sourceModel->getDataItemRaw(diCode);
-            if (!supportsCurrentMode(item))
+            if (!entry.matchText.contains(filterText, Qt::CaseInsensitive))
             {
                 continue;
             }
 
-            const QString description = item.description.isEmpty() ? QString::fromUtf8("未命名数据项") : item.description;
-            const QString matchText = QStringLiteral("%1 %2").arg(diCode, description);
-            if (hasFilter && !matchText.contains(filterText, Qt::CaseInsensitive))
+            ++matchedCount;
+            if (m_dataItemList->count() >= kMaxFilterResultRows)
             {
                 continue;
             }
 
-            const QString itemText = hasFilter
-                                         ? QStringLiteral("[%1] %2  |  %3").arg(category, diCode, description)
-                                         : QStringLiteral("%1  |  %2").arg(diCode, description);
-            QListWidgetItem *listItem = new QListWidgetItem(itemText);
-            listItem->setData(Qt::UserRole, diCode);
-            listItem->setData(Qt::UserRole + 1, description);
-            listItem->setData(Qt::UserRole + 2, category);
+            QListWidgetItem *listItem = new QListWidgetItem(
+                QStringLiteral("[%1] %2  |  %3").arg(entry.category, entry.diCode, entry.description));
+            listItem->setData(Qt::UserRole, entry.diCode);
+            listItem->setData(Qt::UserRole + 1, entry.description);
+            listItem->setData(Qt::UserRole + 2, entry.category);
+            m_dataItemList->addItem(listItem);
+        }
+
+        if (matchedCount > kMaxFilterResultRows)
+        {
+            m_dataItemGroup->setTitle(
+                QString::fromUtf8("数据标识（匹配 %1 项，仅显示前 %2 项）")
+                    .arg(matchedCount)
+                    .arg(kMaxFilterResultRows));
+        }
+    }
+    else
+    {
+        const QString category = m_categoryComboBox->currentText();
+        for (const DiCatalogEntry &entry : m_diCatalog)
+        {
+            if (entry.category != category)
+            {
+                continue;
+            }
+
+            QListWidgetItem *listItem = new QListWidgetItem(
+                QStringLiteral("%1  |  %2").arg(entry.diCode, entry.description));
+            listItem->setData(Qt::UserRole, entry.diCode);
+            listItem->setData(Qt::UserRole + 1, entry.description);
+            listItem->setData(Qt::UserRole + 2, entry.category);
             m_dataItemList->addItem(listItem);
         }
     }
@@ -895,6 +915,45 @@ void QueryFrameDialog::populateDataItems()
 
     refreshWriteValueState();
     refreshGeneratedFrame();
+}
+
+void QueryFrameDialog::ensureDiCatalog()
+{
+    if (!m_diCatalogDirty)
+    {
+        return;
+    }
+
+    m_diCatalog.clear();
+    m_diCatalogDirty = false;
+
+    const MeterModel *sourceModel = dataSourceModel();
+    if (!sourceModel)
+    {
+        return;
+    }
+
+    // 逐分类取 DI 每次都要扫描全部数据项（近 2 万项），筛选若按键重算会明显卡顿。
+    // 这里一次性展开成“分类 + DI”目录并缓存，筛选时只做内存字符串匹配。
+    for (const QString &category : allCategories())
+    {
+        const QList<QString> diCodes = dataCodesForCategory(category);
+        for (const QString &diCode : diCodes)
+        {
+            const DataItem item = sourceModel->getDataItemRaw(diCode);
+            if (!supportsCurrentMode(item))
+            {
+                continue;
+            }
+
+            DiCatalogEntry entry;
+            entry.diCode = diCode;
+            entry.description = item.description.isEmpty() ? QString::fromUtf8("未命名数据项") : item.description;
+            entry.category = category;
+            entry.matchText = QStringLiteral("%1 %2").arg(entry.diCode, entry.description);
+            m_diCatalog.append(entry);
+        }
+    }
 }
 
 void QueryFrameDialog::refreshGeneratedFrame()

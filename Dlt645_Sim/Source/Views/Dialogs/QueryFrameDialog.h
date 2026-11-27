@@ -56,9 +56,18 @@ private:
         RemoteControl
     };
 
+    struct DiCatalogEntry
+    {
+        QString diCode;
+        QString description;
+        QString category;
+        QString matchText;
+    };
+
     void setupUI();
     void populateCategories();
     void populateDataItems();
+    void ensureDiCatalog();
     void refreshGeneratedFrame();
     void refreshWriteValueState();
     void updateActionButtons();
@@ -78,6 +87,8 @@ private:
     MeterModel *m_catalogMeterModel;
     FrameParseDialog *m_frameParseDialog;
     bool m_isDarkTheme;
+    QList<DiCatalogEntry> m_diCatalog;
+    bool m_diCatalogDirty;
 
     QLineEdit *m_addressEdit;
     QCheckBox *m_includePrefixCheckBox;

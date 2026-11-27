@@ -26,6 +26,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QSet>
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QSpinBox>
@@ -39,6 +40,9 @@
 
 namespace
 {
+    // 筛选结果超过该行数时只渲染前若干项，避免一次性创建上万个列表项。
+    constexpr int kMaxFilterResultRows = 500;
+
     QSerialPort::DataBits dataBitsFromText(const QString &text)
     {
         if (text == QStringLiteral("5"))
@@ -211,6 +215,7 @@ MasterQueryDialog::MasterQueryDialog(QWidget *parent)
       m_portRefreshWatcher(new QFutureWatcher<QList<QSerialPortInfo>>(this)),
       m_darkTheme(true),
       m_portRefreshPending(false),
+      m_diCatalogDirty(true),
       m_pendingHistoryRow(-1),
       m_portCombo(nullptr),
       m_baudRateCombo(nullptr),
@@ -234,6 +239,7 @@ MasterQueryDialog::MasterQueryDialog(QWidget *parent)
       m_remoteControlTimeEdit(nullptr),
       m_searchEdit(nullptr),
       m_categoryComboBox(nullptr),
+      m_filterHintLabel(nullptr),
       m_dataItemList(nullptr),
       m_selectedDiLabel(nullptr),
       m_sendButton(nullptr),
@@ -1060,6 +1066,11 @@ QGroupBox *MasterQueryDialog::setupQueryGroup()
     filterLayout->addWidget(m_categoryComboBox, 1);
     rootLayout->addLayout(filterLayout);
 
+    m_filterHintLabel = new QLabel(group);
+    m_filterHintLabel->setWordWrap(true);
+    m_filterHintLabel->setVisible(false);
+    rootLayout->addWidget(m_filterHintLabel);
+
     m_dataItemList = new QListWidget(group);
     rootLayout->addWidget(m_dataItemList, 1);
 
@@ -1301,6 +1312,7 @@ void MasterQueryDialog::populateDataItems()
 
     const QString filterText = m_searchEdit->text().trimmed();
     const bool hasFilter = !filterText.isEmpty();
+    m_filterHintLabel->setVisible(false);
 
     if (m_queryTypeCombo->currentIndex() == 2)
     {
@@ -1336,34 +1348,66 @@ void MasterQueryDialog::populateDataItems()
         return;
     }
 
-    const QList<QString> categoriesToLoad = hasFilter
-                                                ? allCategories()
-                                                : QList<QString>{m_categoryComboBox->currentText()};
+    ensureDiCatalog();
 
-    for (const QString &category : categoriesToLoad)
+    const bool writableOnly = (m_queryTypeCombo->currentIndex() == 1);
+    int matchedCount = 0;
+    if (hasFilter)
     {
-        const QList<QString> diCodes = dataCodesForCategory(category);
-        for (const QString &diCode : diCodes)
+        for (const DiCatalogEntry &entry : m_diCatalog)
         {
-            const DataItem item = m_catalogMeterModel->getDataItem(diCode);
-            if (m_queryTypeCombo->currentIndex() == 1 && !item.isWritable)
-            {
-                continue;
-            }
-            const QString description = item.description.isEmpty() ? QString::fromUtf8("未命名数据项") : item.description;
-            const QString matchText = QStringLiteral("%1 %2").arg(diCode, description);
-            if (hasFilter && !matchText.contains(filterText, Qt::CaseInsensitive))
+            if (writableOnly && !entry.isWritable)
             {
                 continue;
             }
 
-            const QString itemText = hasFilter
-                                         ? QStringLiteral("[%1] %2  |  %3").arg(category, diCode, description)
-                                         : QStringLiteral("%1  |  %2").arg(diCode, description);
-            QListWidgetItem *listItem = new QListWidgetItem(itemText, m_dataItemList);
-            listItem->setData(Qt::UserRole, diCode);
-            listItem->setData(Qt::UserRole + 1, description);
-            listItem->setData(Qt::UserRole + 2, category);
+            if (!entry.matchText.contains(filterText, Qt::CaseInsensitive))
+            {
+                continue;
+            }
+
+            ++matchedCount;
+            if (m_dataItemList->count() >= kMaxFilterResultRows)
+            {
+                continue;
+            }
+
+            QListWidgetItem *listItem = new QListWidgetItem(
+                QStringLiteral("[%1] %2  |  %3").arg(entry.category, entry.diCode, entry.description), m_dataItemList);
+            listItem->setData(Qt::UserRole, entry.diCode);
+            listItem->setData(Qt::UserRole + 1, entry.description);
+            listItem->setData(Qt::UserRole + 2, entry.category);
+        }
+
+        if (matchedCount > kMaxFilterResultRows)
+        {
+            m_filterHintLabel->setText(
+                QString::fromUtf8("匹配 %1 项，仅显示前 %2 项，请输入更精确的关键词。")
+                    .arg(matchedCount)
+                    .arg(kMaxFilterResultRows));
+            m_filterHintLabel->setVisible(true);
+        }
+    }
+    else
+    {
+        const QString category = m_categoryComboBox->currentText();
+        for (const DiCatalogEntry &entry : m_diCatalog)
+        {
+            if (entry.category != category)
+            {
+                continue;
+            }
+
+            if (writableOnly && !entry.isWritable)
+            {
+                continue;
+            }
+
+            QListWidgetItem *listItem = new QListWidgetItem(
+                QStringLiteral("%1  |  %2").arg(entry.diCode, entry.description), m_dataItemList);
+            listItem->setData(Qt::UserRole, entry.diCode);
+            listItem->setData(Qt::UserRole + 1, entry.description);
+            listItem->setData(Qt::UserRole + 2, entry.category);
         }
     }
 
@@ -1379,6 +1423,37 @@ void MasterQueryDialog::populateDataItems()
     }
 
     updateQueryUiState();
+}
+
+void MasterQueryDialog::ensureDiCatalog()
+{
+    if (!m_diCatalogDirty)
+    {
+        return;
+    }
+
+    m_diCatalog.clear();
+    m_diCatalogDirty = false;
+
+    // 逐分类取 DI 每次都要扫描全部数据项（近 2 万项），筛选若按键重算会明显卡顿。
+    // 这里一次性展开成“分类 + DI”目录并缓存，筛选时只做内存字符串匹配。
+    // 写数据模式的“仅可写”过滤在使用处按 isWritable 判断，切换查询类型无需重建目录。
+    for (const QString &category : allCategories())
+    {
+        const QList<QString> diCodes = dataCodesForCategory(category);
+        for (const QString &diCode : diCodes)
+        {
+            const DataItem item = m_catalogMeterModel->getDataItem(diCode);
+
+            DiCatalogEntry entry;
+            entry.diCode = diCode;
+            entry.description = item.description.isEmpty() ? QString::fromUtf8("未命名数据项") : item.description;
+            entry.category = category;
+            entry.matchText = QStringLiteral("%1 %2").arg(entry.diCode, entry.description);
+            entry.isWritable = item.isWritable;
+            m_diCatalog.append(entry);
+        }
+    }
 }
 
 QList<QString> MasterQueryDialog::allCategories() const

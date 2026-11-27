@@ -84,6 +84,7 @@ private:
     void applyPortList(const QList<QSerialPortInfo> &ports);
     void populateCategories();
     void populateDataItems();
+    void ensureDiCatalog();
     QList<QString> allCategories() const;
     QList<QString> dataCodesForCategory(const QString &category) const;
     QString selectedDiCode() const;
@@ -103,12 +104,23 @@ private:
     QString statusText(MasterQueryStatus status) const;
     void applyTheme(const ui::ThemePalette &palette);
 
+    struct DiCatalogEntry
+    {
+        QString diCode;
+        QString description;
+        QString category;
+        QString matchText;
+        bool isWritable;
+    };
+
     MasterQueryController *m_controller;
     MeterModel *m_catalogMeterModel;
     QFutureWatcher<QList<QSerialPortInfo>> *m_portRefreshWatcher;
     bool m_darkTheme;
     bool m_portRefreshPending;
+    bool m_diCatalogDirty;
     int m_pendingHistoryRow;
+    QList<DiCatalogEntry> m_diCatalog;
     QStringList m_unavailablePorts;
     QList<QSerialPortInfo> m_cachedPorts;
     QVector<MasterQueryResult> m_historyResults;
@@ -137,6 +149,7 @@ private:
     QLineEdit *m_remoteControlTimeEdit;
     QLineEdit *m_searchEdit;
     QComboBox *m_categoryComboBox;
+    QLabel *m_filterHintLabel;
     QListWidget *m_dataItemList;
     QLabel *m_selectedDiLabel;
     QPushButton *m_sendButton;
