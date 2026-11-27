@@ -996,6 +996,185 @@ namespace
         return QString();
     }
 
+    QString normalizedUnitToken(const QString &token)
+    {
+        const QString trimmed = token.trimmed();
+        if (trimmed.isEmpty() ||
+            trimmed == QStringLiteral("-") ||
+            trimmed.compare(QStringLiteral("none"), Qt::CaseInsensitive) == 0)
+        {
+            return QString();
+        }
+
+        return trimmed;
+    }
+
+    // 复合数据项（事件记录/数据块）的逐字段单位不在模型里，只能按字段说明还原。
+    // 顺序敏感：时长类必须先于百分比，百分比必须先于电压/电流等物理量。
+    QString unitFromDescriptionText(const QString &description)
+    {
+        if (description.isEmpty())
+        {
+            return QString();
+        }
+
+        if (description.contains(QStringLiteral("累计时间")) ||
+            description.contains(QStringLiteral("监测时间")) ||
+            description.contains(QStringLiteral("超上限时间")) ||
+            description.contains(QStringLiteral("超下限时间")) ||
+            description.contains(QStringLiteral("工作时间")))
+        {
+            return QStringLiteral("分钟");
+        }
+
+        // 时间类字段只在说明以时间语义结尾时判为无单位；
+        // “失压时刻A相电压”这类说明中间带“时刻”，实际单位仍由物理量决定。
+        if (description.endsWith(QStringLiteral("时刻")) ||
+            description.endsWith(QStringLiteral("时间")) ||
+            description.endsWith(QStringLiteral("日期")) ||
+            description.endsWith(QStringLiteral("代码")) ||
+            description.endsWith(QStringLiteral("地址")) ||
+            description.endsWith(QStringLiteral("标识")) ||
+            description.endsWith(QStringLiteral("特征字")))
+        {
+            return QString();
+        }
+
+        if (description.contains(QStringLiteral("次数")))
+        {
+            return QStringLiteral("次");
+        }
+        if (description.contains(QStringLiteral("安时数")))
+        {
+            return QStringLiteral("Ah");
+        }
+        if (description.contains(QStringLiteral("金额")))
+        {
+            return QStringLiteral("元");
+        }
+        if (description.contains(QStringLiteral("电价")))
+        {
+            return QStringLiteral("元/kWh");
+        }
+        if (description.contains(QStringLiteral("温度")))
+        {
+            return QStringLiteral("℃");
+        }
+        if (description.contains(QStringLiteral("频率")))
+        {
+            return QStringLiteral("Hz");
+        }
+        if (description.contains(QStringLiteral("相角")))
+        {
+            return QStringLiteral("°");
+        }
+
+        if (description.contains(QStringLiteral("含有率")) ||
+            description.contains(QStringLiteral("谐波含量")) ||
+            description.contains(QStringLiteral("畸变度")) ||
+            description.contains(QStringLiteral("失真度")) ||
+            description.contains(QStringLiteral("合格率")) ||
+            description.contains(QStringLiteral("超限率")) ||
+            description.contains(QStringLiteral("不平衡率")))
+        {
+            return QStringLiteral("%");
+        }
+
+        if (description.contains(QStringLiteral("电能")) ||
+            description.contains(QStringLiteral("电量")))
+        {
+            if (description.contains(QStringLiteral("视在")))
+            {
+                return QStringLiteral("kVAh");
+            }
+            if (description.contains(QStringLiteral("无功")))
+            {
+                return QStringLiteral("kvarh");
+            }
+            return QStringLiteral("kWh");
+        }
+
+        if (description.contains(QStringLiteral("视在")))
+        {
+            return QStringLiteral("kVA");
+        }
+        if (description.contains(QStringLiteral("功率因数")))
+        {
+            return QString();
+        }
+        if (description.contains(QStringLiteral("电压")))
+        {
+            return QStringLiteral("V");
+        }
+        if (description.contains(QStringLiteral("电流")))
+        {
+            return QStringLiteral("A");
+        }
+        if (description.contains(QStringLiteral("无功")))
+        {
+            return QStringLiteral("kvar");
+        }
+        if (description.contains(QStringLiteral("有功")) ||
+            description.contains(QStringLiteral("需量")) ||
+            description.contains(QStringLiteral("功率")))
+        {
+            return QStringLiteral("kW");
+        }
+
+        return QString();
+    }
+
+    QString detailValueUnit(const MeterModel *meterModel,
+                            const QString &diCode,
+                            const QString &description,
+                            int valueIndex,
+                            int valueCount)
+    {
+        QString parentUnit;
+        if (meterModel)
+        {
+            const DataItem item = meterModel->getDataItem(diCode);
+            parentUnit = item.unit.trimmed();
+
+            const QStringList unitParts = parentUnit.split(QChar(','), Qt::KeepEmptyParts);
+            if (unitParts.size() > 1 &&
+                unitParts.size() == valueCount &&
+                valueIndex >= 0 &&
+                valueIndex < unitParts.size())
+            {
+                const QString unit = normalizedUnitToken(unitParts.at(valueIndex));
+                if (!unit.isEmpty())
+                {
+                    return unit;
+                }
+            }
+        }
+
+        // 需量超限“历史记录”的行说明不带“无功”字样，只能按记录号判断有功/无功象限；
+        // 汇总项（0x03120000）走文本规则，不能套用本特例。
+        if (isHistoryItem(diCode) &&
+            diCode.startsWith(QStringLiteral("0x0312")) &&
+            diCode.size() >= 8 &&
+            valueIndex == 2)
+        {
+            const QString family = diCode.mid(6, 2);
+            return (family == QStringLiteral("01") || family == QStringLiteral("02"))
+                       ? QStringLiteral("kW")
+                       : QStringLiteral("kvar");
+        }
+
+        const QString derivedUnit = unitFromDescriptionText(description);
+        if (!derivedUnit.isEmpty())
+        {
+            return derivedUnit;
+        }
+
+        const QString fallbackUnit = parentUnit.contains(QChar(','))
+                                         ? QString()
+                                         : normalizedUnitToken(parentUnit);
+        return fallbackUnit.isEmpty() ? QStringLiteral("-") : fallbackUnit;
+    }
+
     QList<EventCategoryDefinition> eventCategoryDefinitions()
     {
         return {
@@ -1998,14 +2177,19 @@ bool DataTableWidget::showValueDetailDialog(QTableWidgetItem *item)
     hintLabel->setWordWrap(true);
     layout->addWidget(hintLabel);
 
-    QTableWidget *detailTable = new QTableWidget(values.size(), 3, &dialog);
-    detailTable->setHorizontalHeaderLabels(QStringList() << QStringLiteral("序号") << QStringLiteral("数据值") << QStringLiteral("说明"));
+    QTableWidget *detailTable = new QTableWidget(values.size(), 4, &dialog);
+    detailTable->setHorizontalHeaderLabels(QStringList()
+                                           << QStringLiteral("序号")
+                                           << QStringLiteral("数据值")
+                                           << QStringLiteral("单位")
+                                           << QStringLiteral("说明"));
     detailTable->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
     detailTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     detailTable->verticalHeader()->setVisible(false);
     detailTable->horizontalHeader()->setStretchLastSection(true);
     detailTable->setColumnWidth(0, 70);
     detailTable->setColumnWidth(1, 140);
+    detailTable->setColumnWidth(2, 80);
 
     for (int i = 0; i < values.size(); ++i)
     {
@@ -2018,9 +2202,17 @@ bool DataTableWidget::showValueDetailDialog(QTableWidgetItem *item)
         valueItem->setTextAlignment(Qt::AlignCenter);
         detailTable->setItem(i, 1, valueItem);
 
-        QTableWidgetItem *descriptionItem = new QTableWidgetItem(detailValueDescription(m_meterModel, diCode, values.at(i), i, values.size()));
+        const QString rowDescription = detailValueDescription(m_meterModel, diCode, values.at(i), i, values.size());
+
+        QTableWidgetItem *unitItem = new QTableWidgetItem(
+            detailValueUnit(m_meterModel, diCode, rowDescription, i, values.size()));
+        unitItem->setFlags(unitItem->flags() & ~Qt::ItemIsEditable);
+        unitItem->setTextAlignment(Qt::AlignCenter);
+        detailTable->setItem(i, 2, unitItem);
+
+        QTableWidgetItem *descriptionItem = new QTableWidgetItem(rowDescription);
         descriptionItem->setFlags(descriptionItem->flags() & ~Qt::ItemIsEditable);
-        detailTable->setItem(i, 2, descriptionItem);
+        detailTable->setItem(i, 3, descriptionItem);
     }
 
     connect(detailTable, &QTableWidget::itemChanged, detailTable, [detailTable, meterModel = m_meterModel, diCode](QTableWidgetItem *changedItem) {
@@ -2029,7 +2221,7 @@ bool DataTableWidget::showValueDetailDialog(QTableWidgetItem *item)
             return;
         }
 
-        QTableWidgetItem *descriptionItem = detailTable->item(changedItem->row(), 2);
+        QTableWidgetItem *descriptionItem = detailTable->item(changedItem->row(), 3);
         if (descriptionItem)
         {
             descriptionItem->setText(detailValueDescription(meterModel, diCode, changedItem->text(), changedItem->row(), detailTable->rowCount()));
