@@ -5,6 +5,7 @@
 #include "Models/MeterModel.h"
 #include "Services/TermCatalogService.h"
 #include "Utils/UiTheme.h"
+#include "Utils/WindowBehavior.h"
 #include "Views/Common/TermExplanationWidget.h"
 
 #include <QApplication>
@@ -864,7 +865,7 @@ DataItemManualDialog::DataItemManualDialog(QWidget *parent)
       m_catalogMeterModel(nullptr),
       m_currentCategory(QString::fromUtf8("全部"))
 {
-    setWindowFlags(windowFlags() | Qt::WindowMinimizeButtonHint);
+    ui::hideOnMinimize(this);
     setupUI();
     loadDataItems();
     populateTree();

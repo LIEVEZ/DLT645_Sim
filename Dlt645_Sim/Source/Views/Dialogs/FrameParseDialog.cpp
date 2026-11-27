@@ -3,6 +3,7 @@
 #include "Models/MeterModel.h"
 #include "Utils/DLT645FrameFormatter.h"
 #include "Utils/UiTheme.h"
+#include "Utils/WindowBehavior.h"
 #include "Views/Common/FrameParseResultWidget.h"
 
 #include <QFont>
@@ -27,7 +28,7 @@ FrameParseDialog::FrameParseDialog(QWidget *parent)
       m_sendClearButton(nullptr),
       m_receiveClearButton(nullptr)
 {
-    setWindowFlags(windowFlags() | Qt::WindowMinimizeButtonHint);
+    ui::hideOnMinimize(this);
     setupUI();
     applyDarkTheme();
 

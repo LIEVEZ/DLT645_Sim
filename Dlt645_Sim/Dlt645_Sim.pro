@@ -31,6 +31,7 @@ SOURCES += \
     Source/Views/MainWindow/mainwindow_status.cpp \
     Source/Views/MainWindow/mainwindow_helpers.cpp \
     Source/Utils/UiTheme.cpp \
+    Source/Utils/WindowBehavior.cpp \
     Source/Utils/BCDHelper.cpp \
     Source/Utils/DLT645FrameFormatter.cpp \
     Source/Utils/DLT645BlockHandler.cpp \
@@ -103,6 +104,7 @@ HEADERS += \
     Source/Utils/MeterAuthenticationCommandGenerator.h \
     Source/Utils/MeterPasswordGenerator.h \
     Source/Utils/UiTheme.h \
+    Source/Utils/WindowBehavior.h \
     Source/Models/ConnectionConfig.h \
     Source/Models/ConnectionInfo.h \
     Source/Models/ConnectionInfoMapper.h \

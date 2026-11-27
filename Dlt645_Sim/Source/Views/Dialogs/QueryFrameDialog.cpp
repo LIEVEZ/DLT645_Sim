@@ -6,6 +6,7 @@
 #include "Services/ProtocolParser.h"
 #include "Utils/DLT645FrameFormatter.h"
 #include "Utils/UiTheme.h"
+#include "Utils/WindowBehavior.h"
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -334,7 +335,7 @@ QueryFrameDialog::QueryFrameDialog(QWidget *parent)
       m_parseFrameButton(nullptr),
       m_statusLabel(nullptr)
 {
-    setWindowFlags(windowFlags() | Qt::WindowMinimizeButtonHint);
+    ui::hideOnMinimize(this);
     setupUI();
     populateCategories();
     populateDataItems();

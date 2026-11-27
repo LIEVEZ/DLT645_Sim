@@ -5,6 +5,7 @@
 #include "Utils/DLT645FrameFormatter.h"
 #include "Utils/DLT645DataHelper.h"
 #include "Utils/UiTheme.h"
+#include "Utils/WindowBehavior.h"
 #include "Views/Common/FrameParseResultWidget.h"
 
 #include <QAbstractItemView>
@@ -133,7 +134,7 @@ namespace
 CommunicationDialog::CommunicationDialog(const QString &connectionName, QWidget *parent)
     : QDialog(parent), m_connectionName(connectionName), m_portName(""), m_baudRate(2400), m_isConnected(false), m_meterModel(nullptr), m_connectionInfoBar(nullptr), m_filterBar(nullptr), m_isPaused(false), m_autoScroll(true), m_displayFormat(DisplayFormat::Hex), m_filterRequest(true), m_filterResponse(true), m_filterError(true), m_filterText("")
 {
-    setWindowFlags(windowFlags() | Qt::WindowMinimizeButtonHint);
+    ui::hideOnMinimize(this);
     setupUI();
     setWindowTitle(QString("通信交互 - %1").arg(connectionName));
     setMinimumSize(1100, 720);

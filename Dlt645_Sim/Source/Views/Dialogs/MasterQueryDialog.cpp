@@ -5,6 +5,7 @@
 #include "Models/MeterModel.h"
 #include "Utils/DLT645FrameFormatter.h"
 #include "Utils/UiTheme.h"
+#include "Utils/WindowBehavior.h"
 #include "Views/Common/FrameParseResultWidget.h"
 
 #include <QCheckBox>
@@ -257,7 +258,7 @@ MasterQueryDialog::MasterQueryDialog(QWidget *parent)
                     m_portRefreshPending = false;
                     requestPortRefresh();
                 } });
-    setWindowFlags(windowFlags() | Qt::WindowMinimizeButtonHint);
+    ui::hideOnMinimize(this);
     setupUi();
     populateCategories();
     populateDataItems();
