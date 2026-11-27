@@ -9,13 +9,13 @@
  */
 
 // 软件版本号
-#define APP_VERSION_SW                "1.0.0"
+#define APP_VERSION_SW                "1.1.0"
 
 // 硬件版本号
 #define APP_VERSION_HW                "1.0"
 
 // 固件版本号
-#define APP_VERSION_FW                "1.0.0"
+#define APP_VERSION_FW                "1.1.0"
 
 // 产品标识
 #define APP_PRODUCT_ID                "dlt645-meter-sim"
