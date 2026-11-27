@@ -13,7 +13,6 @@ void MeterModel::initializeFreezeData()
     }
 
     initializeLatestHourlyFreezeCategory(m_dataItems, now.addSecs(-60 * 60));
-    synchronizeFreezeTotals(m_dataItems);
     refreshLatestFreezeCompositeBlocks(m_dataItems);
 }
 

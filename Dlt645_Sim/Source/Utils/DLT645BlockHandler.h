@@ -39,11 +39,6 @@ namespace DLT645BlockHandler
     bool isDynamicEnergyBlock(const MeterModel *meterModel, const QString &diCode);
 
     /**
-     * @brief 判断是否为动态冻结电能块
-     */
-    bool isDynamicFreezeEnergyBlock(const MeterModel *meterModel, const QString &diCode);
-
-    /**
      * @brief 判断是否为最近整点冻结复合块
      */
     bool isLatestHourlyFreezeCompositeBlock(const QString &diCode);
@@ -72,16 +67,6 @@ namespace DLT645BlockHandler
      * @brief 获取动态需量块的显示顺序码
      */
     QStringList dynamicDemandDisplayOrderCodes(const MeterModel *meterModel, const QString &diCode, int rateCountOverride = -1);
-
-    /**
-     * @brief 获取动态冻结电能块的载荷顺序码
-     */
-    QStringList dynamicFreezeEnergyPayloadOrderCodes(const MeterModel *meterModel, const QString &diCode, int rateCountOverride = -1);
-
-    /**
-     * @brief 获取动态冻结电能块的显示顺序码
-     */
-    QStringList dynamicFreezeEnergyDisplayOrderCodes(const MeterModel *meterModel, const QString &diCode, int rateCountOverride = -1);
 
     /**
      * @brief 获取最近整点冻结复合块的代码列表

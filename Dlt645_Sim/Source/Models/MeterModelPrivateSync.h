@@ -47,26 +47,6 @@ namespace MeterModelPrivate
         }
     }
 
-    inline void synchronizeFreezeTotals(QMap<QString, DataItem> &items)
-    {
-        const int rateCount = currentRateCount(items);
-        const QList<QString> codes = items.keys();
-        for (const QString &code : codes)
-        {
-            if (!code.endsWith(QStringLiteral("00")) || !isFreezeEnergyFamilyCode(code))
-            {
-                continue;
-            }
-
-            if (code.startsWith(QStringLiteral("0x0504")))
-            {
-                continue;
-            }
-
-            synchronizeGroupTotal(items, code, prefixedCodes(code.left(8), freezeRateSuffixes(rateCount)));
-        }
-    }
-
     inline void synchronizeInstantaneousPowerTotals(QMap<QString, DataItem> &items)
     {
         synchronizeGroupTotal(items, "0x02030000", {"0x02030100", "0x02030200", "0x02030300"});

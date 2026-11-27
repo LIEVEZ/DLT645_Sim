@@ -284,12 +284,6 @@ QVariant MeterModel::getDataValue(const QString &diCode) const
             {
                 appendValuesForCodes(m_dataItems, currentDemandBlockCodes(m_dataItems, diCode.left(6)), values);
             }
-            else if (isFreezeEnergyBlockCode(diCode))
-            {
-                const QString basePrefix = diCode.left(8);
-                appendValuesForCodes(m_dataItems, currentFreezeEnergyBlockCodes(m_dataItems, basePrefix), values);
-            }
-
             if (!values.isEmpty())
             {
                 return values;

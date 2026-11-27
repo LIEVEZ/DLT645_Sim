@@ -14,13 +14,11 @@ void MeterModel::initializeDefaultDataItems()
     initializeLoadRecordData();
     ensureCurrentEnergyRateItems(m_dataItems);
     ensureDemandRateItems(m_dataItems);
-    ensureFreezeRateItems(m_dataItems);
     refreshParameterScheduleData(m_dataItems);
     refreshRateDependentBlockFormats(m_dataItems);
     synchronizeDemandTotals(m_dataItems);
     synchronizeInstantaneousPowerTotals(m_dataItems);
     synchronizeCurrentEnergyTotals(m_dataItems);
-    synchronizeFreezeTotals(m_dataItems);
     refreshLatestFreezeCompositeBlocks(m_dataItems);
 }
 

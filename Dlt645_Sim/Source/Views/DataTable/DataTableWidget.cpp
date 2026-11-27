@@ -816,6 +816,98 @@ namespace
         return targetItem.diCode.isEmpty() ? QString() : targetItem.description;
     }
 
+    bool isFreezeBlockDiInFamilyRange(const QString &diCode, int minFamilyValue, int maxFamilyValue)
+    {
+        if (diCode.size() != 10 ||
+            !diCode.startsWith(QStringLiteral("0x05")) ||
+            !diCode.endsWith(QStringLiteral("01")))
+        {
+            return false;
+        }
+
+        bool ok = false;
+        const int familyValue = diCode.mid(6, 2).toInt(&ok, 16);
+        return ok && familyValue >= minFamilyValue && familyValue <= maxFamilyValue;
+    }
+
+    QString freezeEnergyBlockValueDescription(const MeterModel *meterModel, const QString &diCode, int valueIndex, int valueCount)
+    {
+        if (!meterModel ||
+            valueIndex < 0 ||
+            valueIndex >= valueCount ||
+            !isFreezeBlockDiInFamilyRange(diCode, 0x01, 0x08))
+        {
+            return QString();
+        }
+
+        const DataItem blockItem = meterModel->getDataItem(diCode);
+        if (blockItem.diCode.isEmpty() || !blockItem.format.contains(':'))
+        {
+            return QString();
+        }
+
+        return valueIndex == 0
+                   ? QStringLiteral("%1：总电能").arg(blockItem.description)
+                   : QStringLiteral("%1：费率%2电能").arg(blockItem.description).arg(valueIndex);
+    }
+
+    QString freezeDemandBlockValueDescription(const MeterModel *meterModel, const QString &diCode, int valueIndex, int valueCount)
+    {
+        if (!meterModel ||
+            valueIndex < 0 ||
+            valueIndex >= valueCount ||
+            valueCount % 2 != 0 ||
+            !isFreezeBlockDiInFamilyRange(diCode, 0x09, 0x0A))
+        {
+            return QString();
+        }
+
+        const DataItem blockItem = meterModel->getDataItem(diCode);
+        if (blockItem.diCode.isEmpty() || !blockItem.format.contains(':'))
+        {
+            return QString();
+        }
+
+        const int pairIndex = valueIndex / 2;
+        const bool timeField = (valueIndex % 2 == 1);
+        if (pairIndex == 0)
+        {
+            return timeField ? QStringLiteral("总最大需量发生时间") : QStringLiteral("总最大需量");
+        }
+
+        return timeField ? QStringLiteral("费率%1最大需量发生时间").arg(pairIndex)
+                         : QStringLiteral("费率%1最大需量").arg(pairIndex);
+    }
+
+    QString freezeVariableBlockValueDescription(const MeterModel *meterModel, const QString &diCode, int valueIndex, int valueCount)
+    {
+        if (!meterModel ||
+            valueIndex < 0 ||
+            valueCount != 8 ||
+            valueIndex >= valueCount ||
+            !isFreezeBlockDiInFamilyRange(diCode, 0x10, 0x10))
+        {
+            return QString();
+        }
+
+        const DataItem blockItem = meterModel->getDataItem(diCode);
+        if (blockItem.diCode.isEmpty() || !blockItem.format.contains(':'))
+        {
+            return QString();
+        }
+
+        static const QStringList fieldNames = {
+            QStringLiteral("总有功功率"),
+            QStringLiteral("A相有功功率"),
+            QStringLiteral("B相有功功率"),
+            QStringLiteral("C相有功功率"),
+            QStringLiteral("总无功功率"),
+            QStringLiteral("A相无功功率"),
+            QStringLiteral("B相无功功率"),
+            QStringLiteral("C相无功功率")};
+        return fieldNames.at(valueIndex);
+    }
+
     QString demandBlockValueDescription(const MeterModel *meterModel, const QString &diCode, int valueIndex, int valueCount)
     {
         if (!meterModel ||
@@ -947,6 +1039,24 @@ namespace
         if (!energyDescription.isEmpty())
         {
             return energyDescription;
+        }
+
+        const QString freezeEnergyDescription = freezeEnergyBlockValueDescription(meterModel, diCode, valueIndex, valueCount);
+        if (!freezeEnergyDescription.isEmpty())
+        {
+            return freezeEnergyDescription;
+        }
+
+        const QString freezeDemandDescription = freezeDemandBlockValueDescription(meterModel, diCode, valueIndex, valueCount);
+        if (!freezeDemandDescription.isEmpty())
+        {
+            return freezeDemandDescription;
+        }
+
+        const QString freezeVariableDescription = freezeVariableBlockValueDescription(meterModel, diCode, valueIndex, valueCount);
+        if (!freezeVariableDescription.isEmpty())
+        {
+            return freezeVariableDescription;
         }
 
         const QString demandDescription = demandBlockValueDescription(meterModel, diCode, valueIndex, valueCount);
@@ -1148,6 +1258,13 @@ namespace
                     return unit;
                 }
             }
+        }
+
+        // 冻结最大需量数据块的“发生时间”字段没有物理单位，按标准标注“年月日时分”
+        if (isFreezeBlockDiInFamilyRange(diCode, 0x09, 0x0A) &&
+            description.contains(QStringLiteral("发生时间")))
+        {
+            return QStringLiteral("年月日时分");
         }
 
         // 需量超限“历史记录”的行说明不带“无功”字样，只能按记录号判断有功/无功象限；

@@ -118,6 +118,116 @@ QString inferredUnitForDi(const QString &diCode, int fieldIndex)
     return QString();
 }
 
+bool isFreezeEnergyBlockDi(const QString &diCode)
+{
+    if (diCode.size() != 10 || !diCode.startsWith(QStringLiteral("0x05")) || !diCode.endsWith(QStringLiteral("01")))
+    {
+        return false;
+    }
+
+    bool ok = false;
+    const int familyValue = diCode.mid(6, 2).toInt(&ok, 16);
+    return ok && familyValue >= 0x01 && familyValue <= 0x08;
+}
+
+QString freezeEnergyFieldName(int fieldIndex)
+{
+    return fieldIndex <= 0 ? QStringLiteral("总电能")
+                           : QStringLiteral("费率%1电能").arg(fieldIndex);
+}
+
+QStringList freezeEnergyFormatParts(const DataItem &blockItem)
+{
+    return blockItem.format.split(QStringLiteral(":"), Qt::SkipEmptyParts);
+}
+
+QString freezeEnergyBlockValue(const QByteArray &fieldBytes, const QString &formatPart)
+{
+    const QString value = displayValueForFormatPart(fieldBytes, formatPart);
+    return value.isEmpty() ? DLT645FrameFormatter::formatHex(fieldBytes) : value;
+}
+
+QString freezeEnergyBlockByteBreakdownLines(const MeterModel *meterModel, const QString &blockDiCode, const QByteArray &payload)
+{
+    const DataItem blockItem = meterModel ? meterModel->getDataItem(blockDiCode) : DataItem();
+    if (blockItem.diCode.isEmpty())
+    {
+        return QString();
+    }
+
+    const QStringList formatParts = freezeEnergyFormatParts(blockItem);
+    if (formatParts.isEmpty())
+    {
+        return QString();
+    }
+
+    QStringList lines;
+    int offset = 0;
+    for (int fieldIndex = 0; fieldIndex < formatParts.size(); ++fieldIndex)
+    {
+        const int size = DLT645DataHelper::bytesRequiredForFormat(formatParts.at(fieldIndex));
+        if (size <= 0 || offset + size > payload.size())
+        {
+            return QString();
+        }
+
+        const QByteArray fieldBytes = payload.mid(offset, size);
+        lines.append(QStringLiteral("%1 --- %2:%3")
+                         .arg(DLT645FrameFormatter::formatHex(fieldBytes),
+                              freezeEnergyFieldName(fieldIndex),
+                              appendUnit(freezeEnergyBlockValue(fieldBytes, formatParts.at(fieldIndex)), blockItem.unit)));
+        offset += size;
+    }
+
+    return offset == payload.size() ? lines.join(QStringLiteral("\n")) : QString();
+}
+
+QList<FrameParseCard> buildFreezeEnergyBlockCards(const MeterModel *meterModel, const QString &blockDiCode, const QByteArray &payload)
+{
+    QList<FrameParseCard> cards;
+    const DataItem blockItem = meterModel ? meterModel->getDataItem(blockDiCode) : DataItem();
+    if (blockItem.diCode.isEmpty())
+    {
+        return cards;
+    }
+
+    const QStringList formatParts = freezeEnergyFormatParts(blockItem);
+    if (formatParts.isEmpty())
+    {
+        return cards;
+    }
+
+    int offset = 0;
+    for (int fieldIndex = 0; fieldIndex < formatParts.size(); ++fieldIndex)
+    {
+        const int size = DLT645DataHelper::bytesRequiredForFormat(formatParts.at(fieldIndex));
+        if (size <= 0 || offset + size > payload.size())
+        {
+            cards.clear();
+            return cards;
+        }
+
+        const QByteArray fieldBytes = payload.mid(offset, size);
+        QByteArray displayBytes = fieldBytes;
+        std::reverse(displayBytes.begin(), displayBytes.end());
+
+        FrameParseCard card;
+        card.title = freezeEnergyFieldName(fieldIndex);
+        card.value = appendUnit(freezeEnergyBlockValue(fieldBytes, formatParts.at(fieldIndex)), blockItem.unit, false);
+        card.detail = QStringLiteral("DI: %1\n原始HEX: %2").arg(blockDiCode, DLT645FrameFormatter::formatHex(displayBytes));
+        card.valueMonospace = false;
+        card.detailMonospace = false;
+        cards.append(card);
+        offset += size;
+    }
+
+    if (offset != payload.size())
+    {
+        cards.clear();
+    }
+    return cards;
+}
+
 } // anonymous namespace
 
 namespace DLT645ValueFormatter
@@ -266,6 +376,11 @@ QString blockByteBreakdownLines(const MeterModel *meterModel, const QString &blo
         return QString();
     }
 
+    if (isFreezeEnergyBlockDi(blockDiCode))
+    {
+        return freezeEnergyBlockByteBreakdownLines(meterModel, blockDiCode, payload);
+    }
+
     int rateCountOverride = -1;
     const QStringList payloadCodes = DLT645BlockHandler::selectPayloadOrderCodesForBlock(meterModel, blockDiCode, payload, &rateCountOverride);
     Q_UNUSED(rateCountOverride);
@@ -394,6 +509,11 @@ QList<FrameParseCard> buildBlockDecodeCards(const MeterModel *meterModel, const 
     if (!meterModel || blockDiCode.isEmpty() || payload.isEmpty())
     {
         return {};
+    }
+
+    if (isFreezeEnergyBlockDi(blockDiCode))
+    {
+        return buildFreezeEnergyBlockCards(meterModel, blockDiCode, payload);
     }
 
     int rateCountOverride = -1;

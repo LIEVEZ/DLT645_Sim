@@ -75,23 +75,40 @@ namespace MeterModelPrivate
         return referenceTime.addDays(-category.freezeOffsetDays).addSecs(-category.freezeOffsetHours * 60 * 60);
     }
 
+    inline bool isFreezeSnapshotTimeCode(const QString &diCode)
+    {
+        return diCode.size() == 10 &&
+               diCode.startsWith(QStringLiteral("0x05")) &&
+               diCode.endsWith(QStringLiteral("0001"));
+    }
+
+    inline QString freezeSnapshotTimeValue(const QString &diCode, const QDateTime &referenceTime)
+    {
+        const QString prefix = diCode.left(6);
+        for (const FreezeCategoryDefinition &category : latestFreezeCategoryDefinitions())
+        {
+            if (category.prefix == prefix)
+            {
+                return compactDateTimeToMinutes(defaultLatestFreezeSnapshotTime(category, referenceTime));
+            }
+        }
+
+        if (prefix == QStringLiteral("0x0504"))
+        {
+            // 整点冻结时间取上一个整点
+            const QDateTime currentHour(referenceTime.date(), QTime(referenceTime.time().hour(), 0));
+            return compactDateTimeToMinutes(currentHour.addSecs(-60 * 60));
+        }
+
+        return compactDateTimeToMinutes(referenceTime);
+    }
+
     inline const QList<FreezeDemandFamilyDefinition> &freezeDemandFamilies()
     {
         static const QList<FreezeDemandFamilyDefinition> families = {
             {QStringLiteral("09"), QStringLiteral("正向有功"), QStringLiteral("kW"), 9.8765},
             {QStringLiteral("0A"), QStringLiteral("反向有功"), QStringLiteral("kW"), 6.5432}};
         return families;
-    }
-
-    inline QStringList freezeRateSuffixes(int rateCount)
-    {
-        QStringList suffixes;
-        suffixes.reserve(rateCount);
-        for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
-        {
-            suffixes.append(upperHexByte(rateIndex + 1));
-        }
-        return suffixes;
     }
 
     inline bool isFreezeEnergyFamilyCode(const QString &diCode)
@@ -134,17 +151,75 @@ namespace MeterModelPrivate
                diCode.endsWith(QStringLiteral("01"));
     }
 
-    inline QStringList currentFreezeEnergyBlockCodes(const QMap<QString, DataItem> &items, const QString &diPrefix)
+    inline QVariantList buildFreezeEnergyBlockValue(double totalValue, int rateCount)
     {
-        const int rateCount = currentRateCount(items);
-        QStringList codes;
-        codes.reserve(rateCount + 1);
-        codes.append(diPrefix + QStringLiteral("00"));
+        // 冻结电能数据块载荷顺序：总电能 + 费率1..k 电能，每项 4 字节。
+        static const QList<double> weights = {0.28, 0.24, 0.20, 0.16, 0.12};
+
+        double weightSum = 0.0;
+        for (int rateIndex = 1; rateIndex <= rateCount && rateIndex <= weights.size(); ++rateIndex)
+        {
+            weightSum += weights.at(rateIndex - 1);
+        }
+        if (weightSum <= 0.0)
+        {
+            weightSum = 1.0;
+        }
+
+        QVariantList values;
+        values.reserve(rateCount + 1);
+        values.append(roundToDecimals(totalValue, 2));
+
+        double allocated = 0.0;
+        const int lastWeightedRate = qMin(rateCount, weights.size());
         for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
         {
-            codes.append(diPrefix + upperHexByte(rateIndex + 1));
+            double rateValue = 0.0;
+            if (rateIndex <= lastWeightedRate)
+            {
+                if (rateIndex == lastWeightedRate)
+                {
+                    // 末个有权重费率吸收舍入误差，保证各费率之和等于总电能
+                    rateValue = roundToDecimals(totalValue - allocated, 2);
+                }
+                else
+                {
+                    rateValue = roundToDecimals(totalValue * weights.at(rateIndex - 1) / weightSum, 2);
+                    allocated += rateValue;
+                }
+            }
+            values.append(rateValue);
         }
-        return codes;
+        return values;
+    }
+
+    inline void resizeFreezeEnergyBlockValue(DataItem &item, int rateCount)
+    {
+        const QVariantList existingValues = item.value.toList();
+        if (existingValues.isEmpty())
+        {
+            return;
+        }
+
+        QVariantList values;
+        values.reserve(rateCount + 1);
+        values.append(0.0);
+        for (int rateIndex = 1; rateIndex <= rateCount; ++rateIndex)
+        {
+            const double rateValue = rateIndex < existingValues.size()
+                                         ? existingValues.at(rateIndex).toDouble()
+                                         : 0.0;
+            values.append(roundToDecimals(rateValue, 2));
+        }
+
+        // 总电能始终是各费率之和，费率数调整或手工编辑后都按此重算
+        double totalValue = 0.0;
+        for (int valueIndex = 1; valueIndex < values.size(); ++valueIndex)
+        {
+            totalValue += values.at(valueIndex).toDouble();
+        }
+        values[0] = roundToDecimals(totalValue, 2);
+        item.value = values;
     }
 
     inline void initializeLatestFreezeEnergyCategory(QMap<QString, DataItem> &items,
@@ -160,36 +235,20 @@ namespace MeterModelPrivate
                                    false,
                                    0);
 
+        // 每种电能类别只有一条电能数据（DI 末字节固定为 01），
+        // 总电能和费率 1..k 都包含在该数据内，不再生成独立的费率 DI。
+        const int rateCount = currentRateCount(items);
         for (const FreezeEnergyFamilyDefinition &family : multiRateFreezeEnergyFamilies())
         {
-            const QString prefix = category.prefix + family.familyCode;
+            const QString blockCode = category.prefix + family.familyCode + QStringLiteral("01");
             const double totalValue = roundToDecimals(family.baseValue + category.valueBias, 2);
-            items[prefix + QStringLiteral("00")] = DataItem(prefix + QStringLiteral("00"),
-                                                            QStringLiteral("上1次%1%2总电能").arg(category.description, family.description),
-                                                            totalValue,
-                                                            family.unit,
-                                                            QStringLiteral("AA,AA,AA,.,AA"),
-                                                            false,
-                                                            2);
-            items[prefix + QStringLiteral("01")] = DataItem(prefix + QStringLiteral("01"),
-                                                            QStringLiteral("上1次%1%2电能数据块").arg(category.description, family.description),
-                                                            QVariantList(),
-                                                            QStringLiteral("-"),
-                                                            repeatedFormat(QStringLiteral("AA,AA,AA,.,AA"), kDefaultRateCount + 1),
-                                                            false,
-                                                            2);
-            const QList<double> weights = {0.28, 0.24, 0.20, 0.16, 0.12};
-            for (int rateIndex = 1; rateIndex <= kDefaultRateCount; ++rateIndex)
-            {
-                const QString rateCode = prefix + upperHexByte(rateIndex + 1);
-                items[rateCode] = DataItem(rateCode,
-                                           QStringLiteral("上1次%1%2费率%3电能").arg(category.description, family.description).arg(rateIndex),
-                                           roundToDecimals(totalValue * weights.at(rateIndex - 1), 2),
-                                           family.unit,
-                                           QStringLiteral("AA,AA,AA,.,AA"),
-                                           false,
-                                           2);
-            }
+            items[blockCode] = DataItem(blockCode,
+                                        QStringLiteral("上1次%1%2电能数据").arg(category.description, family.description),
+                                        buildFreezeEnergyBlockValue(totalValue, rateCount),
+                                        family.unit,
+                                        repeatedFormat(QStringLiteral("AA,AA,AA,.,AA"), rateCount + 1),
+                                        false,
+                                        2);
         }
     }
 
@@ -298,9 +357,15 @@ namespace MeterModelPrivate
         {
             const QDateTime freezeTime = freezeSnapshotTime(items, category);
             const QString timeCode = category.prefix + QStringLiteral("0001");
-            if (usesCurrentDayMidnightFreezeTime(category) && items.contains(timeCode))
+            if (items.contains(timeCode))
             {
-                items[timeCode].value = compactDateTimeToMinutes(freezeTime);
+                const QString storedTime = items.value(timeCode).value.toString();
+                const bool validTime = QDateTime::fromString(storedTime, QStringLiteral("yyMMddHHmm")).isValid();
+                if (usesCurrentDayMidnightFreezeTime(category) || !validTime)
+                {
+                    // 日冻结始终取当日零点；其他冻结时间若被随机化成数值等非法内容，回写合法时间
+                    items[timeCode].value = compactDateTimeToMinutes(freezeTime);
+                }
             }
 
             for (const FreezeDemandFamilyDefinition &family : freezeDemandFamilies())
@@ -309,7 +374,7 @@ namespace MeterModelPrivate
                 if (!items.contains(blockCode))
                 {
                     items[blockCode] = DataItem(blockCode,
-                                                QStringLiteral("上1次%1%2最大需量及发生时间数据块").arg(category.description, family.description),
+                                                QStringLiteral("上1次%1%2最大需量及发生时间数据").arg(category.description, family.description),
                                                 QVariantList(),
                                                 QStringLiteral("-"),
                                                 repeatedFormat(QStringLiteral("AA,.,AA,AA:AA,AA,AA,AA,AA"), rateCount + 1),
@@ -325,7 +390,7 @@ namespace MeterModelPrivate
             if (!items.contains(variableBlockCode))
             {
                 items[variableBlockCode] = DataItem(variableBlockCode,
-                                                    QStringLiteral("上1次%1变量数据块").arg(category.description),
+                                                    QStringLiteral("上1次%1变量数据").arg(category.description),
                                                     QVariantList(),
                                                     QStringLiteral("-"),
                                                     repeatedFormat(QStringLiteral("AA,.,AA,AA"), 8),
@@ -334,6 +399,16 @@ namespace MeterModelPrivate
             }
 
             items[variableBlockCode].value = buildFreezeVariableBlockValue(category.valueBias);
+        }
+
+        const QString hourlyTimeCode = QStringLiteral("0x05040001");
+        if (items.contains(hourlyTimeCode))
+        {
+            const QString storedTime = items.value(hourlyTimeCode).value.toString();
+            if (!QDateTime::fromString(storedTime, QStringLiteral("yyMMddHHmm")).isValid())
+            {
+                items[hourlyTimeCode].value = freezeSnapshotTimeValue(hourlyTimeCode, QDateTime::currentDateTime());
+            }
         }
 
         if (items.contains(QStringLiteral("0x0504FF01")))

@@ -153,6 +153,12 @@ bool MeterModel::setDataValue(const QString &diCode, const QVariant &value)
             emittedValue = normalizedParameterSettingValue(diCode, value);
 
             m_dataItems[diCode].value = emittedValue;
+            if (isFreezeEnergyBlockCode(diCode))
+            {
+                // 冻结电能数据块内含总电能 + 各费率电能，写回后按费率之和重算总电能
+                resizeFreezeEnergyBlockValue(m_dataItems[diCode], currentRateCount(m_dataItems));
+                emittedValue = m_dataItems[diCode].value;
+            }
             if (applyEnergyBlockValues(m_dataItems, diCode, emittedValue.toList()))
             {
                 requiresBatchRefresh = true;
@@ -169,13 +175,11 @@ bool MeterModel::setDataValue(const QString &diCode, const QVariant &value)
             {
                 synchronizeInstantaneousPowerTotals(m_dataItems);
             }
-            if (isFreezeEnergyFamilyCode(diCode))
-            {
-                synchronizeFreezeTotals(m_dataItems);
-            }
             if (diCode.startsWith(QStringLiteral("0x05")))
             {
                 refreshLatestFreezeCompositeBlocks(m_dataItems);
+                // 冻结时间/需量块/变量块会随冻结项编辑重算，整表刷新避免派生行残留旧值
+                requiresBatchRefresh = true;
             }
             if (diCode.startsWith(QStringLiteral("0x040100")) ||
                 diCode.startsWith(QStringLiteral("0x040200")) ||
@@ -195,7 +199,6 @@ bool MeterModel::setDataValue(const QString &diCode, const QVariant &value)
                 synchronizeDemandTotals(m_dataItems);
                 synchronizeInstantaneousPowerTotals(m_dataItems);
                 synchronizeCurrentEnergyTotals(m_dataItems);
-                synchronizeFreezeTotals(m_dataItems);
                 refreshLatestFreezeCompositeBlocks(m_dataItems);
                 requiresBatchRefresh = true;
             }
@@ -261,7 +264,6 @@ void MeterModel::applyPersistedData(const QMap<QString, QVariant> &dataSnapshot)
         synchronizeDemandTotals(m_dataItems);
         synchronizeInstantaneousPowerTotals(m_dataItems);
         synchronizeCurrentEnergyTotals(m_dataItems);
-        synchronizeFreezeTotals(m_dataItems);
         refreshLatestFreezeCompositeBlocks(m_dataItems);
     }
 

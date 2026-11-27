@@ -183,6 +183,14 @@ inline void randomizeDataItems(QMap<QString, DataItem> &items,
                 continue;
             }
 
+            if (isFreezeEnergyBlockCode(item.diCode))
+            {
+                // 冻结电能数据：总电能 + 各费率电能保持在同一个数据块内
+                item.value = buildFreezeEnergyBlockValue(rng->bounded(1000, 120000) / 100.0,
+                                                         currentRateCount(items));
+                continue;
+            }
+
             if (isDataBlockItem(item) && !item.diCode.startsWith(QStringLiteral("0x03")))
             {
                 continue;
@@ -206,9 +214,10 @@ inline void randomizeDataItems(QMap<QString, DataItem> &items,
                 continue;
             }
 
-            if (item.diCode == "0x05060001")
+            if (isFreezeSnapshotTimeCode(item.diCode))
             {
-                item.value = compactDateTimeToMinutes(QDateTime(QDate::currentDate(), QTime(0, 0)));
+                // 冻结时间必须保持 YYMMDDhhmm 字符串，不能被通用数值随机化
+                item.value = freezeSnapshotTimeValue(item.diCode, QDateTime::currentDateTime());
                 continue;
             }
 
@@ -697,7 +706,6 @@ inline void randomizeDataItems(QMap<QString, DataItem> &items,
         synchronizeDemandTotals(items);
         synchronizeInstantaneousPowerTotals(items);
         synchronizeCurrentEnergyTotals(items);
-        synchronizeFreezeTotals(items);
         refreshLatestFreezeCompositeBlocks(items);
     }
 }

@@ -218,50 +218,12 @@ namespace MeterModelPrivate
         return true;
     }
 
-    inline bool isFreezeRateCode(const QString &diCode, int *rateIndex = nullptr)
-    {
-        if (diCode.size() != 10)
-        {
-            return false;
-        }
-
-        if (!isFreezeEnergyFamilyCode(diCode))
-        {
-            return false;
-        }
-
-        const QString suffixHex = diCode.mid(8, 2);
-        if (suffixHex == QStringLiteral("00") || suffixHex == QStringLiteral("01"))
-        {
-            return false;
-        }
-
-        int parsedSuffix = 0;
-        if (!parseHexByteValue(suffixHex, &parsedSuffix))
-        {
-            return false;
-        }
-
-        const int parsedRateIndex = parsedSuffix - 1;
-        if (parsedRateIndex < 1 || parsedRateIndex > kMaxRateCount)
-        {
-            return false;
-        }
-
-        if (rateIndex)
-        {
-            *rateIndex = parsedRateIndex;
-        }
-        return true;
-    }
-
     inline bool isRateControlledCodeSupported(const QMap<QString, DataItem> &items, const QString &diCode)
     {
         const int supportedRateCount = currentRateCount(items);
         int rateIndex = 0;
         if (isCurrentEnergyRateCode(diCode, &rateIndex) ||
-            isDemandRateCode(diCode, &rateIndex) ||
-            isFreezeRateCode(diCode, &rateIndex))
+            isDemandRateCode(diCode, &rateIndex))
         {
             return rateIndex <= supportedRateCount;
         }
@@ -535,36 +497,6 @@ namespace MeterModelPrivate
         }
     }
 
-    inline void ensureFreezeRateItems(QMap<QString, DataItem> &items)
-    {
-        const QList<QString> templateCodes = items.keys();
-        for (const QString &templateCode : templateCodes)
-        {
-            if (!templateCode.endsWith(QStringLiteral("02")) || !isFreezeEnergyFamilyCode(templateCode))
-            {
-                continue;
-            }
-
-            const DataItem templateItem = items.value(templateCode);
-            for (int rateIndex = 1; rateIndex <= kMaxRateCount; ++rateIndex)
-            {
-                const QString code = templateCode.left(8) + upperHexByte(rateIndex + 1);
-                if (items.contains(code))
-                {
-                    continue;
-                }
-
-                items.insert(code, DataItem(code,
-                                            rateDescription(templateItem.description, rateIndex),
-                                            0.0,
-                                            templateItem.unit,
-                                            templateItem.format,
-                                            templateItem.isWritable,
-                                            templateItem.decimalPlaces));
-            }
-        }
-    }
-
     inline void refreshRateDependentBlockFormats(QMap<QString, DataItem> &items)
     {
         const int rateCount = currentRateCount(items);
@@ -593,11 +525,8 @@ namespace MeterModelPrivate
                 continue;
             }
 
-            const QString templateCode = blockCode.left(8) + QStringLiteral("02");
-            if (items.contains(blockCode) && items.contains(templateCode))
-            {
-                items[blockCode].format = repeatedFormat(items[templateCode].format, rateCount + 1);
-            }
+            items[blockCode].format = repeatedFormat(QStringLiteral("AA,AA,AA,.,AA"), rateCount + 1);
+            resizeFreezeEnergyBlockValue(items[blockCode], rateCount);
         }
 
         const QString demandSegmentFormat = QStringLiteral("AA,.,AA,AA:AA,AA,AA,AA,AA");
